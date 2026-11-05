@@ -134,7 +134,7 @@ def main():
         gradient_accumulation_steps=args.accum,
         learning_rate=args.lr,
         lr_scheduler_type="cosine",
-        warmup_ratio=0.05,
+        warmup_steps=0.05,          # transformers 5.x: 1 미만 소수 = 전체 스텝 대비 비율 (예전 warmup_ratio)
         bf16=True,
         logging_steps=5 if args.max_steps < 0 else 1,
         eval_strategy="epoch" if args.max_steps < 0 else "no",
