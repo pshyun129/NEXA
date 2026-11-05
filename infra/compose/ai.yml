@@ -38,6 +38,11 @@ services:
       OCR_BASE_URL: ${OCR_BASE_URL:-}
       OCR_TIMEOUT: ${OCR_TIMEOUT:-30}
 
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      USER_SERVICE_URL: http://user-service:8081
+      APPROVAL_SERVICE_URL: http://approval-service:8083
+
     volumes:
       - fastapi-uploads:/app/uploads
 
