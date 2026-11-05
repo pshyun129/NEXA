@@ -43,6 +43,15 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
 
+    environment:
+      REDIS_USER_SERVICE_PASSWORD: ${REDIS_USER_SERVICE_PASSWORD:?REDIS_USER_SERVICE_PASSWORD is required}
+      REDIS_GATEWAY_PASSWORD: ${REDIS_GATEWAY_PASSWORD:?REDIS_GATEWAY_PASSWORD is required}
+
+    entrypoint: ["/bin/sh", "/usr/local/bin/start-redis.sh"]
+
+    volumes:
+      - ./infra/redis/start-redis.sh:/usr/local/bin/start-redis.sh:ro
+
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
