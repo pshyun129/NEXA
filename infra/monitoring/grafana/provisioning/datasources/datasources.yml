@@ -22,3 +22,16 @@ datasources:
       postgresVersion: 1700
     secureJsonData:
       password: $GRAFANA_DB_PASSWORD
+
+  - name: ai-db
+    uid: ai-db
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: nexa_grafana_reader
+    jsonData:
+      database: nexa_ai
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
