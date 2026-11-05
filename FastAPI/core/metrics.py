@@ -34,3 +34,6 @@ VERIFY = Counter("ai_verify_total", "검증 결과", ["doc_type", "model_version
 # Kafka 결재 결과 구독 상태: 1 = 연결, 0 = 끊김
 # 끊기면 결재 결과가 안 와서 wait_approval 노드가 계속 대기
 KAFKA_UP = Gauge("ai_kafka_consumer_up", "Kafka 결재 결과 구독 상태 (1 연결 / 0 끊김)")
+
+# 규정 검토 결과. verdict = 준수 / 위반 / 확인 필요 → 판정 모델 버전별 자동 통과율
+POLICY_CHECKS = Counter("ai_policy_check_total", "규정 검토 결과", ["doc_type", "verdict", "judge_version"])

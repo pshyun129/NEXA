@@ -1,0 +1,12 @@
+{
+  "version": "f629981fcc38",
+  "model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "dim": 384,
+  "docs": {
+    "expense.md": "b04be0b5bcd3",
+    "leave.md": "104f742368b8",
+    "travel.md": "af1b89520bd4"
+  },
+  "clauses": 49,
+  "built_at": "2026-11-05T17:09:06"
+}

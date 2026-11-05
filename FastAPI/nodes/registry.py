@@ -8,6 +8,8 @@ from nodes.impl.llm_verify import LlmVerifyNode
 from nodes.impl.ocr_extract import OcrExtractNode
 from nodes.impl.structured_extract import StructuredExtractNode
 from nodes.impl.wait_approval import WaitApprovalNode
+from nodes.impl.policy_check import PolicyCheckNode
+from nodes.impl.rag_search import RagSearchNode
 
 
 CATEGORIES = [
@@ -27,6 +29,8 @@ _NODE_CLASSES: list[type[BaseNode]] = [
     OcrExtractNode,          # OCR 글자 인식
     StructuredExtractNode,   # 항목 추출 (DSPy)
     LlmVerifyNode,           # 자동 검증 (GMS 교차 추출)
+    PolicyCheckNode,         # 규정 검토 (RAG + DSPy 판정)
+    RagSearchNode,           # 규정 근거 검색 (RAG, LLM 없음)
     ConditionNode,           # 조건 분기
     HumanConfirmNode,        # 사람 확인 (interrupt)
     ApprovalDraftNode,       # 결재 상신 (approval-service)

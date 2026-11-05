@@ -50,15 +50,18 @@ class HumanConfirmNode(BaseNode):
         final_fields = {**model_fields, **(decision.get("data") or {})}
         edited = [k for k, v in final_fields.items() if v != model_fields.get(k)]
 
-        with SessionLocal() as db:
-            db.add(RunFeedback(
-                run_id=ctx.run_id, node_id=ctx.node_id,
-                doc_type=extraction.get("doc_type"),
-                model_version=extraction.get("model_version"),
-                model_output=model_fields, final_output=final_fields,
-                edited_fields=edited, label_source="human",
-            ))
-            db.commit()
+        # 모델이 추출한 값일 때만 학습 라벨로 저장
+        # (규정 검토 결과처럼 이미 확정된 값을 다시 확인하는 경우는 model_version이 없음 → 저장 안 함)
+        if extraction.get("model_version"):
+            with SessionLocal() as db:
+                db.add(RunFeedback(
+                    run_id=ctx.run_id, node_id=ctx.node_id,
+                    doc_type=extraction.get("doc_type"),
+                    model_version=extraction.get("model_version"),
+                    model_output=model_fields, final_output=final_fields,
+                    edited_fields=edited, label_source="human",
+                ))
+                db.commit()
 
         return NodeResult(
             output={"fields": final_fields, "edited_fields": edited, "comment": decision.get("comment")},
