@@ -50,6 +50,9 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/approval-outbox-kafka.json
       GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?GRAFANA_DB_PASSWORD is required}
+      GF_SERVER_ROOT_URL: https://nexa-erp.duckdns.org/monitoring/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"
 
     volumes:
       - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
