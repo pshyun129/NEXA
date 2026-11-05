@@ -11,6 +11,8 @@ public final class SecurityConstants {
     public static final String GRADE_BASE_PATH = "/api/v1/grades";
     public static final String JOB_CODE_BASE_PATH = "/api/v1/job-codes";
     public static final String JWKS_PATH = "/.well-known/jwks.json";
+    /** migration-service 전용 내부 API. gateway 라우트가 없어 외부로 노출되지 않는다 */
+    public static final String INTERNAL_MIGRATION_PATH = "/internal/v1/hr/migration";
 
     public static final String ACCESS_COOKIE = "accessToken";
     public static final String REFRESH_COOKIE = "refreshToken";

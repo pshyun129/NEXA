@@ -49,15 +49,53 @@ public class Department {
     @Column(name = "head_emp_id")
     private Long headEmpId;             // 부서장 사원ID (null 이면 공석)
 
+    @Column(name = "dept_code", length = 50)
+    private String deptCode;            // 외부 부서코드 (이관 기준 키). 직접 만든 부서는 null
+
+    @Column(name = "pending_parent_code", length = 50)
+    private String pendingParentCode;   // 이관 중 아직 못 찾은 상위 부서코드 (찾으면 연결 후 null)
+
+    @Column(name = "pending_head_emp_no", length = 50)
+    private String pendingHeadEmpNo;    // 이관 중 아직 없는 부서장 사번 (사원 적재 후 연결)
+
     @Builder
     private Department(String name, Integer sortOrder, Company company, Department parent,
-                       DeptType deptType, Long headEmpId) {
+                       DeptType deptType, Long headEmpId, String deptCode) {
         this.name = name;
         this.sortOrder = sortOrder;
         this.company = company;
         this.parent = parent;
         this.deptType = deptType;
         this.headEmpId = headEmpId;
+        this.deptCode = deptCode;
+    }
+
+    /** 이관: 이름·정렬순서 변경 (null 은 유지) */
+    public void updateBasics(String name, Integer sortOrder) {
+        if (name != null) this.name = name;
+        if (sortOrder != null) this.sortOrder = sortOrder;
+    }
+
+    /** 이관: 상위 부서 연결 (순환 검증은 서비스가 한다). 대기 중이던 상위 코드는 비운다 */
+    public void linkParent(Department parent) {
+        this.parent = parent;
+        this.pendingParentCode = null;
+    }
+
+    /** 이관: 상위 부서코드가 아직 없어 연결을 미룬다 */
+    public void deferParent(String parentCode) {
+        this.pendingParentCode = parentCode;
+    }
+
+    /** 이관: 부서장 사번이 아직 없어 연결을 미룬다 */
+    public void deferHead(String headEmpNo) {
+        this.pendingHeadEmpNo = headEmpNo;
+    }
+
+    /** 이관: 대기 중이던 부서장 연결 */
+    public void linkPendingHead(Long empId) {
+        this.headEmpId = empId;
+        this.pendingHeadEmpNo = null;
     }
 
     /** 부서장 지정·교체. 검증(재직·소속)은 서비스가 한다 */

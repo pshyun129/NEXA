@@ -43,6 +43,9 @@ public class SecurityConfig {
             SecurityConstants.AUTH_BASE_PATH + "/logout",   // access 만료 후에도 세션 정리가 가능해야 함
             SecurityConstants.AUTH_BASE_PATH + "/reissue",
             SecurityConstants.JWKS_PATH,
+            // migration-service 는 토큰 없이 호출한다. gateway 에 /internal 라우트가 없어 내부망에서만 닿는다
+            // TODO 서비스 간 인증(공유 토큰·mTLS 등)은 별도 과제
+            SecurityConstants.INTERNAL_MIGRATION_PATH + "/**",
             "/actuator/health",
             "/error",
     };

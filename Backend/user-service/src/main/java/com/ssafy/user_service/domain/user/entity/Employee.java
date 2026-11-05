@@ -108,6 +108,25 @@ public class Employee {
         return status == EmploymentStatus.TERMINATED;
     }
 
+    /**
+     * 이관 upsert 로 기존 사원 정보를 덮어쓴다. 호출 측이 기존 값과 합친(null 은 유지) 최종 값을 넘긴다.
+     * 퇴직으로 바뀌면 호출 측(서비스)이 refresh 세션을 삭제해야 한다.
+     */
+    public void overwriteByMigration(String loginId, String name, JobAssignment job, PersonalInfo personal,
+                                     EmpType empType, HireType hireType, LocalDate hireDate,
+                                     LocalDate recogHireDate, EmploymentStatus status, LocalDate resignDate) {
+        this.loginId = loginId;
+        this.name = name;
+        this.job = job;
+        this.personal = personal;
+        this.empType = empType;
+        this.hireType = hireType;
+        this.hireDate = hireDate;
+        this.recogHireDate = recogHireDate;
+        this.status = status;
+        this.resignDate = resignDate;
+    }
+
     /** 퇴직 처리. 호출 측(서비스)은 이후 이 사원의 refresh 세션을 삭제해야 한다. */
     public void terminate(LocalDate resignDate, String resignReason) {
         this.status = EmploymentStatus.TERMINATED;
