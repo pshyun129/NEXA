@@ -108,6 +108,8 @@ class LlmMappingAdvisorTest {
 
             assertThat(advice.get("사원코드").field()).isEqualTo("empNo");
             assertThat(sent.get()).contains("gpt-test", "a-99999", "auth=Bearer test-key").doesNotContain("E-00123");
+            // 선택지를 답 스키마 enum으로도 보낸다: 보낸 컬럼, 아직 안 쓴 필드
+            assertThat(sent.get()).contains("\"json_schema\"", "\"strict\":true", "\"enum\":[\"사원코드\"]", "\"empNo\"");
             assertThat(new LlmMappingAdvisor(new LlmClient(base, "", "m"), JSON).advise(EMPLOYEE, samples, Set.of())).isEmpty();
             assertThat(new LlmMappingAdvisor(new LlmClient("http://127.0.0.1:1/v1", "k", "m"), JSON).advise(EMPLOYEE, samples, Set.of())).isEmpty();
         } finally {

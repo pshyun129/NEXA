@@ -9,6 +9,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,6 +20,7 @@ import java.util.Set;
  * 동의어로 못 찾은 컬럼을 LLM에게 물어 매핑을 추천받는다 (OpenAI Responses API 형식, 기본은 SSAFY GMS).
  * 보내는 것: 컬럼 이름, 값의 '모양'(숫자→9, 한글→가, 영문→a로 바꾼 예시 몇 개), 대상 필드 목록. 실제 값은 보내지 않는다.
  * 키가 없거나 호출이 실패하면 빈 결과 (동의어 추천만 쓴다). 추천은 확정이 아니라 사람이 매핑 화면에서 확인한다.
+ * 선택지(컬럼·필드·허용 값)는 답 스키마의 enum으로도 넘겨 그 밖의 값은 나오지 않게 한다. 받은 뒤에도 한 번 더 확인한다.
  */
 @Slf4j
 @Component
@@ -66,7 +68,9 @@ public class LlmMappingAdvisor {
             return Map.of();
         }
         try {
-            String text = llm.call(INSTRUCTIONS, prompt(schema, samples, taken));
+            List<String> fields = schema.fields().stream().map(FieldSpec::name).filter(f -> !taken.contains(f)).toList();
+            String text = llm.call(INSTRUCTIONS, prompt(schema, samples, taken), "column_mapping",
+                    answerSchema("mappings", "column", List.copyOf(samples.keySet()), "field", fields));
             return parse(text, schema, samples.keySet(), taken);
         } catch (RuntimeException e) {
             log.warn("LLM 매핑 추천 실패, 동의어 추천만 사용: {}", e.getMessage());
@@ -85,7 +89,8 @@ public class LlmMappingAdvisor {
         }
         try {
             String input = objectMapper.writeValueAsString(Map.of("field", field.label(), "allowed", field.enumValues(), "values", values));
-            String text = llm.call(VALUE_INSTRUCTIONS, input);
+            String text = llm.call(VALUE_INSTRUCTIONS, input, "value_mapping",
+                    answerSchema("values", "value", values, "target", List.copyOf(field.enumValues().keySet())));
             int start = text.indexOf('{');
             int end = text.lastIndexOf('}');
             if (start < 0 || end < start) {
@@ -104,6 +109,19 @@ public class LlmMappingAdvisor {
             log.warn("LLM 값 추천 실패: {}", e.getMessage());
             return Map.of();
         }
+    }
+
+    /** {list:[{key: keys 중 하나, choice: choices 중 하나 또는 null, reason}]} 모양의 strict 스키마 */
+    static Map<String, Object> answerSchema(String list, String key, List<String> keys, String choice, List<String> choices) {
+        List<String> nullable = new ArrayList<>(choices);
+        nullable.add(null);
+        Map<String, Object> item = Map.of("type", "object", "additionalProperties", false, "required", List.of(key, choice, "reason"),
+                "properties", Map.of(
+                        key, Map.of("type", "string", "enum", keys),
+                        choice, Map.of("type", Arrays.asList("string", "null"), "enum", nullable),
+                        "reason", Map.of("type", "string")));
+        return Map.of("type", "object", "additionalProperties", false, "required", List.of(list),
+                "properties", Map.of(list, Map.of("type", "array", "items", item)));
     }
 
     private String prompt(EntitySchema schema, Map<String, List<String>> samples, Set<String> taken) {
