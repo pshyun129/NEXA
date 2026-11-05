@@ -8,6 +8,8 @@ import { HomePage } from '@/pages/home/HomePage';
 import { Placeholder } from '@/pages/placeholder/Placeholder';
 import { AttendancePage } from '@/pages/attendance/AttendancePage';
 import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage';
+import { AutomationPage } from '@/pages/automation/AutomationPage';
+import { MigrationPage } from '@/pages/admin/MigrationPage';
 
 // 캔버스(@xyflow)는 무거워서 쓰는 화면에서만 불러온다
 const DevKitPage = lazy(() => import('@/pages/dev/kit/DevKitPage').then((m) => ({ default: m.DevKitPage })));
@@ -21,15 +23,16 @@ export function App() {
       <Route element={<SessionGate><AppShell /></SessionGate>}>
         <Route index element={<HomePage />} />
         <Route path="attendance/*" element={<AttendancePage />} />
-        <Route path="leave/*" element={<Placeholder title="휴가" week="P1(3주차 말 포함 여부 판단)" />} />
+        <Route path="leave/*" element={<Placeholder title="휴가" week="P1 · 이번 범위 제외(2026-11-05 결정)" />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="approvals/:docId" element={<ApprovalsPage />} />
         <Route path="pay/*" element={<Placeholder title="급여" week="P1" />} />
-        <Route path="automation/*" element={<Placeholder title="업무 자동화" week="4주차" />} />
+        <Route path="automation/*" element={<AutomationPage />} />
         <Route path="org/*" element={<Placeholder title="조직도" week="P1" />} />
         <Route path="admin" element={<RequireAdmin><Placeholder title="관리 홈" week="5주차" /></RequireAdmin>} />
         <Route path="admin/hr/*" element={<RequireAdmin><Placeholder title="인사" week="5주차(P1)" /></RequireAdmin>} />
-        <Route path="admin/migration/*" element={<RequireAdmin><Placeholder title="데이터 이관" week="4~5주차" /></RequireAdmin>} />
+        <Route path="admin/migration" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
+        <Route path="admin/migration/:id" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         <Route path="admin/builder/*" element={<RequireAdmin><Placeholder title="자동화 빌더" week="5주차" /></RequireAdmin>} />
         <Route path="*" element={<Placeholder title="페이지를 찾을 수 없습니다" week="—" />} />
       </Route>

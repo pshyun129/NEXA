@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
-import type { AnomalyType, WorkTime } from '@/api/attendance';
+import { Button } from 'antd';
+import { useDaily, type AnomalyType, type WorkTime } from '@/api/attendance';
 import { StatusBadge } from '@/ui/StatusBadge';
-import { formatDateShort, formatDurationShort } from '@/format';
+import { formatDateShort, formatDuration, formatDurationShort, nowKst } from '@/format';
 import { anomalyHref, overtimeHref } from './requests/links';
 import s from './attendance.module.css';
 
@@ -45,6 +46,23 @@ export function UnapprovedOtCta({ days }: { days: Omit<Day, 'anomalies'>[] }) {
           <span className="nx-num">{formatDateShort(d.workDate)} {formatDurationShort(d.workTime.unapprovedOtMin)}</span> → 초과근무 신청
         </Link>
       ))}
+    </div>
+  );
+}
+
+/**
+ * 홈 "오늘 근무" 카드: 어제 미승인 연장이 있으면 바로 초과근무 신청으로(설계 8.3 데모 1).
+ * 어제 일간 응답(정식 데이터)의 unapprovedOtMin만 본다. 없으면 아무것도 그리지 않는다.
+ */
+export function YesterdayOtNotice() {
+  const yesterday = nowKst().subtract(1, 'day').format('YYYY-MM-DD');
+  const q = useDaily(yesterday);
+  const min = q.data?.workTime.unapprovedOtMin ?? 0;
+  if (!q.data || min <= 0) return null;
+  return (
+    <div className={s.otNotice} role="note">
+      <span>어제 미승인 연장 <b className="nx-num">{formatDuration(min)}</b></span>
+      <Link to={overtimeHref(q.data)}><Button size="small">초과근무 신청</Button></Link>
     </div>
   );
 }

@@ -1,0 +1,72 @@
+/* 업무 자동화: 진입 목록, 입력 폼, 실행 화면, 사람 확인 (설계 6.5) */
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.spacer { flex: 1; }
+.h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--nx-n-700); }
+.tag { display: inline-flex; align-items: center; height: var(--nx-badge-h); padding: 0 8px; border-radius: var(--nx-r-sm);
+       background: var(--nx-n-100); color: var(--nx-n-600); font-size: 12px; font-weight: 500; }
+
+/* ---------- 진입 목록 ---------- */
+.wfList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wfList li { border-bottom: 1px solid var(--nx-divider); }
+.wfList li:last-child { border-bottom: 0; }
+.wfItem { display: flex; align-items: center; gap: 12px; padding: 12px 4px; color: var(--nx-n-800); }
+.wfItem:hover { background: var(--nx-bg-subtle); }
+.wfText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+
+/* ---------- 입력 폼 ---------- */
+.drop { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.formFoot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 실행 화면 ---------- */
+.monitor { display: flex; flex-direction: column; gap: 16px; }
+.monHead { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.title { margin: 0; font-size: var(--nx-fs-h2); line-height: 26px; font-weight: 700; color: var(--nx-n-800); }
+.monGrid { display: grid; grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+@media (max-width: 1151px) { .monGrid { grid-template-columns: 1fr; } }
+.panel { background: var(--nx-bg-card); border: 1px solid var(--nx-border); border-radius: var(--nx-r-md); padding: 16px 20px;
+         display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.step { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+/* 단계 사이 세로선 */
+.step:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--nx-n-200); }
+.stepDot { flex: 0 0 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
+           border: 1.5px solid var(--nx-n-300); background: var(--nx-n-0); color: var(--nx-n-500); }
+.st-SUCCEEDED .stepDot { border-color: var(--nx-success-fg); background: var(--nx-success-bg); color: var(--nx-success-fg); }
+.st-FAILED .stepDot { border-color: var(--nx-danger-fg); background: var(--nx-danger-bg); color: var(--nx-danger-fg); }
+.st-RUNNING .stepDot { border-color: var(--nx-ai-500); color: var(--nx-ai-700); }
+.st-WAITING .stepDot { border-color: var(--nx-warning-fg); background: var(--nx-warning-fg); color: var(--nx-n-0); }
+.stepNext .stepDot { border-style: dashed; }
+.stepBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 2px; }
+.stepHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--nx-n-800); }
+.stepMeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--nx-n-500); }
+.branch { color: var(--nx-n-700); font-weight: 500; }
+.err { color: var(--nx-danger-fg); overflow-wrap: anywhere; }
+.here { font-size: 12px; font-weight: 600; color: var(--nx-warning-fg); }
+
+.docCard { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md);
+           background: var(--nx-success-bg); color: var(--nx-n-800); }
+.waitApproval { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md);
+                background: var(--nx-info-bg); }
+.noPreview { padding: 24px; text-align: center; font-size: 13px; color: var(--nx-n-500); border: 1px dashed var(--nx-n-300); border-radius: var(--nx-r-md); }
+.previewList { display: flex; flex-direction: column; gap: 8px; }
+.previewImg { max-width: 100%; max-height: 420px; border-radius: var(--nx-r-md); border: 1px solid var(--nx-border); }
+
+/* ---------- 사람 확인 ---------- */
+.hitl { display: flex; flex-direction: column; gap: 12px; }
+.reasons { margin: 0; padding-left: 18px; font-size: 13px; color: var(--nx-n-800); }
+.diff { width: 100%; border-collapse: collapse; font-size: 13px; }
+.diff th, .diff td { padding: 8px; border-bottom: 1px solid var(--nx-divider); text-align: left; vertical-align: middle; }
+.diff thead th { color: var(--nx-n-500); font-weight: 500; }
+.diff tbody th { color: var(--nx-n-700); font-weight: 600; }
+.rowBad { background: var(--nx-warning-bg); }
+.rowOk td, .rowOk th { color: var(--nx-n-500); }
+.cellBtn { font: inherit; background: none; border: 1px solid transparent; border-radius: var(--nx-r-sm); padding: 2px 6px; cursor: pointer;
+           color: inherit; font-variant-numeric: tabular-nums; }
+.cellBtn:hover:not(:disabled) { border-color: var(--nx-n-300); background: var(--nx-n-0); }
+.cellBtn:disabled { cursor: default; }
+.stBad { display: inline-flex; align-items: center; gap: 4px; color: var(--nx-warning-fg); font-weight: 600; white-space: nowrap; }
+.stOk { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.stEdited { display: inline-flex; align-items: center; gap: 4px; color: var(--nx-brand-700); font-weight: 600; white-space: nowrap; }

@@ -66,3 +66,5 @@
 .anomalyLink:hover span:last-child { text-decoration: underline; }
 .otCta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 12px; border-radius: var(--nx-r-md);
          background: var(--nx-danger-bg); font-size: 13px; }
+.otNotice { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px;
+            padding: 8px 12px; border-radius: var(--nx-r-md); background: var(--nx-danger-bg); color: var(--nx-danger-fg); font-size: 13px; }

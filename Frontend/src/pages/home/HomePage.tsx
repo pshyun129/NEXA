@@ -12,13 +12,13 @@ import { FeatureGate } from '@/ui/FeatureGate';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { ClockPanel } from '@/attendance/Clock';
 import { WeeklyGauge, WeeklySummary, mondayOf } from '@/attendance/Weekly';
-import { UnapprovedOtCta } from '@/attendance/AnomalyChips';
+import { UnapprovedOtCta, YesterdayOtNotice } from '@/attendance/AnomalyChips';
 import { RequestStatusCell, targetText } from '@/attendance/requests/RequestList';
 import { REQUESTS_PATH, newRequestHref, requestHref } from '@/attendance/requests/links';
 import { useMyRequests } from '@/api/attendanceRequests';
 import { requestTypeLabel } from '@/status/labels';
 import rs from '@/attendance/requests/requests.module.css';
-import { formatDate, formatDurationShort, formatRelative, kst, nowKst } from '@/format';
+import { formatDate, formatDurationShort, formatRelative, kst, nowKst, serverUtc } from '@/format';
 import s from './home.module.css';
 
 function TodoRow() {
@@ -140,7 +140,7 @@ function AiWaitingCard() {
         {q.data.slice(0, 3).map((r) => (
           <li key={r.id}>
             <span className="nx-mono">run #{r.id}</span>
-            <span className={s.todoMuted}>워크플로 #{r.workflowId} · {formatRelative(r.createdAt)}</span>
+            <span className={s.todoMuted}>워크플로 #{r.workflowId} · {formatRelative(serverUtc(r.createdAt))}</span>
             <Link to={`/automation/runs/${r.id}`}><Button size="small">확인하기 →</Button></Link>
           </li>
         ))}
@@ -158,7 +158,7 @@ export function HomePage() {
       <div className={s.stack}>
         <Card title="처리할 일"><TodoRow /></Card>
         <div className={s.grid3}>
-          <Card title="오늘 근무"><ClockPanel /></Card>
+          <Card title="오늘 근무"><ClockPanel /><YesterdayOtNotice /></Card>
           <WeekCard />
           <Card title="휴가 잔여"><FeatureGate flag="leaveBalance">{null}</FeatureGate></Card>
         </div>

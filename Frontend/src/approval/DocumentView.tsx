@@ -212,6 +212,7 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
           <div className={s.aiBand}>
             <AiMark label="자동화로 생성됨" />
             {doc.sourceId != null && <span className="nx-mono">run #{doc.sourceId}</span>}
+            {doc.sourceId != null && <Link to={`/automation/runs/${doc.sourceId}`} style={{ marginLeft: 'auto' }}>원본 실행 보기 ↗</Link>}
           </div>
         )}
         {(doc.sourceType === 'LEAVE' || doc.sourceType === 'ATTENDANCE') && (

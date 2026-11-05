@@ -19,6 +19,16 @@ const DASH = '—';
 export const kst = (v: string | number | Date | Dayjs) => dayjs(v).tz(TZ);
 export const nowKst = () => dayjs().tz(TZ);
 
+/**
+ * 오프셋 없는 서버 시각(FastAPI·migration의 naive TIMESTAMP/LocalDateTime)은 UTC로 해석한다.
+ * 근거: 해당 컨테이너에 TZ 설정이 없어 UTC 기준으로 기록된다(S15P3log/frontend-backend-gaps.md B13).
+ * 이미 오프셋(Z, +09:00)이 있으면 그대로 둔다.
+ */
+export function serverUtc<T extends string | null | undefined>(v: T): T {
+  if (!v || /(Z|[+-]\d{2}:?\d{2})$/.test(v)) return v;
+  return `${v}Z` as T;
+}
+
 /* ---------- 숫자·금액 ---------- */
 const minus = (n: number, s: string) => (n < 0 ? `-${s}` : s); // ASCII '-'
 export const formatNumber = (n: number | null | undefined) => (n == null ? DASH : minus(n, num.format(Math.abs(n))));
