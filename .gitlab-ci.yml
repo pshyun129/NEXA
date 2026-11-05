@@ -26,6 +26,7 @@ include:
   - local: /.gitlab/ci/deploy.yml
   - local: /.gitlab/ci/payroll.yml
   - local: /.gitlab/ci/migration.yml
+  - local: /.gitlab/ci/frontend.yml
 check-ci-environment:
   stage: verify
   image: eclipse-temurin:21-jdk
