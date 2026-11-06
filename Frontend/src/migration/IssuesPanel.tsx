@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Button, Segmented, Skeleton, Table } from 'antd';
-import { useApplyFixes, useIssues, type IssueGroup, type IssueTotals, type Severity, type ValidationIssue } from '@/api/migration';
+import { Button, Input, Segmented, Skeleton, Table } from 'antd';
+import {
+  useApplyFixes, useIssues, useUpdateRow, type IssueGroup, type IssueTotals, type Severity, type ValidationIssue,
+} from '@/api/migration';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { AiMark, EmptyState } from '@/ui/primitives';
@@ -37,10 +39,31 @@ function TotalsBar({ t }: { t: IssueTotals }) {
   );
 }
 
-/** ③ 검증·자동 정리(설계 6.7): 합계 → 원인별 묶음(+ [적용]) → 행 단위(서버 페이징) */
+/**
+ * 행 단위 표의 [고치기]: 그 칸의 값을 바로 바꾼다(PATCH …/rows/{rowNo}). 정리 값이 있으면 그 값을, 없으면 원래 값을 채워 둔다.
+ * 저장하면 서버가 다시 검증하고, 그 행에 남은 이슈 수를 알린다.
+ */
+function RowEditor({ issue, saving, onSave, onCancel }: {
+  issue: ValidationIssue; saving: boolean; onSave: (value: string) => void; onCancel: () => void;
+}) {
+  const [value, setValue] = useState(issue.suggestion ?? issue.value ?? '');
+  return (
+    <span className={s.row}>
+      <Input size="small" style={{ width: 150 }} autoFocus value={value} aria-label={`${issue.rowNo}행 ${issue.sourceColumn} 새 값`}
+             onChange={(e) => setValue(e.target.value)} onPressEnter={() => onSave(value)}
+             onKeyDown={(e) => e.key === 'Escape' && onCancel()} />
+      <Button size="small" type="primary" loading={saving} onClick={() => onSave(value)}>저장</Button>
+      <Button size="small" type="text" disabled={saving} onClick={onCancel}>취소</Button>
+    </span>
+  );
+}
+
+/** ③ 검증·자동 정리(설계 6.7): 합계 → 원인별 묶음(+ [적용]) → 행 단위(서버 페이징, [고치기]로 칸 직접 수정) */
 export function IssuesPanel({ migrationId, fileId, rows }: { migrationId: number; fileId: number; rows: number }) {
   const notify = useNotify();
   const fix = useApplyFixes(migrationId);
+  const updateRow = useUpdateRow(migrationId, fileId);
+  const [editing, setEditing] = useState<string | null>(null);   // `${rowNo}|${sourceColumn}`
   const [severity, setSeverity] = useState<Severity | undefined>(undefined);
   const [page, setPage] = useState(0);
   const q = useIssues(migrationId, { fileId, severity, page, size: PAGE_SIZE });
@@ -56,6 +79,19 @@ export function IssuesPanel({ migrationId, fileId, rows }: { migrationId: number
       onError: (e) => notify.error(e, '자동 정리를 적용하지 못했습니다'),
     });
 
+  const editKey = (r: ValidationIssue) => `${r.rowNo}|${r.sourceColumn}`;
+  const save = (r: ValidationIssue, value: string) => updateRow.mutate(
+    { rowNo: r.rowNo!, values: { [r.sourceColumn!]: value } },
+    {
+      onSuccess: (res) => {
+        setEditing(null);
+        notify.success(`${formatNumber(res.rowNo)}행 '${r.sourceColumn}'을(를) 고쳤습니다`,
+          res.rowIssues.length ? `이 행에 남은 이슈 ${formatNumber(res.rowIssues.length)}건` : '이 행의 이슈가 모두 해결됐습니다');
+      },
+      onError: (e) => notify.error(e, '값을 고치지 못했습니다'),
+    },
+  );
+
   const cols = [
     { title: '행', dataIndex: 'rowNo', width: 70, render: (v: number | null) => <span className="nx-num">{v ?? '파일'}</span> },
     { title: '칸', dataIndex: 'sourceColumn', width: 120, render: (v: string | null) => v ?? '—' },
@@ -63,6 +99,14 @@ export function IssuesPanel({ migrationId, fileId, rows }: { migrationId: number
     { title: '구분', dataIndex: 'severity', width: 110, render: (v: Severity) => <StatusBadge domain="Severity" value={v} /> },
     { title: '문제', dataIndex: 'message' },
     { title: '정리 값', dataIndex: 'suggestion', width: 160, render: (v: string | null) => v ? <span className={s.value}>{v}</span> : '—' },
+    {
+      title: '고치기', key: 'edit', width: 260,
+      // 파일 단위 이슈(행·칸 없음)는 직접 고칠 칸이 없다
+      render: (_: unknown, r: ValidationIssue) => r.rowNo == null || !r.sourceColumn ? null
+        : editing === editKey(r)
+          ? <RowEditor issue={r} saving={updateRow.isPending} onSave={(v) => save(r, v)} onCancel={() => setEditing(null)} />
+          : <Button size="small" disabled={updateRow.isPending} onClick={() => setEditing(editKey(r))}>고치기</Button>,
+    },
   ];
 
   return (
