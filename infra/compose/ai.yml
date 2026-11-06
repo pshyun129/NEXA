@@ -45,6 +45,7 @@ services:
 
       ATTENDANCE_SERVICE_URL: http://attendance-service:8084
       LEAVE_SERVICE_URL: http://leave-service:8082
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
 
     volumes:
       - fastapi-uploads:/app/uploads
