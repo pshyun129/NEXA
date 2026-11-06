@@ -98,6 +98,7 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 - 허용 값 목록이 있는 필드(재직상태·직원구분 …)에 목록에 없는 값(`Y`, `촉탁직`)이 있으면 LLM에게 어느 허용 값인지 묻는다 (`EnumValueSuggester`)
   - 코드성 값만 보낸다: 서로 다른 값 30개 이하, 값마다 20자 이하. 파일·필드·값마다 한 번만 묻고 `value_suggestion`(V7)에 저장
   - 추천이 있으면 차단(`INVALID_ENUM`) 대신 자동 정리 제안(`ENUM_VALUE_SUGGESTED`, FIX)으로 내고, 사람이 적용해야 값이 바뀐다
+  - LLM이 꺼져 있거나 답이 없어도, 값이 허용 값 하나의 앞부분이면(`정규` → `정규직`, `파트` → `파트타임`, 두 글자 이상) 같은 코드로 제안한다
 
 ## 엑셀 읽기·검사
 
@@ -150,7 +151,7 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 ## 이슈 코드
 
 심각도: **적재 불가**(BLOCK, 고치기 전에는 적재 안 됨) / **확인 필요**(WARN) / **자동 정리**(FIX, `suggestion` 값으로 바꾸자는 제안. 남아 있으면 적재 안 됨).
-AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다. 나머지 자동 정리는 규칙 기반이다. 행이 없는 이슈(`rowNo` 없음)는 파일·시트 단위다.
+AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다 (허용 값의 줄임말은 LLM 없이 규칙으로도 낸다). 나머지 자동 정리는 규칙 기반이다. 행이 없는 이슈(`rowNo` 없음)는 파일·시트 단위다.
 
 | 코드 | 심각도 | 뜻 |
 |---|---|---|
@@ -182,7 +183,7 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다. 나머지 �
 | `INVALID_EMAIL` | 적재 불가 | 이메일 형식이 아님 |
 | `INVALID_PHONE` | 확인 필요 | 전화번호 자리 수가 맞지 않음 (앞자리 0 빠짐 등) |
 | `INVALID_ENUM` | 적재 불가 | 허용되지 않는 값 (허용 값을 메시지에 적음) |
-| `ENUM_VALUE_SUGGESTED` | 자동 정리 | 허용되지 않는 값을 허용 값으로 바꾸자는 LLM 추천 (근거는 메시지) |
+| `ENUM_VALUE_SUGGESTED` | 자동 정리 | 허용되지 않는 값을 허용 값으로 바꾸자는 제안. LLM 추천(근거는 메시지) 또는 허용 값의 줄임말 |
 | `TOO_LONG` | 적재 불가 | 최대 길이를 넘음 |
 | **파일 안 정합성** | | |
 | `DUPLICATE_KEY` | 적재 불가 | 키(사번·부서코드)가 중복 |

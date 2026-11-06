@@ -127,6 +127,14 @@ public class ValidationService {
                     finding = Optional.of(new FieldValueChecker.Finding(Severity.FIX, IssueCode.ENUM_VALUE_SUGGESTED,
                             f.label() + " '" + value + "'을(를) '" + advice.field() + "'(으)로 바꿉니다 (LLM 추천: " + advice.reason() + ")",
                             advice.field()));
+                } else if (finding.isPresent() && finding.get().code() == IssueCode.INVALID_ENUM) {
+                    // LLM 이 꺼져 있거나 답이 없어도, 허용 값 하나의 앞부분이면(정규 → 정규직) 그 값을 제안한다
+                    Optional<String> prefix = FieldValueChecker.enumPrefixMatch(f, value);
+                    if (prefix.isPresent()) {
+                        finding = Optional.of(new FieldValueChecker.Finding(Severity.FIX, IssueCode.ENUM_VALUE_SUGGESTED,
+                                f.label() + " '" + value + "'을(를) '" + prefix.get() + "'(으)로 바꿉니다 (허용 값 '" + prefix.get() + "'의 줄임말)",
+                                prefix.get()));
+                    }
                 }
                 finding.ifPresent(fd -> issues.add(new ValidationIssue(file.getFileId(), row.rowNo(), f.name(), column,
                         fd.severity(), fd.code(), fd.message(), value, fd.suggestion())));
