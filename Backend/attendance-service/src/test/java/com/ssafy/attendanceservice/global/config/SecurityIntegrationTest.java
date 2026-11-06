@@ -1,5 +1,6 @@
 package com.ssafy.attendanceservice.global.config;
 
+import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceExcel;
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceService;
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceStatusService;
 import com.ssafy.attendanceservice.domain.attendance.service.AttendanceService;
@@ -8,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,9 +23,12 @@ import java.time.LocalDate;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -64,6 +69,22 @@ class SecurityIntegrationTest {
                 .andExpect(status().isOk());
 
         verify(adminAttendanceStatusService).getDaily(any(), eq(LocalDate.of(2026, 10, 30)), isNull(), isNull());
+    }
+
+    @Test
+    void 근태_통계_엑셀은_xlsx_파일로_내려감() throws Exception {
+        given(adminAttendanceStatusService.exportPeriod(any(), eq(LocalDate.of(2026, 10, 1)),
+                eq(LocalDate.of(2026, 10, 31)), isNull(), isNull()))
+                .willReturn(new AttendanceExcel("attendance-20261001-20261031.xlsx", new byte[]{1, 2, 3}));
+
+        mvc.perform(get("/api/v1/attn/admin/export").param("from", "2026-10-01").param("to", "2026-10-31")
+                        .with(user(7)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"attendance-20261001-20261031.xlsx\""))
+                .andExpect(content().bytes(new byte[]{1, 2, 3}));
     }
 
     @Test
