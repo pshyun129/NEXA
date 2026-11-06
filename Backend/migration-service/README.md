@@ -181,7 +181,8 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다 (허용 값�
 | `INVALID_NUMBER` | 적재 불가 | 숫자가 아님 |
 | `NUMBER_FORMAT` | 자동 정리 | 숫자의 쉼표 등을 없앰 |
 | `INVALID_EMAIL` | 적재 불가 | 이메일 형식이 아님 |
-| `INVALID_PHONE` | 확인 필요 | 전화번호 자리 수가 맞지 않음 (앞자리 0 빠짐 등) |
+| `INVALID_PHONE` | 확인 필요 | 전화번호 자리 수가 맞지 않음 |
+| `PHONE_ZERO_DROPPED` | 자동 정리 | 숫자 칸으로 저장돼 앞자리 0이 빠진 휴대전화 → `010-2271-0888` |
 | `INVALID_ENUM` | 적재 불가 | 허용되지 않는 값 (허용 값을 메시지에 적음) |
 | `ENUM_VALUE_SUGGESTED` | 자동 정리 | 허용되지 않는 값을 허용 값으로 바꾸자는 제안. LLM 추천(근거는 메시지) 또는 허용 값의 줄임말 |
 | `TOO_LONG` | 적재 불가 | 최대 길이를 넘음 |

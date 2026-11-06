@@ -33,7 +33,9 @@ public final class FieldValueChecker {
     private static final Pattern ISO_DATE = Pattern.compile("\\d{4}-\\d{2}-\\d{2}");
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(\\.\\d+)?");
     private static final Pattern NUMBER_WITH_COMMA = Pattern.compile("-?\\d{1,3}(,\\d{3})+(\\.\\d+)?");
-    private static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
+    // 휴대전화 앞자리 0만 빠진 숫자: 10 + 8자리(010), 11·16~19 + 7~8자리
+    private static final Pattern MOBILE_ZERO_DROPPED = Pattern.compile("10\\d{8}|1[16789]\\d{7,8}");
+    private static final Pattern EMAIL =Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
 
     private FieldValueChecker() {
     }
@@ -112,6 +114,13 @@ public final class FieldValueChecker {
         String digits = value.replaceAll("[\\s\\-()]", "");
         if (digits.matches("0\\d{8,10}")) {
             return Optional.empty();
+        }
+        // 숫자 칸으로 저장돼 앞자리 0이 빠진 휴대전화 (1022710888 → 010-2271-0888)
+        if (MOBILE_ZERO_DROPPED.matcher(digits).matches()) {
+            String d = "0" + digits;
+            String fixed = d.substring(0, 3) + "-" + d.substring(3, d.length() - 4) + "-" + d.substring(d.length() - 4);
+            return Optional.of(new Finding(Severity.FIX, IssueCode.PHONE_ZERO_DROPPED,
+                    f.label() + " 앞자리 0이 빠져 있어 " + fixed + "(으)로 바꿉니다 (숫자 칸으로 저장된 번호)", fixed));
         }
         return Optional.of(new Finding(Severity.WARN, IssueCode.INVALID_PHONE,
                 f.label() + " 번호 형식을 확인해 주세요", null));

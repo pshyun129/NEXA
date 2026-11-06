@@ -3,7 +3,7 @@
 
 프론트 시연 대본(DOCS/frontend-design.md 6.7·8장, frontend-requirements.md 8장 #11)에 맞춘다.
 - 조직: 회사 1 + 본부 5 + 팀 26. 부서유형·부서장 사번이 모두 맞게 채워져 있어 이슈 없이 바로 적재된다
-- 사원: 날짜 표기 섞임(자동 정리), 고용형태 줄임말(AI 값 추천), 휴대폰 앞자리 0 빠짐(확인 필요), 입사일 빈 칸 1건(적재 불가)
+- 사원: 날짜 표기 섞임(자동 정리), 고용형태 줄임말(AI 값 추천), 휴대폰 앞자리 0 빠짐(자동 정리), 입사일 빈 칸 1건(적재 불가)
 - 사원_적재불가0.xlsx: 입사일 빈 칸만 채운 판. 행 수정(P1)을 빼면 이 파일로 시연한다
 직위·직급·직책·직군·직종·직무는 user-service 개발 시드(R__dev_seed.sql)에 있는 값만 쓴다 (없는 값은 적재 때 행 오류).
 직급은 시드가 G1~G6 × 1~5호봉이라 'G3 2호봉'처럼 호봉까지 적는다. 시드에 생산·연구 직군이 없어 IT 회사로 짠다.
@@ -149,11 +149,11 @@ def dirty(employees, rng):
                 counts["DATE_FORMAT"] += 1
     for e, v in zip(members[:8], ["정규"] * 5 + ["계약"] * 3):  # 줄임말 → AI 값 추천
         e["empType"] = v
-    for e in members[8:20]:  # 숫자 칸으로 저장돼 앞자리 0이 빠진 휴대폰 → 확인 필요
+    for e in members[8:20]:  # 숫자 칸으로 저장돼 앞자리 0이 빠진 휴대폰 → 자동 정리
         e["mobile"] = e["mobile"].replace("-", "")[1:]
     members[20]["hireDate"] = None  # 입사일 빈 칸 → 적재 불가
     counts["DATE_FORMAT"] = sum(isinstance(e[f], str) for e in employees for f in ("hireDate", "birthDate"))
-    counts.update(ENUM_VALUE_SUGGESTED=8, INVALID_PHONE=12, REQUIRED=1)
+    counts.update(ENUM_VALUE_SUGGESTED=8, PHONE_ZERO_DROPPED=12, REQUIRED=1)
     return counts, members[20]
 
 
