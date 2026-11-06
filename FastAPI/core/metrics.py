@@ -37,3 +37,5 @@ KAFKA_UP = Gauge("ai_kafka_consumer_up", "Kafka 결재 결과 구독 상태 (1 �
 
 # 규정 검토 결과. verdict = 준수 / 위반 / 확인 필요 → 판정 모델 버전별 자동 통과율
 POLICY_CHECKS = Counter("ai_policy_check_total", "규정 검토 결과", ["doc_type", "verdict", "judge_version"])
+
+GOLDEN_SYNC = Counter("ai_golden_sync_total", "골든셋 MLflow 전송 결과", ["outcome"])  # pushed/unchanged/empty/error

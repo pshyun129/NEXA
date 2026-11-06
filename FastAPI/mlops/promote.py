@@ -98,20 +98,32 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--challenger", help="도전자 프로그램 JSON (5-5 결과). 생략하면 챔피언 프로그램 그대로")
     p.add_argument("--challenger-model", help="도전자 모델 = vLLM에 띄운 다른 모델 이름 (예: receipt-lora)")
+    p.add_argument("--challenger-ocr", help="도전자 OCR 설정의 텍스트셋 파일 (예: ocr.unwarp_auto.jsonl). 챔피언은 ocr.jsonl")
     p.add_argument("--name", help="도전자 이름 (기본: 파일 이름)")
     p.add_argument("--data", type=Path, default=DATA_DIR)
     p.add_argument("--split", default="test", help="판정용 split (최적화에 안 쓴 데이터여야 함)")
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--dry-run", action="store_true", help="판정만, 등록·내보내기 안 함")
     args = p.parse_args()
-    if not args.challenger and not args.challenger_model:
-        raise SystemExit("--challenger(프로그램) 또는 --challenger-model(모델) 중 하나는 필요합니다")
+    if not (args.challenger or args.challenger_model or args.challenger_ocr):
+        raise SystemExit("--challenger(프로그램)·--challenger-model(모델)·--challenger-ocr(OCR 설정) 중 하나는 필요합니다")
 
     records = load_records(args.split, args.data)
+    # OCR 비교: 같은 영수증을 다른 OCR 설정으로 읽은 텍스트 (프로그램·모델은 챔피언과 같음)
+    chal_ocr = args.challenger_ocr or "ocr.jsonl"
+    chal_records = records
+    if args.challenger_ocr:
+        by_id = {r["id"]: r for r in load_records(args.split, args.data, ocr_file=chal_ocr)}
+        missing = [r["id"] for r in records if r["id"] not in by_id]
+        if missing:
+            raise SystemExit(f"{chal_ocr}에 없는 영수증 {len(missing)}장: {missing[:5]} (build_textset을 끝까지 돌려야 비교 가능)")
+        chal_records = [by_id[r["id"]] for r in records]          # 챔피언과 같은 순서로 맞춤
+
     champ_label, champ_path = current_champion()
     champion = load_program(champ_path)
     challenger = load_program(args.challenger) if args.challenger else load_program(champ_path)
-    chal_name = args.name or (Path(args.challenger).stem if args.challenger else args.challenger_model)
+    chal_name = args.name or (Path(args.challenger).stem if args.challenger
+                              else args.challenger_model or Path(chal_ocr).stem)
 
     # 모델 비교: 챔피언은 .env의 기본 모델, 도전자는 같은 vLLM의 다른 모델 이름 (같은 서버·같은 시점이라 시간 비교도 공정)
     champ_model = settings.local_llm_model
@@ -120,15 +132,15 @@ def main():
     chal_lm = champ_lm.copy(model=f"openai/{chal_model}") if chal_model != champ_model else champ_lm
 
     # 같은 시점·같은 조건으로 둘 다 다시 채점 (예전 점수를 가져다 쓰면 vLLM 상태 차이가 섞일 수 있음)
-    print(f"[1/2] 챔피언 {champ_label} 평가 ({args.split} {len(records)}장)")
+    print(f"[1/2] 챔피언 {champ_label} 평가 ({args.split} {len(records)}장, ocr.jsonl)")
     champ_rows = run_eval(champion, records, args.threads, lm=champ_lm)
-    print(f"[2/2] 도전자 {chal_name} 평가 (모델 {chal_model})")
-    chal_rows = run_eval(challenger, records, args.threads, lm=chal_lm)
+    print(f"[2/2] 도전자 {chal_name} 평가 (모델 {chal_model}, {chal_ocr})")
+    chal_rows = run_eval(challenger, chal_records, args.threads, lm=chal_lm)
     cs, hs = summarize(champ_rows), summarize(chal_rows)
 
     passed, checks = gate(cs, hs)
     print_report(chal_name, args.split, args.data.name, hs, breakdown(chal_rows), chal_rows)
-    print(f"\n=== 승격 판정: {champ_label}({champ_model}) vs {chal_name}({chal_model}) ===")
+    print(f"\n=== 승격 판정: {champ_label}({champ_model}, ocr.jsonl) vs {chal_name}({chal_model}, {chal_ocr}) ===")
     for rule, ok, detail in checks:
         print(f"  {'✅' if ok else '❌'} {rule:20} {detail}")
     decision = ("promoted" if not args.dry_run else "pass(dry-run)") if passed else "rejected"
@@ -144,10 +156,14 @@ def main():
                              tags={**common, "role": "challenger", "decision": decision,
                                    "compared_with": champ_run,
                                    "gain_acc_all": f"{hs['acc_all'] - cs['acc_all']:+.4f}",
-                                   "challenger_model": chal_model},
-                             model=chal_model)
+                                   "challenger_model": chal_model, "challenger_ocr": chal_ocr},
+                             ocr_file=chal_ocr, model=chal_model)
 
-    if passed and not args.dry_run and args.challenger_model:
+    if passed and not args.dry_run and args.challenger_ocr:
+        # OCR 설정 전환도 자동으로 하지 않음: GPU 서버 코드의 기본값을 바꿔 머지 → OCR 재시작 → 텍스트셋 다시 만들기
+        print("\n게이트 통과: OCR 설정 전환 방법 → ocr_server.py 기본값 변경·머지 → GPU에서 OCR 재시작 "
+              "→ PC에서 build_textset로 ocr.jsonl 다시 만들기 (다음 비교의 챔피언 기준)")
+    elif passed and not args.dry_run and args.challenger_model:
         # 모델 전환은 자동으로 하지 않음: vLLM에 어댑터를 항상 붙여 띄우고, EC2 .env의 LOCAL_LLM_MODEL을 바꿔야 함
         print(f"\n게이트 통과: 서빙 모델 전환 방법 → GPU serve.sh에 LORA_PATH 상시 지정 + EC2 LOCAL_LLM_MODEL={chal_model}")
     elif passed and not args.dry_run:

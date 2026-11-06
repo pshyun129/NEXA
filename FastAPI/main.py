@@ -19,6 +19,7 @@ from runs.routers import router as runs_router
 from workflows.routers import router as workflows_router
 from ai.routers import router as ai_router
 from ai.rag.index import warm_up as warm_up_rag
+from runs import golden_sync
 
 # 우리 코드의 INFO 로그가 보이게 (httpx 요청 로그는 너무 많아서 경고 이상만)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI):
     approval_consumer.start()          # 결재 결과 구독 시작 (KAFKA_BOOTSTRAP_SERVERS 없으면 건너뜀)
     # 규정 RAG 모델 미리 불러오기: 수 초~수십 초 걸려서 백그라운드로 (헬스체크·다른 요청을 막지 않게)
     threading.Thread(target=warm_up_rag, name="rag-warmup", daemon=True).start()
+    golden_sync.start()                # 골든셋 → MLflow 자동 전송 (MLFLOW_TRACKING_URI·GOLDEN_SYNC_HOURS 있을 때만)
     if settings.eureka_server_url:
         options = {}
         if settings.instance_host:
@@ -49,6 +51,7 @@ async def lifespan(app: FastAPI):
     yield
     # 서버 끌 때: 구독을 먼저 멈춰야 재개 처리 중에 DB 연결이 끊기지 않음
     approval_consumer.stop()
+    golden_sync.stop()
     close_checkpointer()
     if settings.eureka_server_url:
         await eureka_client.stop_async()

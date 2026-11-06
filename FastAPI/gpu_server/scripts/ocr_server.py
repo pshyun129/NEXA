@@ -20,10 +20,18 @@ def _flag(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
 
 
-# 비교 대상 설정 2개 (기본값은 지금과 같게 켜둠 → 비교 결과에 따라 바꿈)
+def _unwarp_mode() -> str:
+    """기울기 보정 모드: on / off / auto(사진만). 예전 값 1·0·true·false도 그대로 받음"""
+    v = os.getenv("OCR_DOC_UNWARPING", "on").strip().lower()
+    if v == "auto":
+        return "auto"
+    return "on" if v in ("1", "true", "yes", "on") else "off"
+
+
+# 비교 대상 설정 (기본값은 지금 서빙과 같게 → 게이트 통과 후에만 바꿈)
 OCR_CONFIG = {
     "textline_orientation": _flag("OCR_TEXTLINE_ORIENTATION", False),  # 끔: 멀쩡한 줄을 뒤집어 store 82→88%, 2026-11-05 A/B 결과
-    "doc_unwarping": _flag("OCR_DOC_UNWARPING", True),                 # 기울기·휘어짐 보정 (여백 없는 스캔의 윗줄을 망가뜨리는 의심)
+    "doc_unwarping": _unwarp_mode(),                                    # on / off / auto (2026-11-06 후보 E: 사진만 보정)
 }
 
 # 서버 시작 시 모델을 한 번만 불러옴
@@ -31,11 +39,23 @@ ocr = PaddleOCR(
     text_detection_model_name="PP-OCRv5_server_det",          # 글자 영역 찾기
     text_recognition_model_name="korean_PP-OCRv5_mobile_rec",  # 한국어 글자 읽기
     use_doc_orientation_classify=False,
-    use_doc_unwarping=OCR_CONFIG["doc_unwarping"],
+    use_doc_unwarping=OCR_CONFIG["doc_unwarping"] != "off",    # auto도 보정 모델은 불러둠 (요청마다 켜고 끔)
     use_textline_orientation=OCR_CONFIG["textline_orientation"],
     device="gpu:0",                                            # 실제 GPU는 CUDA_VISIBLE_DEVICES로 지정
 )
 print(f"OCR 설정: {OCR_CONFIG}", flush=True)
+
+SCAN_WHITE_RATIO = 0.8   # 가장자리 픽셀 중 밝은(>200) 비율이 이 이상이면 스캔
+
+
+def looks_like_scan(img) -> bool:
+    """가장자리(짧은 변의 3%)가 거의 다 흰색이면 스캔 → 기울기 보정 불필요 (보정이 오히려 윗줄을 망가뜨림).
+    사진은 책상 등 배경이 보여서 어두움. 합성 receipts_v2 300장: 스캔 1.00 / 사진 0.00으로 전부 구분"""
+    g = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = g.shape
+    b = max(4, int(min(h, w) * 0.03))
+    border = np.concatenate([g[:b].ravel(), g[-b:].ravel(), g[:, :b].ravel(), g[:, -b:].ravel()])
+    return float((border > 200).mean()) >= SCAN_WHITE_RATIO
 
 
 def group_lines(texts, scores, boxes):
@@ -72,10 +92,14 @@ def run_ocr(image_bytes: bytes) -> dict:
     img = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return {"ok": False, "error": "이미지를 읽을 수 없습니다"}
-    res = next(iter(ocr.predict(img)))
+    # 보정 여부: on이면 항상, auto면 사진일 때만, off면 안 함
+    mode = OCR_CONFIG["doc_unwarping"]
+    unwarp = mode == "on" or (mode == "auto" and not looks_like_scan(img))
+    res = next(iter(ocr.predict(img, use_doc_unwarping=unwarp)))
     lines, items = group_lines(res["rec_texts"], res["rec_scores"], res["rec_boxes"])
     # config: 어떤 OCR 설정으로 읽었는지 같이 돌려줌 → 텍스트셋에 기록 (데이터 계보)
-    return {"ok": True, "text": "\n".join(lines), "lines": lines, "items": items, "config": OCR_CONFIG}
+    return {"ok": True, "text": "\n".join(lines), "lines": lines, "items": items,
+            "config": OCR_CONFIG, "unwarped": unwarp}
 
 
 @batch

@@ -1,4 +1,7 @@
-"""자동 검증 노드: 규칙 + OCR 신뢰도 + GMS 독립 추출 비교로 자동 확정 여부 판단."""
+"""자동 검증 노드: 규칙 + 날짜 상식 검사 + OCR 신뢰도 + GMS 독립 추출 비교로 자동 확정 여부 판단."""
+import re
+from datetime import date, datetime, timedelta, timezone
+
 from ai.llm import gms_status
 from ai.modules.receipt import extract_receipt_with_gms
 from core.database import SessionLocal
@@ -11,21 +14,65 @@ GMS_EXTRACTORS = {
     "영수증": extract_receipt_with_gms,
 }
 
+# 서버(EC2)가 UTC여도 '오늘'은 한국 날짜 기준 (Windows에 tzdata가 없어도 되게 고정 오프셋)
+KST = timezone(timedelta(hours=9))
+MAX_AGE_DAYS = 180  # 기본값: 이보다 오래된 거래일은 사람 확인 (정산 기한 30일 판정은 규정 검토 노드 몫)
+
+# OCR 텍스트 속 날짜: 2026-11-02 / 2026.11.02 / 2026/11/02 / 26-11-02 / 2026년 11월 2일
+#   '월' 자리에 OCR이 '일'로 잘못 읽은 경우도 허용, 뒤에 시각이 붙어 있어도 됨 (2026-10-0214:08)
+DATE_IN_TEXT = re.compile(r"(?<!\d)(\d{4}|\d{2})\s*[-./년]\s*(\d{1,2})\s*[-./월일]\s*(\d{1,2})(?!\d{2}[-./])")
+COMPACT_DATE = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)")   # 20261102
+
 
 def _norm(value):
     """비교용 정규화: 문자열은 공백을 모두 제거 (OCR 띄어쓰기 차이 무시)."""
     return "".join(value.split()) if isinstance(value, str) else value
 
 
+def dates_in_text(text: str) -> set[str]:
+    """OCR 텍스트에 실제로 보이는 날짜들 (YYYY-MM-DD)"""
+    found = set()
+    for y, m, d in DATE_IN_TEXT.findall(text or "") + COMPACT_DATE.findall(text or ""):
+        y = int(y) + (2000 if len(y) == 2 else 0)
+        try:
+            found.add(date(y, int(m), int(d)).isoformat())
+        except ValueError:      # 13월·32일 같은 건 날짜가 아님
+            pass
+    return found
+
+
+def date_problems(value, ocr_text: str | None, max_age_days: int = MAX_AGE_DAYS,
+                  today: date | None = None) -> list[str]:
+    """추출한 날짜의 상식 검사. LLM이 안 보이는 날짜를 지어내는 경우(온도 0에서도 실행마다 바뀜)를 막음
+      - 형식: YYYY-MM-DD가 아니면 문제
+      - 범위: 미래 날짜, 너무 오래된 날짜
+      - 근거: OCR 텍스트에 그 날짜가 없으면 지어낸 값으로 봄
+    """
+    today = today or datetime.now(KST).date()
+    try:
+        d = date.fromisoformat(str(value).strip())
+    except ValueError:
+        return [f"날짜 형식 오류: {value}"]
+    problems = []
+    if d > today:
+        problems.append(f"미래 날짜: {d}")
+    elif (today - d).days > max_age_days:
+        problems.append(f"너무 오래된 날짜: {d} ({(today - d).days}일 전)")
+    if ocr_text and d.isoformat() not in dates_in_text(ocr_text):
+        problems.append(f"OCR 텍스트에 없는 날짜: {d}")
+    return problems
+
+
 class LlmVerifyNode(BaseNode):
     node_type = "llm_verify"
     name = "자동 검증"
     category = "ai"
-    description = "업무 규칙·OCR 신뢰도·GMS 교차 추출로 자동 확정, 애매하면 사람 확인으로"
+    description = "업무 규칙·날짜 상식·OCR 신뢰도·GMS 교차 추출로 자동 확정, 애매하면 사람 확인으로"
     config_fields = [
         {"key": "use_gms", "label": "GMS 교차 검증", "type": "select",
          "options": ["사용", "사용 안 함"], "required": False},
         {"key": "min_confidence", "label": "최소 OCR 신뢰도", "type": "number", "required": False},
+        {"key": "max_age_days", "label": "허용할 최대 경과일 (기본 180일)", "type": "number", "required": False},
         {"key": "extraction", "label": "검증할 추출 결과 노드 (예: {{n2}})", "type": "ref", "required": False},
         {"key": "ocr", "label": "OCR 노드 (예: {{n1}})", "type": "ref", "required": False},
     ]
@@ -54,12 +101,17 @@ class LlmVerifyNode(BaseNode):
         for name in extraction.get("problems", []):
             reasons.append(f"규칙 위반: {name}")
 
-        # ② OCR 신뢰도
+        # ② 날짜 상식 검사 (날짜 항목이 있는 문서만)
+        if fields.get("date"):
+            max_age = int(ctx.config.get("max_age_days") or MAX_AGE_DAYS)
+            reasons += date_problems(fields["date"], (ocr or {}).get("text"), max_age)
+
+        # ③ OCR 신뢰도
         threshold = float(ctx.config.get("min_confidence") or 0.9)
         if ocr is not None and ocr.get("confidence") is not None and ocr["confidence"] < threshold:
             reasons.append(f"OCR 신뢰도 낮음: {ocr['confidence']}")
 
-        # ③ GMS 독립 추출과 비교 (규칙에서 이미 걸렸으면 GMS 호출 생략 → 비용 절약)
+        # ④ GMS 독립 추출과 비교 (앞에서 이미 걸렸으면 GMS 호출 생략 → 비용 절약)
         gms_fields = None
         use_gms = ctx.config.get("use_gms", "사용") != "사용 안 함"
         if use_gms and not reasons:
