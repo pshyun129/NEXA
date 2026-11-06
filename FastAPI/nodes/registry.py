@@ -4,6 +4,7 @@ from nodes.impl.attendance_lookup import AttendanceLookupNode
 from nodes.impl.calculate import CalculateNode
 from nodes.impl.complete import CompleteNode
 from nodes.impl.condition import ConditionNode
+from nodes.impl.doc_classify import DocClassifyNode
 from nodes.impl.employee_lookup import EmployeeLookupNode
 from nodes.impl.excel_write import ExcelWriteNode
 from nodes.impl.file_upload import FileUploadNode
@@ -34,6 +35,7 @@ _NODE_CLASSES: list[type[BaseNode]] = [
     AttendanceLookupNode,    # 근태 조회 (attendance-service)
     LeaveBalanceNode,        # 휴가 잔액 조회 (leave-service)
     OcrExtractNode,          # OCR 글자 인식
+    DocClassifyNode,         # 문서 분류 (DSPy, 종류별 분기)
     StructuredExtractNode,   # 항목 추출 (DSPy)
     LlmVerifyNode,           # 자동 검증 (GMS 교차 추출)
     PolicyCheckNode,         # 규정 검토 (RAG + DSPy 판정)
