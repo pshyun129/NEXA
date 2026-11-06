@@ -12,6 +12,7 @@ import com.ssafy.attendanceservice.domain.attendance.repository.*;
 import com.ssafy.attendanceservice.global.exception.BusinessException;
 import com.ssafy.attendanceservice.global.exception.ErrorCode;
 import com.ssafy.attendanceservice.global.util.DateTimeUtils;
+import com.ssafy.nexa.security.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -55,6 +56,7 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final EmployeeLeaveRepository employeeLeaveRepository;
     private final AttendanceRequestRepository attendanceRequestRepository;
     private final AttendanceDailyProcessor processor;
+    private final AttendanceViewScope attendanceViewScope;
 
     @Override
     @Transactional
@@ -299,6 +301,22 @@ public class AttendanceServiceImpl implements AttendanceService {
         List<AttendanceDaySummaryResponse> days = buildDaySummaries(empId, month.atDay(1), month.atEndOfMonth());
 
         return AttendanceSummaryResponse.of(empId, month, resolveMonthlyWorkGroup(empId, month), days);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AttendanceSummaryResponse getSummary(AuthUser user, Long empId, YearMonth month) {
+        // 급여 명세서 생성은 관리자 토큰으로 부르므로 그대로 허용, 그 외는 본인 또는 조회 범위 안의 사원만
+        if (!user.isAdmin() && !attendanceViewScope.canView(user, empId)) {
+            throw new BusinessException(ErrorCode.ACCESS_DENIED, "볼 수 없는 사원의 근태입니다.");
+        }
+        return getSummary(empId, month);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AttendanceDaySummaryResponse> getDaySummaries(Long empId, LocalDate from, LocalDate to) {
+        return buildDaySummaries(empId, from, to);
     }
 
     @Override

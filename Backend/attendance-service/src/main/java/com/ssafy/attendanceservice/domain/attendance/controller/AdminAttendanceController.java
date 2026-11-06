@@ -1,12 +1,17 @@
 package com.ssafy.attendanceservice.domain.attendance.controller;
 
+import com.ssafy.attendanceservice.domain.attendance.dto.AdminDailyStatusResponse;
+import com.ssafy.attendanceservice.domain.attendance.dto.AdminPeriodStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminWorkStatusLogRequest;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminWorkStatusLogUpdateRequest;
 import com.ssafy.attendanceservice.domain.attendance.dto.DailyAttendanceResponse;
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceService;
+import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceStatusService;
 import com.ssafy.attendanceservice.domain.attendance.service.AttendanceService;
 import com.ssafy.attendanceservice.global.dto.ApiResult;
+import com.ssafy.nexa.security.AuthUser;
 import com.ssafy.nexa.security.CurrentEmployeeId;
+import com.ssafy.nexa.security.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -16,8 +21,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
-/** 관리자 근태 API (현재 전사 관리자 기준) */
-// TODO: 부서장 권한 도입 시 자기 부서 직원만 조회/수정하도록 범위 제한
+/** 관리자 근태 API. 근태 현황(daily, period)은 팀장급 이상, 그 외는 관리자(role ADMIN) */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/attn/admin")
@@ -25,6 +29,29 @@ public class AdminAttendanceController {
 
     private final AttendanceService attendanceService;
     private final AdminAttendanceService adminAttendanceService;
+    private final AdminAttendanceStatusService adminAttendanceStatusService;
+
+    // 일자별 근태 현황 API (팀장급 이상, 볼 수 있는 부서만)
+    @GetMapping("/daily")
+    public ResponseEntity<ApiResult<AdminDailyStatusResponse>> getDailyStatus(
+            @CurrentUser AuthUser user,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) Long deptId,
+            @RequestParam(required = false) String empStatus) {
+        return ResponseEntity.ok(ApiResult.success(adminAttendanceStatusService.getDaily(user, date, deptId, empStatus)));
+    }
+
+    // 기간별 근태 통계 API (팀장급 이상, 최대 92일)
+    @GetMapping("/period")
+    public ResponseEntity<ApiResult<AdminPeriodStatusResponse>> getPeriodStatus(
+            @CurrentUser AuthUser user,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long deptId,
+            @RequestParam(required = false) String empStatus) {
+        return ResponseEntity.ok(ApiResult.success(
+                adminAttendanceStatusService.getPeriod(user, from, to, deptId, empStatus)));
+    }
 
     // 직원 일별 타임라인 조회 API
     @GetMapping("/employees/{empId}/daily/{date}")

@@ -19,6 +19,8 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(HttpSecurity http, NexaSecurityConfigurer nexa) throws Exception {
         return nexa.apply(http)
                 .authorizeHttpRequests(auth -> auth
+                        // 근태 현황은 팀장급 이상이 쓰므로 로그인만 확인하고, 볼 수 있는 범위는 서비스(AttendanceViewScope)가 정한다
+                        .requestMatchers("/api/v1/attn/admin/daily", "/api/v1/attn/admin/period").authenticated()
                         .requestMatchers("/api/v1/attn/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .build();

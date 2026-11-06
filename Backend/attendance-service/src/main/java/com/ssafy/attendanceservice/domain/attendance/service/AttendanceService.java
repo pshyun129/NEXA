@@ -1,5 +1,6 @@
 package com.ssafy.attendanceservice.domain.attendance.service;
 
+import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceDaySummaryResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceSummaryResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.DailyAttendanceResponse;
@@ -8,6 +9,7 @@ import com.ssafy.attendanceservice.domain.attendance.dto.MonthlyAttendanceRespon
 import com.ssafy.attendanceservice.domain.attendance.dto.WeeklyAttendanceResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.WorkStatusCodeResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.WorkStatusHistoryResponse;
+import com.ssafy.nexa.security.AuthUser;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -50,4 +52,13 @@ public interface AttendanceService {
 
     /** 급여용 월별 근태 집계 */
     AttendanceSummaryResponse getSummary(Long empId, YearMonth month);
+
+    /**
+     * 급여용 월별 근태 집계 (요청한 사원 기준 권한 확인).
+     * 본인, 조회 범위 안의 사원, 관리자 토큰(급여 명세서 생성)만 볼 수 있다. 아니면 BusinessException(ACCESS_DENIED)
+     */
+    AttendanceSummaryResponse getSummary(AuthUser user, Long empId, YearMonth month);
+
+    /** 기간 내 날짜별 근태 요약 (기록이 없는 날도 포함). 관리자 현황이 사원마다 쓴다 */
+    List<AttendanceDaySummaryResponse> getDaySummaries(Long empId, LocalDate from, LocalDate to);
 }

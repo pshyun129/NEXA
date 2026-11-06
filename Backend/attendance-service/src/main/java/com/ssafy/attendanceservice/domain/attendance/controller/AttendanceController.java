@@ -3,7 +3,9 @@ package com.ssafy.attendanceservice.domain.attendance.controller;
 import com.ssafy.attendanceservice.domain.attendance.dto.*;
 import com.ssafy.attendanceservice.domain.attendance.service.AttendanceService;
 import com.ssafy.attendanceservice.global.dto.ApiResult;
+import com.ssafy.nexa.security.AuthUser;
 import com.ssafy.nexa.security.CurrentEmployeeId;
+import com.ssafy.nexa.security.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -80,13 +82,13 @@ public class AttendanceController {
         return ResponseEntity.ok(ApiResult.success(attendanceService.getHistory(empId, from, to)));
     }
 
-    // 월별 근태 집계 API (급여 서비스 연동용)
-    // TODO: 인증 적용 시 서비스 간 인증 방식 결정 필요 (사용자 토큰이 아닌 내부 호출)
+    // 월별 근태 집계 API (급여 서비스 연동용, 본인·상급자·관리자만)
     @GetMapping("/summary")
     public ResponseEntity<ApiResult<AttendanceSummaryResponse>> getSummary(
+            @CurrentUser AuthUser user,
             @RequestParam Long empId,
             @RequestParam @DateTimeFormat(pattern = "yyyy-MM") YearMonth month) {
-        return ResponseEntity.ok(ApiResult.success(attendanceService.getSummary(empId, month)));
+        return ResponseEntity.ok(ApiResult.success(attendanceService.getSummary(user, empId, month)));
     }
 
     // 근무 상태 코드 목록 API

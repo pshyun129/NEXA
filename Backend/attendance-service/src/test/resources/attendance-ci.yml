@@ -31,3 +31,5 @@ attendance:
       base-url: http://localhost:8083
     leave:
       base-url: http://localhost:8082
+    user:
+      base-url: http://localhost:8081

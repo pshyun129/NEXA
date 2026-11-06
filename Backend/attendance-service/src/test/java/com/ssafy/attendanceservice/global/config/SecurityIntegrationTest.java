@@ -1,6 +1,7 @@
 package com.ssafy.attendanceservice.global.config;
 
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceService;
+import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceStatusService;
 import com.ssafy.attendanceservice.domain.attendance.service.AttendanceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.time.LocalDate;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,6 +51,20 @@ class SecurityIntegrationTest {
 
     @MockitoBean
     AdminAttendanceService adminAttendanceService;
+
+    @MockitoBean
+    AdminAttendanceStatusService adminAttendanceStatusService;
+
+    @Test
+    void 근태_현황은_일반_사원_토큰도_통과하고_범위는_서비스가_판단() throws Exception {
+        mvc.perform(get("/api/v1/attn/admin/daily").param("date", "2026-10-30").with(user(7)))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/attn/admin/period").param("from", "2026-10-01").param("to", "2026-10-31")
+                        .with(user(7)))
+                .andExpect(status().isOk());
+
+        verify(adminAttendanceStatusService).getDaily(any(), eq(LocalDate.of(2026, 10, 30)), isNull(), isNull());
+    }
 
     @Test
     void 토큰이_없으면_401_AUTH_001() throws Exception {
