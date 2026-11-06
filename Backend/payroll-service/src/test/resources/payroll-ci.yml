@@ -26,3 +26,7 @@ payroll:
       base-url: http://localhost:8084
     user:
       base-url: http://localhost:8081
+
+nexa:
+  security:
+    permit-urls: /actuator/health,/error,/internal/v1/pay/migration/**

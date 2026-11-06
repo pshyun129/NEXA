@@ -27,6 +27,9 @@ public enum ErrorCode {
     USER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "PAY_009", "사원 정보를 조회할 수 없습니다."),
     EMPLOYEE_NOT_FOUND(HttpStatus.NOT_FOUND, "PAY_010", "존재하지 않는 사원입니다."),
 
+    // 이관 (migration-service 내부 API)
+    MIGRATION_ROW_INVALID(HttpStatus.BAD_REQUEST, "MIG_001", "이관 행 값이 올바르지 않습니다."),
+
     // 공통 (다른 서비스 코드와 동일)
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON_001", "요청 값이 올바르지 않습니다."),
     DATA_INTEGRITY_VIOLATION(HttpStatus.CONFLICT, "COMMON_002", "데이터 제약 조건에 위배됩니다."),
