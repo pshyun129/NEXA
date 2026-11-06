@@ -23,6 +23,8 @@ export interface DocumentSummary {
   completedAt: string | null;
   sourceType: SourceType;
   sourceId: number | null;
+  /** 출처 표시 이름(상신 시점 스냅샷, 예: 워크플로 이름). 직접 기안·이전 문서·보내지 않은 출처는 null */
+  sourceLabel: string | null;
   /** 현재 차례 사원. 진행중이 아니면 [] (순차 결재라 지금은 최대 1명) */
   currentApproverIds: number[];
   /** 현재 차례가 결재자 중 몇 번째(1부터). 진행중이 아니면 null */
@@ -73,6 +75,8 @@ export interface DocumentDetail {
   completedAt: string | null;
   sourceType: SourceType;
   sourceId: number | null;
+  /** 출처 표시 이름. 없으면 null(sourceType 기본 문구로 대신 표시) */
+  sourceLabel: string | null;
   requestKey: string | null;
   approvalLevel: 'TEAM' | 'DIVISION' | 'COMPANY' | null;
   attributes: ApprovalAttributes | null;

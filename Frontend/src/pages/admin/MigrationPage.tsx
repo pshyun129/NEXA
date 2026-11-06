@@ -13,6 +13,8 @@ import { useViewport } from '@/shell/useViewport';
 import { formatDate, formatDateTime, formatNumber, serverUtc } from '@/format';
 import { MappingTable } from '@/migration/MappingTable';
 import { IssuesPanel } from '@/migration/IssuesPanel';
+import { LoadPanel } from '@/migration/LoadPanel';
+import { Reconciliation } from '@/migration/Reconciliation';
 import { ENTITY_LABEL, ENTITY_ORDER } from '@/migration/schemas';
 import s from '@/migration/migration.module.css';
 
@@ -132,6 +134,9 @@ function EntityPanel({ d, entity }: { d: MigrationDetail; entity: MigrationEntit
           <Card title="검증·자동 정리">
             <IssuesPanel migrationId={d.migrationId} fileId={file.fileId} rows={file.rows} />
           </Card>
+          <Card title="미리보기·적재">
+            <LoadPanel d={d} entity={entity} file={file} />
+          </Card>
         </>
       )}
     </div>
@@ -148,7 +153,10 @@ function Job({ id }: { id: number }) {
   const d = q.data;
   const ent = (ENTITY_ORDER as string[]).includes(params.get('entity') ?? '') ? (params.get('entity') as MigrationEntity) : 'HR_ORG';
   const hasAll = ENTITY_ORDER.every((e) => latestFile(d, e));
-  const cur = hasAll ? 2 : d.files.length ? 1 : 0;
+  const loadedOf = (e: MigrationEntity) => d.batches.some((b) => b.entity === e && b.status === 'LOADED');
+  const allLoaded = ENTITY_ORDER.every(loadedOf);
+  // 단계: 파일 없음 ① → 일부 파일 ② → 두 파일 ③ → 일부 적재 ⑤ → 모두 적재 ⑥(대사)
+  const cur = allLoaded ? 5 : ENTITY_ORDER.some(loadedOf) ? 4 : hasAll ? 2 : d.files.length ? 1 : 0;
   return (
     <>
       <div className={s.head}>
@@ -159,14 +167,11 @@ function Job({ id }: { id: number }) {
       </div>
       <ol className={s.stepper} aria-label="이관 단계">
         {STEPS.map((label, i) => (
-          <li key={label} className={i < cur ? s.sDone : i === cur ? s.sCur : i >= 3 ? s.sLocked : undefined}>
+          <li key={label} className={i < cur ? s.sDone : i === cur ? s.sCur : undefined}>
             {'①②③④⑤⑥'[i]} {label}{i < cur && ' ✓'}
           </li>
         ))}
       </ol>
-      <Alert type="info" showIcon style={{ marginBottom: 16 }}
-             message="미리보기·적재·대사는 다음 단계에서 엽니다"
-             description="적재 대상인 user-service 이관 API가 준비되면 연결합니다(frontend-backend-gaps.md B10)." />
       <Tabs
         activeKey={ent}
         onChange={(k) => setParams({ entity: k }, { replace: true })}
@@ -176,11 +181,16 @@ function Job({ id }: { id: number }) {
         })}
       />
       <EntityPanel key={ent} d={d} entity={ent} />
+      <div style={{ marginTop: 16 }}>
+        <Card title="⑥ 대사">
+          <Reconciliation d={d} />
+        </Card>
+      </div>
     </>
   );
 }
 
-/** 데이터 이관(관리자, 설계 6.7) ①~③. 1280px 이상에서만 연다(설계 8.3 7.5) */
+/** 데이터 이관(관리자, 설계 6.7) ①~⑥. 1280px 이상에서만 연다(설계 8.3 7.5) */
 export function MigrationPage() {
   const { id } = useParams();
   const { band } = useViewport();

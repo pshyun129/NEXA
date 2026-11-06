@@ -1,6 +1,6 @@
-import type { MigrationEntity } from '@/api/migration';
+import type { BatchEntity, MigrationEntity } from '@/api/migration';
 
-// 매핑 대상 필드. migration-service `validation/schema/EntitySchemas.java`(origin/develop 6e630e3)를 그대로 옮긴 것이다.
+// 매핑 대상 필드. migration-service `validation/schema/EntitySchemas.java`(origin/develop 2767c92)를 그대로 옮긴 것이다.
 // 스키마 메타 API가 없어서 복제한다(S15P3log/frontend-backend-gaps.md B9). 서버 정의가 바뀌면 같이 바꾸고,
 // API가 생기면 이 파일을 지운다. 순서도 서버와 같다.
 
@@ -24,6 +24,8 @@ export const ENTITY_SCHEMAS: Record<MigrationEntity, TargetField[]> = {
     { field: 'dept', label: '부서', type: 'STRING', required: true },
     { field: 'position', label: '직위', type: 'STRING', required: true },
     { field: 'grade', label: '직급', type: 'STRING', required: true },
+    // NEXA 직급은 호봉이 꼭 있다. 따로 적힌 호봉은 적재할 때 직급과 합치고, 없으면 1호봉으로 채운다(서버)
+    { field: 'gradeStep', label: '호봉', type: 'NUMBER' },
     { field: 'duty', label: '직책', type: 'STRING', required: true },
     { field: 'jobFamily', label: '직군', type: 'STRING', required: true },
     { field: 'jobKind', label: '직종', type: 'STRING', required: true },
@@ -44,5 +46,8 @@ export const ENTITY_SCHEMAS: Record<MigrationEntity, TargetField[]> = {
 };
 
 export const ENTITY_LABEL: Record<MigrationEntity, string> = { HR_ORG: '조직', HR_EMPLOYEE: '사원' };
+/** 적재 묶음·대사 라벨. 기준정보는 사원 파일에서 뽑아 따로 적재된다 */
+export const BATCH_ENTITY_LABEL: Record<BatchEntity, string> = { HR_CODE: '기준정보', ...ENTITY_LABEL };
+export const batchEntityLabel = (e: string) => BATCH_ENTITY_LABEL[e as BatchEntity] ?? e;
 /** 적재 순서(서버 MigrationEntity 선언 순서): 조직 → 사원 */
 export const ENTITY_ORDER: MigrationEntity[] = ['HR_ORG', 'HR_EMPLOYEE'];

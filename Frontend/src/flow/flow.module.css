@@ -36,3 +36,16 @@
 .st-SKIPPED { border: 1px dashed var(--nx-n-300); }
 .st-SKIPPED .title, .st-SKIPPED .sub { color: var(--nx-n-400); }
 .skipped { color: var(--nx-n-500); font-size: 12px; }
+
+/* 빌더 (style-guide 8.13): 선택 outline, 순서 경고 2px 점선 warning, 서버 검사 오류 2px danger */
+.selected { outline: 2px solid var(--nx-brand-600); outline-offset: 2px; }
+.issue-warning { border: 2px dashed var(--nx-warning-fg); }
+.issue-error { border: 2px solid var(--nx-danger-fg); }
+.errorIcon { color: var(--nx-danger-fg); }
+.warnIcon { color: var(--nx-warning-fg); }
+/* 분기 출구 이름: 핸들 안쪽(노드 오른쪽 끝)에 오른쪽 정렬. 제목·부제는 그만큼 비운다 */
+.branchLabel { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); white-space: nowrap;
+               font-size: 11px; line-height: 14px; color: var(--nx-n-500); pointer-events: none; }
+.hasBranches .title { padding-right: 76px; }
+.hasBranches .sub { padding-right: 60px; }
+.hasBranches .corner { right: 64px; top: 6px; }

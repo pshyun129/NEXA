@@ -109,6 +109,12 @@ export const statusMap = {
     FAILED: { label: '실패', tone: 'danger' },
     ROLLED_BACK: { label: '되돌림', tone: 'neutral' },
   }),
+  /** 이관 기준정보 계획(GET /migrations/{id}/references) */
+  ReferencePlanStatus: m({
+    NEW: { label: '새로 만듦', tone: 'info' },
+    EXISTS: { label: '이미 있음', tone: 'neutral' },
+    AMBIGUOUS: { label: '고를 수 없음', tone: 'danger' },
+  }),
   EmploymentStatus: m({
     EMPLOYED: { label: '재직', tone: 'success' },
     ON_LEAVE: { label: '휴직', tone: 'warning' },

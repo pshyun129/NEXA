@@ -1,7 +1,8 @@
 // 서비스 공통 봉투(요구사항 1.3)
 export interface ApiEnvelope<T> {
   success: boolean;
-  error: { code: string; message: string } | null;
+  /** details: 오류별 추가 정보(선택). 예: AUTH_010 → retryAfterSeconds·lockedUntil, AUTH_005 → remainingAttempts */
+  error: { code: string; message: string; details?: Record<string, unknown> | null } | null;
   data: T;
 }
 

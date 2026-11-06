@@ -44,3 +44,11 @@
 .groups li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--nx-divider); }
 .groupText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 13px; color: var(--nx-n-800); }
 .value { font-family: var(--nx-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* ⑥ 대사 */
+.recon { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.recon li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--nx-r-md); font-size: 14px; }
+.reconOk { background: var(--nx-success-bg); color: var(--nx-success-fg); }
+.reconBad { background: var(--nx-warning-bg); color: var(--nx-warning-fg); }
+.recon b { color: var(--nx-n-800); min-width: 40px; }
+.scrollBox { max-height: 240px; overflow-y: auto; border: 1px solid var(--nx-divider); border-radius: var(--nx-r-md); }
