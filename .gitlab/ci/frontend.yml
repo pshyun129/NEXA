@@ -46,7 +46,7 @@ deploy-frontend-dev:
   interruptible: false
 
   environment:
-    name: development
+    name: development/frontend
     url: https://nexa-erp.duckdns.org
 
   script:

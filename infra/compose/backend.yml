@@ -244,8 +244,9 @@ services:
       HR_SERVICE_URL: http://user-service:8081
       PAY_SERVICE_URL: http://payroll-service:8085
       # 이관 매핑·값 추천 LLM. 비우면 동의어 추천만
-      GMS_KEY: ${GMS_KEY:-}
       JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      # 서버의 공용 GMS 키를 마이그레이션에 전달
+      GMS_KEY: ${GMS_API_KEY:-}
 
     ports:
       - "127.0.0.1:8087:8087"

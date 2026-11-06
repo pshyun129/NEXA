@@ -111,8 +111,8 @@ deploy-fastapi-dev:
   timeout: 20m
 
   environment:
-    name: development
-    url: https://k15d107.p.ssafy.io
+    name: development/fastapi
+    url: https://nexa-erp.duckdns.org
 
   variables:
     GIT_STRATEGY: clone
