@@ -22,16 +22,16 @@ def _flag(name: str, default: bool) -> bool:
 
 def _unwarp_mode() -> str:
     """기울기 보정 모드: on / off / auto(사진만). 예전 값 1·0·true·false도 그대로 받음"""
-    v = os.getenv("OCR_DOC_UNWARPING", "on").strip().lower()
+    v = os.getenv("OCR_DOC_UNWARPING", "auto").strip().lower()
     if v == "auto":
         return "auto"
     return "on" if v in ("1", "true", "yes", "on") else "off"
 
 
-# 비교 대상 설정 (기본값은 지금 서빙과 같게 → 게이트 통과 후에만 바꿈)
+# OCR 설정 (환경변수로 바꿔 A/B 비교 가능, 기본값은 게이트를 통과한 설정)
 OCR_CONFIG = {
     "textline_orientation": _flag("OCR_TEXTLINE_ORIENTATION", False),  # 끔: 멀쩡한 줄을 뒤집어 store 82→88%, 2026-11-05 A/B 결과
-    "doc_unwarping": _unwarp_mode(),                                    # on / off / auto (2026-11-06 후보 E: 사진만 보정)
+    "doc_unwarping": _unwarp_mode(),                                    # 기본 auto: 사진만 보정, test 85→90% (2026-11-06 게이트 통과)
 }
 
 # 서버 시작 시 모델을 한 번만 불러옴
