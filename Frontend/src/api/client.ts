@@ -38,7 +38,7 @@ function toApiError(err: AxiosError): ApiError {
   const body = res.data as Partial<ApiEnvelope<unknown>> & { code?: string; message?: string; requestId?: string };
   if (body && typeof body === 'object') {
     if (body.error && typeof body.error === 'object') {
-      return new ApiError(res.status, body.error.code, body.error.message, requestId);
+      return new ApiError(res.status, body.error.code, body.error.message, requestId, body.error.details);
     }
     if (typeof body.code === 'string') {
       // gateway 직접 응답 { code, message, requestId }
@@ -77,7 +77,7 @@ async function unwrap<T>(p: Promise<{ data: ApiEnvelope<T>; headers: Record<stri
   if (body && typeof body === 'object' && 'success' in body) {
     if (!body.success) {
       throw new ApiError(200, body.error?.code ?? 'UNKNOWN', body.error?.message ?? '요청을 처리하지 못했습니다.',
-        (res.headers['x-request-id'] as string | undefined) ?? null);
+        (res.headers['x-request-id'] as string | undefined) ?? null, body.error?.details);
     }
     return body.data;
   }

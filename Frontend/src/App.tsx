@@ -13,6 +13,7 @@ import { MigrationPage } from '@/pages/admin/MigrationPage';
 
 // 캔버스(@xyflow)는 무거워서 쓰는 화면에서만 불러온다
 const DevKitPage = lazy(() => import('@/pages/dev/kit/DevKitPage').then((m) => ({ default: m.DevKitPage })));
+const BuilderPage = lazy(() => import('@/pages/admin/BuilderPage').then((m) => ({ default: m.BuilderPage })));
 
 export function App() {
   return (
@@ -33,7 +34,7 @@ export function App() {
         <Route path="admin/hr/*" element={<RequireAdmin><Placeholder title="인사" week="5주차(P1)" /></RequireAdmin>} />
         <Route path="admin/migration" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         <Route path="admin/migration/:id" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
-        <Route path="admin/builder/*" element={<RequireAdmin><Placeholder title="자동화 빌더" week="5주차" /></RequireAdmin>} />
+        <Route path="admin/builder/*" element={<RequireAdmin><Suspense fallback={null}><BuilderPage /></Suspense></RequireAdmin>} />
         <Route path="*" element={<Placeholder title="페이지를 찾을 수 없습니다" week="—" />} />
       </Route>
     </Routes>

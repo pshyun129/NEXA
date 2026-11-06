@@ -58,11 +58,18 @@ export function LoginPage() {
       if (!isApiError(e)) {
         setError('서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       } else if (e.code === 'AUTH_010') {
-        // 남은 시간은 응답에 없으므로 클라이언트 기준 15분(요구사항 1.1)
-        setLockedUntil(Date.now() + LOCK_SECONDS * 1000);
-        setError('계정이 잠겼습니다. 최대 15분 후 다시 시도해 주세요.');
+        // 서버가 준 남은 초로 센다(lockedUntil 절대 시각보다 PC 시계 차이에 강하다). 없으면 규정상 최대 15분
+        const left = e.detailNumber('retryAfterSeconds');
+        setLockedUntil(Date.now() + (left ?? LOCK_SECONDS) * 1000);
+        setError(left != null ? '계정이 잠겼습니다. 남은 시간이 지나면 다시 시도해 주세요.' : '계정이 잠겼습니다. 최대 15분 후 다시 시도해 주세요.');
       } else if (e.code === 'AUTH_005') {
-        setError('이메일 또는 비밀번호가 올바르지 않습니다. 5회 틀리면 15분 동안 잠깁니다.');
+        // remainingAttempts: 잠기기 전까지 남은 시도(4 → 0). 0이면 이번 실패로 잠긴 것이다
+        const remaining = e.detailNumber('remainingAttempts');
+        setError(remaining === 0
+          ? '비밀번호를 5회 틀려 계정이 15분 동안 잠겼습니다.'
+          : remaining != null
+            ? `이메일 또는 비밀번호가 올바르지 않습니다. ${remaining}회 더 틀리면 15분 동안 잠깁니다.`
+            : '이메일 또는 비밀번호가 올바르지 않습니다. 5회 틀리면 15분 동안 잠깁니다.');
       } else if (e.code === 'AUTH_006') {
         setError('퇴직 처리된 계정입니다. 인사 담당자에게 문의해 주세요.');
       } else if (e.code === 'COMMON_001') {

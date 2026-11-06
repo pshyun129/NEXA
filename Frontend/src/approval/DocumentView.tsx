@@ -211,6 +211,7 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
         {doc.sourceType === 'AUTOMATION' && (
           <div className={s.aiBand}>
             <AiMark label="자동화로 생성됨" />
+            {doc.sourceLabel && <span>{doc.sourceLabel}</span>}
             {doc.sourceId != null && <span className="nx-mono">run #{doc.sourceId}</span>}
             {doc.sourceId != null && <Link to={`/automation/runs/${doc.sourceId}`} style={{ marginLeft: 'auto' }}>원본 실행 보기 ↗</Link>}
           </div>
@@ -218,7 +219,7 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
         {(doc.sourceType === 'LEAVE' || doc.sourceType === 'ATTENDANCE') && (
           <div className={s.source}>
             <StatusBadge domain="SourceType" value={doc.sourceType} />
-            <span>{SOURCE_TEXT[doc.sourceType]} <span className="nx-num">#{doc.sourceId}</span>에서 생성된 문서입니다</span>
+            <span>{doc.sourceLabel ?? SOURCE_TEXT[doc.sourceType]} <span className="nx-num">#{doc.sourceId}</span>에서 생성된 문서입니다</span>
             {/* 근태 신청 상세는 본인 API(/me/requests)뿐이라 기안자에게만 연결한다(frontend-backend-gaps.md C) */}
             {doc.sourceType === 'ATTENDANCE' && doc.sourceId != null && doc.drafterId === meId && (
               <Link to={requestHref(doc.sourceId)} style={{ marginLeft: 'auto' }}>원본 신청 보기 →</Link>

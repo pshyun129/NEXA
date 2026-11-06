@@ -1,3 +1,4 @@
+import { Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DocumentSummary } from '@/api/approval';
 import { StatusBadge } from '@/ui/StatusBadge';
@@ -26,7 +27,7 @@ function Progress({ r }: { r: DocumentSummary }) {
   );
 }
 
-/** 문서 목록 칸(결재함·홈 결재 대기 공용). 번호는 docNo 끝 4자리, ✦자동화는 출처가 AUTOMATION일 때(설계 6.1). */
+/** 문서 목록 칸(결재함·홈 결재 대기 공용). 번호는 docNo 끝 4자리, ✦자동화는 출처가 AUTOMATION일 때(설계 6.1), 툴팁은 sourceLabel(워크플로 이름). */
 export function docColumns(opt: { drafter?: boolean; status?: boolean; progress?: boolean }): ColumnsType<DocumentSummary> {
   return [
     {
@@ -37,7 +38,12 @@ export function docColumns(opt: { drafter?: boolean; status?: boolean; progress?
           <span className={s.cellSub}>
             <span className="nx-num">{shortNo(r.docNo)}</span> · {formTypeLabel(r.formType)}
             {r.sourceType === 'AUTOMATION' && (
-              <span className={s.autoTag}><Icon as={Sparkles} size={12} />자동화</span>
+              // 워크플로 이름(sourceLabel)은 좁은 목록 칸 대신 툴팁으로. 없으면 표식만
+              <Tooltip title={r.sourceLabel ?? undefined}>
+                <span className={s.autoTag} aria-label={r.sourceLabel ? `자동화: ${r.sourceLabel}` : undefined}>
+                  <Icon as={Sparkles} size={12} />자동화
+                </span>
+              </Tooltip>
             )}
           </span>
         </div>

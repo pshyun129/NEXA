@@ -3,13 +3,23 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId: string | null;
+  /** 서비스 봉투 error.details(오류별 추가 정보). 없으면 {} */
+  readonly details: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string, requestId: string | null) {
+  constructor(status: number, code: string, message: string, requestId: string | null,
+              details?: Record<string, unknown> | null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.requestId = requestId;
+    this.details = details ?? {};
+  }
+
+  /** details의 숫자 값. 없거나 숫자가 아니면 undefined */
+  detailNumber(key: string): number | undefined {
+    const v = this.details[key];
+    return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
   }
 
   /** COMMON_001 "field: msg, field2: msg" → [{name, errors}] (antd form.setFields 형식) */
