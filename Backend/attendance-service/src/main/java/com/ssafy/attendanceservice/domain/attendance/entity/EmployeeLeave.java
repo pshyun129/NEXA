@@ -51,7 +51,7 @@ public class EmployeeLeave {
     @Column(name = "end_at")
     private OffsetDateTime endAt;           // 반차 종료 (종일이면 null)
 
-    @Column(name = "leave_type_name", nullable = false, length = 50)
+    @Column(name = "leave_type_name", nullable = false, length = 100)
     private String leaveTypeName;           // 휴가 유형명 (연차, 병가 등)
 
     @Column(name = "is_paid", nullable = false)
