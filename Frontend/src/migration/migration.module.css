@@ -19,7 +19,6 @@
 .stepper li + li::before { content: ""; width: 24px; height: 1px; background: var(--nx-n-300); margin: 0 8px; }
 .sDone { color: var(--nx-success-fg) !important; font-weight: 600; }
 .sCur { color: var(--nx-brand-700) !important; font-weight: 700; }
-.sLocked { color: var(--nx-n-400) !important; }
 
 /* ---------- 업로드 ---------- */
 .fileSum { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); font-size: 13px; }
@@ -52,3 +51,5 @@
 .reconBad { background: var(--nx-warning-bg); color: var(--nx-warning-fg); }
 .recon b { color: var(--nx-n-800); min-width: 40px; }
 .scrollBox { max-height: 240px; overflow-y: auto; border: 1px solid var(--nx-divider); border-radius: var(--nx-r-md); }
+.valueCell { display: inline-flex; align-items: center; gap: 4px; }
+.editCell { display: flex; flex-direction: column; gap: 2px; }

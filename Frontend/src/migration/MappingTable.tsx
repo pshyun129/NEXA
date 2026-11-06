@@ -3,6 +3,7 @@ import { Alert, Button, Select, Skeleton, Tooltip } from 'antd';
 import { useMigrationFile, useSaveMapping, type MigrationEntity } from '@/api/migration';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { AiMark } from '@/ui/primitives';
+import { StatusBadge } from '@/ui/StatusBadge';
 import { useNotify } from '@/ui/useNotify';
 import { formatNumber } from '@/format';
 import { ENTITY_SCHEMAS } from './schemas';
@@ -86,8 +87,7 @@ export function MappingTable({ migrationId, fileId, entity }: { migrationId: num
                 <td>
                   {m.suggestedBy === 'LLM' ? (
                     <Tooltip title={m.reason ?? 'AI가 추천한 매핑입니다'}><span><AiMark label="AI 추천" /></span></Tooltip>
-                  ) : m.suggestedBy === 'SYNONYM' ? <span className={s.muted}>이름 일치</span>
-                    : m.suggestedBy === 'USER' ? <span className={s.muted}>직접 지정</span> : <span className={s.muted}>—</span>}
+                  ) : m.suggestedBy ? <StatusBadge domain="SuggestedBy" value={m.suggestedBy} /> : <span className={s.muted}>—</span>}
                   {!m.confirmed && <span className={s.pending}> · 확인 전</span>}
                 </td>
               </tr>
