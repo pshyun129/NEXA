@@ -8,6 +8,7 @@ from nodes.impl.doc_classify import DocClassifyNode
 from nodes.impl.employee_lookup import EmployeeLookupNode
 from nodes.impl.excel_write import ExcelWriteNode
 from nodes.impl.file_upload import FileUploadNode
+from nodes.impl.free_prompt import FreePromptNode
 from nodes.impl.human_confirm import HumanConfirmNode
 from nodes.impl.leave_balance import LeaveBalanceNode
 from nodes.impl.llm_verify import LlmVerifyNode
@@ -40,6 +41,7 @@ _NODE_CLASSES: list[type[BaseNode]] = [
     LlmVerifyNode,           # 자동 검증 (GMS 교차 추출)
     PolicyCheckNode,         # 규정 검토 (RAG + DSPy 판정)
     RagSearchNode,           # 규정 근거 검색 (RAG, LLM 없음)
+    FreePromptNode,          # 자유 프롬프트 (요약·정리·문구, 판단 안 함)
     ConditionNode,           # 조건 분기
     CalculateNode,           # 계산 (사칙연산·1인당·날짜 차이, LLM 없음)
     HumanConfirmNode,        # 사람 확인 (interrupt)
