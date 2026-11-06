@@ -41,6 +41,12 @@ public interface AttendanceService {
     /** 일별 근태 타임라인. 기록이 없는 날은 빈 응답 */
     DailyAttendanceResponse getDaily(Long empId, LocalDate date);
 
+    /**
+     * 다른 사원의 일별 근태 타임라인 (요청한 사원 기준 권한 확인).
+     * 관리자(인사), 조회 범위 안의 사원을 보는 팀장급만 볼 수 있다. 아니면 BusinessException(ACCESS_DENIED)
+     */
+    DailyAttendanceResponse getDaily(AuthUser user, Long empId, LocalDate date);
+
     /** 주간 근태 (date가 포함된 월~일) */
     WeeklyAttendanceResponse getWeekly(Long empId, LocalDate date);
 

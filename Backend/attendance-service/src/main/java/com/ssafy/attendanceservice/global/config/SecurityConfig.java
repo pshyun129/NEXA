@@ -3,6 +3,7 @@ package com.ssafy.attendanceservice.global.config;
 import com.ssafy.nexa.security.NexaSecurityConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
@@ -19,8 +20,10 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(HttpSecurity http, NexaSecurityConfigurer nexa) throws Exception {
         return nexa.apply(http)
                 .authorizeHttpRequests(auth -> auth
-                        // 근태 현황은 팀장급 이상이 쓰므로 로그인만 확인하고, 볼 수 있는 범위는 서비스(AttendanceViewScope)가 정한다
+                        // 근태 현황·직원 타임라인 조회는 팀장급 이상이 쓰므로 로그인만 확인하고,
+                        // 볼 수 있는 범위는 서비스(AttendanceViewScope)가 정한다. 근무 기록 등록·수정·삭제는 관리자만
                         .requestMatchers("/api/v1/attn/admin/daily", "/api/v1/attn/admin/period").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/attn/admin/employees/*/daily/*").authenticated()
                         .requestMatchers("/api/v1/attn/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .build();

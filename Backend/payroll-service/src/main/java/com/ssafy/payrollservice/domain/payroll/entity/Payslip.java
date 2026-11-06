@@ -46,7 +46,7 @@ public class Payslip {
     private String deptName;            // 부서명
 
     @Column(name = "position_name", length = 50)
-    private String positionName;        // 직위명
+    private String positionName;        // 직급명 (직위 폐지로 직급을 표시, 이관 명세서는 원본 직위명)
 
     @Column(name = "hire_date", nullable = false)
     private LocalDate hireDate;         // 입사일

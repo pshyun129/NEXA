@@ -93,7 +93,7 @@ public class PayslipPdfRenderer {
         table.addCell(body(employee.empName(), fonts, Element.ALIGN_LEFT));
         table.addCell(header("부서", fonts));
         table.addCell(body(employee.deptName(), fonts, Element.ALIGN_LEFT));
-        table.addCell(header("직위", fonts));
+        table.addCell(header("직급", fonts));
         table.addCell(body(employee.positionName(), fonts, Element.ALIGN_LEFT));
         table.addCell(header("입사일", fonts));
         table.addCell(body(date(employee.hireDate()), fonts, Element.ALIGN_LEFT));

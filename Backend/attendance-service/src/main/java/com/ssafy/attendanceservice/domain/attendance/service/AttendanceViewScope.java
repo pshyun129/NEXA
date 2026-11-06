@@ -15,8 +15,8 @@ import java.util.Set;
 
 /**
  * 다른 사원의 근태를 볼 수 있는 범위 (팀 결정).
- * 팀장·본부장은 자기 부서와 그 하위 부서의 사원 전부(본인·동급 포함), 대표이사는 전사. 그 외 직책은 볼 수 없다.
- * 토큰의 role(USER/ADMIN)은 쓰지 않고, 직책 이름은 user-service에서 받는다.
+ * 팀장·본부장은 자기 부서와 그 하위 부서의 사원 전부(본인·동급 포함), 대표이사와 인사 관리자(role ADMIN)는 전사.
+ * 그 외 직책은 볼 수 없다. 직책 이름은 user-service에서 받는다.
  * 하위 부서는 사원마다 소속 부서 → 최상위 부서 체인에 기준 부서가 있는지로 판단한다
  */
 @Component
@@ -33,9 +33,9 @@ public class AttendanceViewScope {
      * 볼 수 없는 직책이거나 범위 밖 부서를 요청하면 BusinessException(ACCESS_DENIED)
      */
     public List<EmployeeInfo> employees(AuthUser user, Long deptId) {
-        boolean ceo = isCeo(user);
-        // 대표이사가 부서를 안 고르면 전사, 그 외는 고른 부서(없으면 자기 부서) 기준
-        Long baseDeptId = deptId != null ? deptId : (ceo ? null : user.deptId());
+        boolean companyWide = isCompanyWide(user);
+        // 전사 조회 권한자가 부서를 안 고르면 전사, 그 외는 고른 부서(없으면 자기 부서) 기준
+        Long baseDeptId = deptId != null ? deptId : (companyWide ? null : user.deptId());
         List<EmployeeInfo> all = userClient.getEmployees(null);
         if (baseDeptId == null) {
             return all;
@@ -43,7 +43,7 @@ public class AttendanceViewScope {
 
         ChainCache chains = new ChainCache(all);
         // 부서장이 다른 부서를 고르면, 그 부서가 자기 부서 아래에 있어야 한다
-        if (!ceo && deptId != null && !deptId.equals(user.deptId()) && !chains.isUnder(deptId, user.deptId())) {
+        if (!companyWide && deptId != null && !deptId.equals(user.deptId()) && !chains.isUnder(deptId, user.deptId())) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "볼 수 없는 부서입니다.");
         }
         return all.stream()
@@ -53,7 +53,7 @@ public class AttendanceViewScope {
 
     /** 이 사원의 근태를 볼 수 있는가 (본인 포함) */
     public boolean canView(AuthUser user, Long empId) {
-        if (user.employeeId().equals(empId)) {
+        if (user.employeeId().equals(empId) || user.isAdmin()) {
             return true;
         }
         String duty = dutyName(user);
@@ -64,7 +64,11 @@ public class AttendanceViewScope {
                 && userClient.getOrgChainDeptIds(empId).contains(user.deptId());
     }
 
-    private boolean isCeo(AuthUser user) {
+    /** 전사 조회 권한 (대표이사, 인사 관리자). 팀장급이 아니면 BusinessException(ACCESS_DENIED) */
+    private boolean isCompanyWide(AuthUser user) {
+        if (user.isAdmin()) {
+            return true;
+        }
         String duty = dutyName(user);
         if (CEO_DUTY.equals(duty)) {
             return true;

@@ -166,4 +166,17 @@ class AdminAttendanceStatusIntegrationTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.ACCESS_DENIED);
     }
+
+    @Test
+    void 직원_타임라인은_관리자와_상급자만() {
+        AuthUser member = new AuthUser(8L, "USER", 1L, 1L, MEMBER_DUTY);
+        AuthUser admin = new AuthUser(1L, "ADMIN");
+
+        assertThat(attendanceService.getDaily(TEAM_LEAD, 7L, WEDNESDAY).clockIn()).isNotNull();
+        assertThat(attendanceService.getDaily(admin, 7L, WEDNESDAY).clockIn()).isNotNull();
+        assertThatThrownBy(() -> attendanceService.getDaily(member, 7L, WEDNESDAY))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.ACCESS_DENIED);
+    }
 }

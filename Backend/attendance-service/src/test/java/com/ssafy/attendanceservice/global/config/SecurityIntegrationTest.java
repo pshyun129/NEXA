@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -38,6 +39,7 @@ class SecurityIntegrationTest {
 
     private static final String TODAY = "/api/v1/attn/today";
     private static final String ADMIN_DAILY = "/api/v1/attn/admin/employees/7/daily/2026-10-30";
+    private static final String ADMIN_LOG = "/api/v1/attn/admin/logs/1";
 
     @Container
     @ServiceConnection
@@ -89,16 +91,24 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void 일반_사원은_관리자_API_403_AUTH_009() throws Exception {
-        mvc.perform(get(ADMIN_DAILY).with(user(7)))
+    void 일반_사원은_근무_기록_삭제_403_AUTH_009() throws Exception {
+        mvc.perform(delete(ADMIN_LOG).with(user(7)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("AUTH_009"));
     }
 
     @Test
-    void 관리자는_관리자_API_호출_가능() throws Exception {
-        mvc.perform(get(ADMIN_DAILY).with(admin(1)))
+    void 관리자는_근무_기록_삭제_가능() throws Exception {
+        mvc.perform(delete(ADMIN_LOG).with(admin(1)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void 직원_타임라인_조회는_일반_사원_토큰도_통과하고_범위는_서비스가_판단() throws Exception {
+        mvc.perform(get(ADMIN_DAILY).with(user(8)))
+                .andExpect(status().isOk());
+
+        verify(attendanceService).getDaily(any(), eq(7L), eq(LocalDate.of(2026, 10, 30)));
     }
 
     @Test

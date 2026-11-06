@@ -53,12 +53,13 @@ public class AdminAttendanceController {
                 adminAttendanceStatusService.getPeriod(user, from, to, deptId, empStatus)));
     }
 
-    // 직원 일별 타임라인 조회 API
+    // 직원 일별 타임라인 조회 API (관리자, 조회 범위 안의 사원을 보는 팀장급)
     @GetMapping("/employees/{empId}/daily/{date}")
     public ResponseEntity<ApiResult<DailyAttendanceResponse>> getEmployeeDaily(
+            @CurrentUser AuthUser user,
             @PathVariable Long empId,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return ResponseEntity.ok(ApiResult.success(attendanceService.getDaily(empId, date)));
+        return ResponseEntity.ok(ApiResult.success(attendanceService.getDaily(user, empId, date)));
     }
 
     // 근무 상태 직접 등록 API

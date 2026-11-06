@@ -25,7 +25,7 @@ public record PayslipDetailResponse(
     public record Employee(
             String empName,         // 사원명
             String deptName,        // 부서명
-            String positionName,    // 직위명
+            String positionName,    // 직급명 (직위 폐지로 직급을 표시. 이관한 지난 명세서는 원본의 직위명)
             LocalDate hireDate      // 입사일
     ) {
     }

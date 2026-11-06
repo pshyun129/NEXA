@@ -276,6 +276,13 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional(readOnly = true)
+    public DailyAttendanceResponse getDaily(AuthUser user, Long empId, LocalDate date) {
+        requireViewable(user, empId);
+        return getDaily(empId, date);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public WeeklyAttendanceResponse getWeekly(Long empId, LocalDate date) {
         LocalDate startDate = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate endDate = startDate.plusDays(6);
@@ -306,11 +313,16 @@ public class AttendanceServiceImpl implements AttendanceService {
     @Override
     @Transactional(readOnly = true)
     public AttendanceSummaryResponse getSummary(AuthUser user, Long empId, YearMonth month) {
-        // 급여 명세서 생성은 관리자 토큰으로 부르므로 그대로 허용, 그 외는 본인 또는 조회 범위 안의 사원만
+        // 급여 명세서 생성은 관리자 토큰으로 부르므로 그대로 허용
+        requireViewable(user, empId);
+        return getSummary(empId, month);
+    }
+
+    /** 관리자(인사)이거나 본인·조회 범위 안의 사원이어야 한다. 아니면 BusinessException(ACCESS_DENIED) */
+    private void requireViewable(AuthUser user, Long empId) {
         if (!user.isAdmin() && !attendanceViewScope.canView(user, empId)) {
             throw new BusinessException(ErrorCode.ACCESS_DENIED, "볼 수 없는 사원의 근태입니다.");
         }
-        return getSummary(empId, month);
     }
 
     @Override

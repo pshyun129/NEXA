@@ -89,6 +89,15 @@ class AttendanceViewScopeTest {
     }
 
     @Test
+    void 인사_관리자는_직책과_관계없이_전사() {
+        AuthUser hrAdmin = new AuthUser(112L, "ADMIN", 1L, 1L, MEMBER);
+
+        assertThat(scope.employees(hrAdmin, null)).hasSize(6);
+        assertThat(empIds(scope.employees(hrAdmin, 2L))).containsExactly(103L);
+        assertThat(scope.canView(hrAdmin, 103L)).isTrue();
+    }
+
+    @Test
     void 대표이사가_부서를_고르면_그_부서와_하위만() {
         assertThat(empIds(scope.employees(user(109, 13, CEO), 11L))).containsExactly(103L, 108L);
     }

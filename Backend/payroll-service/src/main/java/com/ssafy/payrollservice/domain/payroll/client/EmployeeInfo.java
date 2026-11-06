@@ -10,7 +10,7 @@ public record EmployeeInfo(
         Long empId,             // 사원 ID
         String name,            // 이름
         String deptName,        // 부서명
-        String positionName,    // 직위명 (없으면 null)
+        String gradeName,       // 직급명 (명세서의 직급 칸, 직위는 폐지)
         Long gradeId,           // 직급 ID (pay_grade.grade_id)
         LocalDate hireDate      // 입사일
 ) {

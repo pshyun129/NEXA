@@ -86,7 +86,7 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
                 .payDate(month.atDay(PAY_DAY))
                 .empName(employee.name())
                 .deptName(employee.deptName())
-                .positionName(employee.positionName())
+                .positionName(employee.gradeName())    // 직위 폐지로 직급명을 표시 (컬럼명은 그대로)
                 .hireDate(employee.hireDate())
                 .workDays((short) attendance.workedDays())
                 .totalMin(workTime.totalMin())

@@ -66,7 +66,7 @@ class UserClientTest {
         EmployeeInfo employee = client.getEmployee(101L);
 
         assertThat(employee).isEqualTo(
-                new EmployeeInfo(101L, "이서연", "인사팀", "대리", 7L, LocalDate.of(2022, 3, 2)));
+                new EmployeeInfo(101L, "이서연", "인사팀", "G2", 7L, LocalDate.of(2022, 3, 2)));
         server.verify();
     }
 
