@@ -12,16 +12,20 @@ import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
- * user-service의 이관용 내부 API 호출 (아직 user-service에 없음, 인사 담당과 합의할 형식).
+ * user-service의 이관용 내부 API 호출 (user-service InternalHrMigrationController).
  *
- * POST   /internal/v1/hr/migration/{orgs|employees}/upsert?batchId=  {"rows":[{"rowNo":2,"data":{...}}]}
- *        → ApiResult{data:{created, updated}}
+ * POST   /internal/v1/hr/migration/{references|orgs|employees}/upsert?batchId=  {"rows":[{"rowNo":2,"data":{...}}]}
+ *        → ApiResult{data:{created, updated}}. references 는 이미 있는 값을 바꾸지 않는다 (updated = 이미 있던 수)
  * DELETE /internal/v1/hr/migration/batches/{batchId}
  * GET    /internal/v1/hr/migration/batches/{batchId}/summary          → ApiResult{data:{count}}
+ * GET    /internal/v1/hr/migration/references                        → 지금 있는 직위·직급·직책·직무 코드
  *
  * 한 번에 CHUNK_SIZE행씩 나눠 보낸다.
  */
@@ -30,6 +34,7 @@ public class HrTargetLoader implements TargetLoader {
 
     private static final int CHUNK_SIZE = 500;
     private static final Map<MigrationEntity, String> PATHS = Map.of(
+            MigrationEntity.HR_CODE, "references",
             MigrationEntity.HR_ORG, "orgs",
             MigrationEntity.HR_EMPLOYEE, "employees");
 
@@ -83,6 +88,14 @@ public class HrTargetLoader implements TargetLoader {
         return new TargetSummary(requireData(res).count());
     }
 
+    public ExistingReferences existingReferences() {
+        return requireData(call(() -> restClient.get()
+                .uri("/internal/v1/hr/migration/references")
+                .retrieve()
+                .body(new ParameterizedTypeReference<InternalResult<ExistingReferences>>() {
+                })));
+    }
+
     private static <T> T requireData(InternalResult<T> res) {
         if (res == null || !res.success() || res.data() == null) {
             throw new BusinessException(ErrorCode.TARGET_CALL_FAILED, "인사 서비스 응답이 비어 있거나 실패입니다");
@@ -106,5 +119,31 @@ public class HrTargetLoader implements TargetLoader {
     }
 
     public record SummaryData(long count) {
+    }
+
+    public record Named(String name) {
+    }
+
+    public record GradeRef(String name, Integer level) {
+    }
+
+    public record JobCodeRef(Long jobCodeId, String type, String name, Long parentId) {
+    }
+
+    public record ExistingReferences(List<Named> positions, List<GradeRef> grades, List<Named> duties, List<JobCodeRef> jobCodes) {
+
+        /** 직무 코드 → "직군 > 직종 > 직무" (ReferencePlan 의 값 표기와 같게) */
+        public Set<String> jobPaths() {
+            Map<Long, JobCodeRef> byId = jobCodes.stream().collect(Collectors.toMap(JobCodeRef::jobCodeId, c -> c));
+            Set<String> out = new HashSet<>();
+            for (JobCodeRef role : jobCodes) {
+                JobCodeRef kind = role.parentId() == null ? null : byId.get(role.parentId());
+                JobCodeRef family = kind == null || kind.parentId() == null ? null : byId.get(kind.parentId());
+                if ("ROLE".equals(role.type()) && family != null) {
+                    out.add(family.name() + " > " + kind.name() + " > " + role.name());
+                }
+            }
+            return out;
+        }
     }
 }

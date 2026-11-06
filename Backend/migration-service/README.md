@@ -8,7 +8,7 @@
 
 ```text
 작업 생성 → 파일 업로드(읽기·매핑 추천·검증 자동) → 매핑 수정 / 자동 정리 / 행 직접 수정
-→ 미리보기(dryRun) → 적재(조직 → 직원) → 대사 → 필요하면 묶음 단위 되돌리기
+→ 기준정보 확인 → 미리보기(dryRun) → 적재(기준정보 → 조직 → 직원) → 대사 → 필요하면 묶음 단위 되돌리기
 ```
 
 ## 단독 실행
@@ -42,7 +42,18 @@ MIGRATION_DB_PASSWORD=localpw \
 ./gradlew test   # Docker 필요 (Testcontainers로 Postgres 17을 띄움)
 ```
 
-user-service의 이관용 내부 API는 아직 없어서, 적재 테스트는 `FakeHrServer`(실제 HTTP 가짜 서버)로 확인한다.
+적재 테스트는 `FakeHrServer`(실제 HTTP 가짜 서버)로 확인한다. user-service의 이관용 내부 API(`/internal/v1/hr/migration`)와는
+시연 파일로 로컬에서 끝까지 확인했다 (`tools/datagen/README.md` '시연 파일').
+
+사원의 부서 값은 같은 작업 조직 파일의 부서코드로 바꿔 보낸다. user-service는 부서를 코드로 먼저 찾고 이름은 하나뿐일 때만 쓰므로,
+같은 이름의 기존 부서가 있어도 새로 넣은 부서로 들어간다.
+
+직위·직급·직책·직군>직종>직무는 회사마다 체계가 달라서, 사원 파일에 나온 값을 모아 기준정보 묶음(`HR_CODE`, 사원 파일 이름으로)을
+사원보다 먼저 넣는다. user-service는 없는 값만 만들고 있는 값은 그대로 둔다 (서열도 바꾸지 않음).
+- 직위 서열: 사원·주임·대리·과장·차장·부장·이사·상무·전무·부사장·사장·대표이사 순으로 매기고, 모르는 직위는 그 뒤에 나온 순서대로
+- 직급: `G3 2호봉`·`G3-2`는 이름 G3 + 호봉 2로 나눠 보낸다. 호봉 없이 `G3`라고만 적었는데 대상(또는 같은 파일)에 G3가 호봉별로 여러 개면
+  사원 적재 때 하나로 못 고르므로 적재를 막는다 (`LOAD_009`, `GET /{id}/references`에서 `AMBIGUOUS`)
+- 되돌리기는 사원 → 조직 → 기준정보 순. 사원 파일 하나에서 묶음이 둘(기준정보·사원) 나오고 대사도 묶음마다 한 줄
 
 ## API (`/api/v1/admin/migrations`)
 
@@ -58,7 +69,8 @@ user-service의 이관용 내부 API는 아직 없어서, 적재 테스트는 `F
 | PATCH | `/{id}/files/{fileId}/rows/{rowNo}` | 행 직접 수정 → 재검증 |
 | GET | `/{id}/issues` | 오류: 심각도별 건수, 원인별 묶음, 행 단위 목록 |
 | POST | `/{id}/fixes` | 자동 정리 일괄 적용 |
-| POST | `/{id}/loads?dryRun=` | 적재 / 미리보기 (차단·자동정리 0건일 때만) |
+| GET | `/{id}/references` | 사원 파일에서 뽑은 기준정보와 대상 비교: `NEW`(새로 만듦) / `EXISTS`(있는 값 씀) / `AMBIGUOUS`(적재 막힘) |
+| POST | `/{id}/loads?dryRun=` | 적재 / 미리보기 (차단·자동정리 0건일 때만). 미리보기에 기준정보 묶음도 나옴 |
 | DELETE | `/{id}/batches/{batchId}` | 묶음 되돌리기 |
 | GET | `/{id}/reconciliation` | 대사 |
 

@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** 적재 → 대사 → 되돌리기. 인사 서비스는 가짜 서버(실제 HTTP)로 대신한다. */
+/** 적재(기준정보 → 조직 → 사원) → 대사 → 되돌리기. 인사 서비스는 가짜 서버(실제 HTTP)로 대신한다. */
 class LoadIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BASE = "/api/v1/admin/migrations";
@@ -100,9 +100,14 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.loadable").value(false))
                 .andExpect(jsonPath("$.data.fixIssues").value(1))
-                .andExpect(jsonPath("$.data.files[*].entity").value(contains("HR_ORG", "HR_EMPLOYEE")))
-                .andExpect(jsonPath("$.data.files[1].sample[0].hireDate").value("2024-01-02"))
-                .andExpect(jsonPath("$.data.files[1].sample[0].empType").value("REGULAR"));
+                .andExpect(jsonPath("$.data.files[*].entity").value(contains("HR_CODE", "HR_ORG", "HR_EMPLOYEE")))
+                // 기준정보: 사원 파일의 직위 2 + 직급 2 + 직책 1 + 직무 경로 2
+                .andExpect(jsonPath("$.data.files[0].rows").value(7))
+                .andExpect(jsonPath("$.data.files[0].sample[0].type").value("POSITION"))
+                .andExpect(jsonPath("$.data.files[0].sample[0].name").value("과장"))
+                .andExpect(jsonPath("$.data.files[0].sample[0].rankOrder").value(4))
+                .andExpect(jsonPath("$.data.files[2].sample[0].hireDate").value("2024-01-02"))
+                .andExpect(jsonPath("$.data.files[2].sample[0].empType").value("REGULAR"));
         assertThat(HR.rows("orgs")).isEmpty();
     }
 
@@ -136,25 +141,38 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
         mvc.perform(post(BASE + "/{id}/loads", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("LOADED"))
-                .andExpect(jsonPath("$.data.batches[0].entity").value("HR_ORG"))      // 조직이 먼저 들어간다
-                .andExpect(jsonPath("$.data.batches[0].status").value("LOADED"))
-                .andExpect(jsonPath("$.data.batches[0].created").value(3))
-                .andExpect(jsonPath("$.data.batches[1].entity").value("HR_EMPLOYEE"))
-                .andExpect(jsonPath("$.data.batches[1].created").value(2));
+                .andExpect(jsonPath("$.data.batches[0].entity").value("HR_CODE"))     // 사원 파일의 기준정보가 먼저
+                .andExpect(jsonPath("$.data.batches[0].fileId").value(empFile))
+                .andExpect(jsonPath("$.data.batches[0].created").value(7))
+                .andExpect(jsonPath("$.data.batches[1].entity").value("HR_ORG"))      // 그다음 조직
+                .andExpect(jsonPath("$.data.batches[1].status").value("LOADED"))
+                .andExpect(jsonPath("$.data.batches[1].created").value(3))
+                .andExpect(jsonPath("$.data.batches[2].entity").value("HR_EMPLOYEE"))
+                .andExpect(jsonPath("$.data.batches[2].created").value(2));
+
+        // 기준정보는 값마다 한 행, 직급은 이름·호봉으로 나눠 보낸다
+        assertThat(HR.rows("references")).extracting(r -> r.data().get("type").asString() + ":" + r.data().path("name").asString(""))
+                .contains("POSITION:과장", "POSITION:대리", "GRADE:G3", "GRADE:G2", "DUTY:팀원", "JOB_CODE:");
 
         // 인사 서비스에는 정리된 값이 들어간다
         FakeHrServer.Stored hong = HR.rows("employees").stream()
                 .filter(s -> s.data().get("empNo").asString().equals("00123")).findFirst().orElseThrow();
         assertThat(hong.data().get("hireDate").asString()).isEqualTo("2024-01-02");
         assertThat(hong.data().get("empType").asString()).isEqualTo("REGULAR");
+        // 부서명은 같은 작업 조직 파일의 부서코드로 바꿔 보낸다 (대상에 같은 이름의 기존 부서가 있어도 고를 수 있게)
+        assertThat(hong.data().get("dept").asString()).isEqualTo("D100");
 
         mvc.perform(get(BASE + "/{id}/reconciliation", id))
-                .andExpect(jsonPath("$.data[*].match").value(contains(true, true)))
-                .andExpect(jsonPath("$.data[1].source").value(2))
-                .andExpect(jsonPath("$.data[1].loaded").value(2));
+                .andExpect(jsonPath("$.data[*].match").value(contains(true, true, true)))
+                .andExpect(jsonPath("$.data[0].source").value(7))
+                .andExpect(jsonPath("$.data[2].source").value(2))
+                .andExpect(jsonPath("$.data[2].loaded").value(2));
 
         mvc.perform(get(BASE + "/{id}", id))
-                .andExpect(jsonPath("$.data.batches.length()").value(2));
+                .andExpect(jsonPath("$.data.batches.length()").value(3));
+        // 기준정보까지 들어갔으니 비교할 것이 없다
+        mvc.perform(get(BASE + "/{id}/references", id))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
 
         // 적재된 파일은 되돌리기 전까지 수정 불가
         mvc.perform(put(BASE + "/{id}/files/{fileId}/mappings", id, empFile).contentType(MediaType.APPLICATION_JSON)
@@ -176,10 +194,14 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
         upload(id, "HR_EMPLOYEE", EMP_CSV);
         applyFixes(id);
         String loaded = mvc.perform(post(BASE + "/{id}/loads", id)).andReturn().getResponse().getContentAsString();
-        String orgBatch = JsonPath.read(loaded, "$.data.batches[0].batchId");
-        String empBatch = JsonPath.read(loaded, "$.data.batches[1].batchId");
+        String codeBatch = JsonPath.read(loaded, "$.data.batches[0].batchId");
+        String orgBatch = JsonPath.read(loaded, "$.data.batches[1].batchId");
+        String empBatch = JsonPath.read(loaded, "$.data.batches[2].batchId");
 
         mvc.perform(delete(BASE + "/{id}/batches/{batchId}", id, orgBatch))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("LOAD_006"));
+        mvc.perform(delete(BASE + "/{id}/batches/{batchId}", id, codeBatch))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("LOAD_006"));
 
@@ -190,8 +212,13 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
 
         mvc.perform(delete(BASE + "/{id}/batches/{batchId}", id, orgBatch))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+                .andExpect(jsonPath("$.data.status").value("LOADED"));
         assertThat(HR.rows("orgs")).isEmpty();
+
+        mvc.perform(delete(BASE + "/{id}/batches/{batchId}", id, codeBatch))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"));
+        assertThat(HR.rows("references")).isEmpty();
 
         // 되돌린 묶음은 다시 되돌릴 수 없다
         mvc.perform(delete(BASE + "/{id}/batches/{batchId}", id, orgBatch))
@@ -208,16 +235,40 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
 
         String body = mvc.perform(post(BASE + "/{id}/loads", id))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("DRAFT"))
-                .andExpect(jsonPath("$.data.batches.length()").value(1))
-                .andExpect(jsonPath("$.data.batches[0].status").value("FAILED"))
+                .andExpect(jsonPath("$.data.status").value("LOADED"))      // 앞의 기준정보 묶음은 남아 있다
+                .andExpect(jsonPath("$.data.batches.length()").value(2))
+                .andExpect(jsonPath("$.data.batches[0].entity").value("HR_CODE"))
+                .andExpect(jsonPath("$.data.batches[1].status").value("FAILED"))
                 .andReturn().getResponse().getContentAsString();
-        assertThat((String) JsonPath.read(body, "$.data.batches[0].error")).contains("인사 서비스 호출 실패");
+        assertThat((String) JsonPath.read(body, "$.data.batches[1].error")).contains("인사 서비스 호출 실패");
 
         // 실패 전에 들어간 D010, D100도 자동으로 지워졌다
         assertThat(HR.rows("orgs")).isEmpty();
         assertThat(HR.rows("employees")).isEmpty();
         List<?> batches = JsonPath.read(body, "$.data.batches");
-        assertThat(batches).hasSize(1);
+        assertThat(batches).hasSize(2);
+    }
+
+    @Test
+    void 기준정보는_대상과_비교해_보여주고_호봉을_못_고르는_직급이_있으면_적재하지_않는다() throws Exception {
+        HR.existingGrade("G3", 1);
+        HR.existingGrade("G3", 2);
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        upload(id, "HR_EMPLOYEE", EMP_CSV.replace(",G2,", ",G2 3호봉,"));
+        applyFixes(id);
+
+        mvc.perform(get(BASE + "/{id}/references", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[?(@.value == 'G3')].status").value(contains("AMBIGUOUS")))
+                .andExpect(jsonPath("$.data.items[?(@.value == 'G2 3호봉')].status").value(contains("NEW")))
+                .andExpect(jsonPath("$.data.items[?(@.value == '개발 > SW > 백엔드')].type").value(contains("JOB_CODE")));
+
+        mvc.perform(post(BASE + "/{id}/loads", id))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("LOAD_009"))
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("G3 1호봉")));
+        assertThat(HR.rows("references")).isEmpty();
+        assertThat(HR.rows("orgs")).isEmpty();
     }
 }

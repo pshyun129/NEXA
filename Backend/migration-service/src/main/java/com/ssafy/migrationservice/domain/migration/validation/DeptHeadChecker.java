@@ -73,27 +73,15 @@ public class DeptHeadChecker {
             }
         });
 
-        // 명부의 부서 값(부서코드 또는 부서명) → 부서코드. 같은 이름의 부서가 둘이면 이름으로는 찾지 않는다
-        String nameCol = f2c.get("name");
+        Map<String, String> codeByLabel = codeByLabel(rows, codeCol, f2c.get("name"));
         String parentCol = f2c.get("parentDeptCode");
-        Map<String, String> codeByLabel = new HashMap<>();
         Map<String, String> parentOf = new HashMap<>();
-        Set<String> ambiguous = new HashSet<>();
         for (ParsedTable.Row row : rows) {
             String code = row.values().get(codeCol);
-            if (code == null) {
-                continue;
-            }
-            codeByLabel.put(code, code);
-            String name = nameCol == null ? null : row.values().get(nameCol);
-            if (name != null && codeByLabel.putIfAbsent(name, code) != null && !code.equals(codeByLabel.get(name))) {
-                ambiguous.add(name);
-            }
-            if (parentCol != null && row.values().get(parentCol) != null) {
+            if (code != null && parentCol != null && row.values().get(parentCol) != null) {
                 parentOf.put(code, row.values().get(parentCol));
             }
         }
-        ambiguous.forEach(codeByLabel::remove);
         Map<String, String> typeOf = deptTypes(rows, codeCol, f2c.get("deptType"), parentOf);
         Map<String, List<String>> headCandidates = headCandidates(roster, codeByLabel, typeOf);
 
@@ -144,6 +132,25 @@ public class DeptHeadChecker {
             }
         }
         return issues;
+    }
+
+    /** 조직 파일의 부서코드·부서명 → 부서코드. 같은 이름의 부서가 둘이면 그 이름으로는 찾지 않는다 */
+    public static Map<String, String> codeByLabel(List<ParsedTable.Row> rows, String codeCol, String nameCol) {
+        Map<String, String> out = new HashMap<>();
+        Set<String> ambiguous = new HashSet<>();
+        for (ParsedTable.Row row : rows) {
+            String code = row.values().get(codeCol);
+            if (code == null) {
+                continue;
+            }
+            out.put(code, code);
+            String name = nameCol == null ? null : row.values().get(nameCol);
+            if (name != null && out.putIfAbsent(name, code) != null && !code.equals(out.get(name))) {
+                ambiguous.add(name);
+            }
+        }
+        ambiguous.forEach(out::remove);
+        return out;
     }
 
     /** 부서 유형에 맞는 부서장 직책. Map.of는 null 키를 못 받는다 */

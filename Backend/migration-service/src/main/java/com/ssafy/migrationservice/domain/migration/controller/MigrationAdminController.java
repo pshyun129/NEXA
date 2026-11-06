@@ -10,6 +10,7 @@ import com.ssafy.migrationservice.domain.migration.dto.IssueListResponse;
 import com.ssafy.migrationservice.domain.migration.dto.LoadRequest;
 import com.ssafy.migrationservice.domain.migration.dto.LoadResponse;
 import com.ssafy.migrationservice.domain.migration.dto.ReconciliationItem;
+import com.ssafy.migrationservice.domain.migration.dto.ReferencePlanResponse;
 import com.ssafy.migrationservice.domain.migration.load.LoadService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import java.util.List;
@@ -142,6 +143,12 @@ public class MigrationAdminController {
     @DeleteMapping("/{migrationId}/batches/{batchId}")
     public ResponseEntity<ApiResult<LoadResponse>> rollback(@PathVariable Long migrationId, @PathVariable String batchId) {
         return ResponseEntity.ok(ApiResult.success(loadService.rollback(migrationId, batchId)));
+    }
+
+    /** 사원 파일에서 뽑은 기준정보(직위·직급·직책·직무)를 대상과 비교: 새로 만들 것 / 이미 있는 것 / 적재가 막히는 것 */
+    @GetMapping("/{migrationId}/references")
+    public ResponseEntity<ApiResult<ReferencePlanResponse>> references(@PathVariable Long migrationId) {
+        return ResponseEntity.ok(ApiResult.success(loadService.references(migrationId)));
     }
 
     /** 대사: 적재된 묶음별 원본 행 수 vs 대상 서비스에 들어간 수 */
