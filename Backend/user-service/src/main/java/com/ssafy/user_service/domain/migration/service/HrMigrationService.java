@@ -1,9 +1,13 @@
 package com.ssafy.user_service.domain.migration.service;
 
 import com.ssafy.user_service.domain.migration.dto.MigrationBatchSummaryResponse;
+import com.ssafy.user_service.domain.migration.dto.MigrationEmployeeLookupRequest;
+import com.ssafy.user_service.domain.migration.dto.MigrationEmployeeLookupResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationReferencesResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertRequest;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertResponse;
+
+import java.util.List;
 
 /** migration-service 의 인사 데이터 이관 대상 (기준정보 → 조직 → 사원 순으로 적재, 되돌리기는 역순) */
 public interface HrMigrationService {
@@ -23,4 +27,7 @@ public interface HrMigrationService {
 
     /** 지금 있는 기준정보. migration 이 파일의 값과 비교해 새로 만들 것·이미 있는 것을 보여준다 */
     MigrationReferencesResponse references();
+
+    /** 사번 → 사원 ID·이름·부서명·직위명·직급 ID·입사일. 없는 사번은 빠진다 */
+    List<MigrationEmployeeLookupResponse> lookupEmployees(MigrationEmployeeLookupRequest request);
 }

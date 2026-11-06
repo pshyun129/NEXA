@@ -1,6 +1,8 @@
 package com.ssafy.user_service.domain.migration.controller;
 
 import com.ssafy.user_service.domain.migration.dto.MigrationBatchSummaryResponse;
+import com.ssafy.user_service.domain.migration.dto.MigrationEmployeeLookupRequest;
+import com.ssafy.user_service.domain.migration.dto.MigrationEmployeeLookupResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationReferencesResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertRequest;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertResponse;
@@ -21,12 +23,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 /**
  * migration-service 전용 내부 API (토큰 없음, gateway 미노출). 형식은 migration HrTargetLoader 와 맞춘 계약이다.
  * POST   /{references|orgs|employees}/upsert?batchId=   → {created, updated}
  * DELETE /batches/{batchId}                  → 되돌리기 (data 없음)
  * GET    /batches/{batchId}/summary          → {count}
  * GET    /references                         → 지금 있는 직위·직급·직책·직무 코드
+ * POST   /employees/lookup  {empNos}         → [{empNo, empId, name, deptName, positionName, gradeId, hireDate}]
  */
 @RestController
 @RequiredArgsConstructor
@@ -69,6 +74,13 @@ public class InternalHrMigrationController {
     @GetMapping("/references")
     public ResponseEntity<ApiResult<MigrationReferencesResponse>> references() {
         return ResponseEntity.ok(ApiResult.success(hrMigrationService.references()));
+    }
+
+    /** 급여처럼 사원 ID로 저장하는 서비스로 이관할 때 사번 → 사원 ID */
+    @PostMapping("/employees/lookup")
+    public ResponseEntity<ApiResult<List<MigrationEmployeeLookupResponse>>> lookupEmployees(
+            @Valid @RequestBody MigrationEmployeeLookupRequest request) {
+        return ResponseEntity.ok(ApiResult.success(hrMigrationService.lookupEmployees(request)));
     }
 
     private static void checkBatchId(String batchId) {

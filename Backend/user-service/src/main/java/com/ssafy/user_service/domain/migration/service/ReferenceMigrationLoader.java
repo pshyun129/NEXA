@@ -24,7 +24,7 @@ import java.util.Map;
  * 기준정보(직위·직급·직책·직무 코드) 이관 upsert. 회사마다 체계가 달라서 사원보다 먼저 넣는다.
  * 한 행이 값 하나이고 type 으로 종류를 나눈다.
  * - POSITION {name, rankOrder} / DUTY {name}: 이름으로 찾는다
- * - GRADE {name, level}: 이름 + 호봉으로 찾는다 (호봉이 없으면 호봉 없는 직급)
+ * - GRADE {name, level}: 이름 + 호봉으로 찾는다. 호봉은 꼭 있어야 한다
  * - JOB_CODE {family, kind, role}: 직군 → 직종 → 직무 경로. 없는 단계는 만들고, 원본 행 번호는 직무에만 붙인다
  * 이미 있는 값은 바꾸지 않는다 (updated = 이미 있어서 그대로 둔 수). 운영 중인 서열·이름을 이관이 덮어쓰지 않게.
  */
@@ -77,17 +77,21 @@ class ReferenceMigrationLoader {
 
     private boolean grade(String batchId, MigrationRow row, Codes codes) {
         String name = row.requiredString("name");
+        // 직급은 호봉이 꼭 있어야 한다 (migration 이 호봉 열을 합치거나 1호봉으로 채워 보낸다)
         Integer level = row.integer("level");
-        if (level != null && (level < 1 || level > Short.MAX_VALUE)) {
+        if (level == null) {
+            throw row.error("직급 '" + name + "'에 " + row.label("level") + "이 없습니다. 직급은 호봉이 있어야 합니다");
+        }
+        if (level < 1 || level > Short.MAX_VALUE) {
             throw row.error(row.label("level") + " 값 " + level + "은(는) 1 이상이어야 합니다");
         }
-        String key = gradeKey(name, level == null ? null : level.shortValue());
+        String key = gradeKey(name, level.shortValue());
         Grade found = codes.grades.get(key);
         if (found != null) {
             batchRowRepository.recordUpdateIfAbsent(batchId, Target.GRADE, found.getGradeId(), row.rowNo());
             return false;
         }
-        Grade saved = gradeRepository.save(Grade.builder().name(name).level(level == null ? null : level.shortValue()).build());
+        Grade saved = gradeRepository.save(Grade.builder().name(name).level(level.shortValue()).build());
         codes.grades.put(key, saved);
         batchRowRepository.recordCreated(batchId, Target.GRADE, saved.getGradeId(), row.rowNo());
         return true;

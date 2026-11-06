@@ -83,7 +83,7 @@ class HrMigrationIntegrationTest extends AbstractIntegrationTest {
         upsert("references", "b-ref-1", """
                 {"rowNo":1,"data":{"type":"POSITION","name":"이관직위","rankOrder":3}},
                 {"rowNo":2,"data":{"type":"POSITION","name":"대리","rankOrder":99}},
-                {"rowNo":3,"data":{"type":"GRADE","name":"이관직급","level":null}},
+                {"rowNo":3,"data":{"type":"GRADE","name":"이관직급","level":1}},
                 {"rowNo":4,"data":{"type":"GRADE","name":"G1","level":1}},
                 {"rowNo":5,"data":{"type":"DUTY","name":"이관직책"}},
                 {"rowNo":6,"data":{"type":"JOB_CODE","family":"이관직군","kind":"이관직종","role":"이관직무"}},
@@ -124,12 +124,45 @@ class HrMigrationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void 호봉_없는_직급은_행번호와_함께_400() throws Exception {
+        upsert("references", "b-ref-nolevel", """
+                {"rowNo":4,"data":{"type":"GRADE","name":"이관직급","level":null}}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("MIG_001"))
+                .andExpect(jsonPath("$.error.message").value(containsString("행 4")))
+                .andExpect(jsonPath("$.error.message").value(containsString("호봉")));
+        assertThat(count("SELECT COUNT(*) FROM grade WHERE name = '이관직급'")).isZero();
+    }
+
+    @Test
     void 기준정보_종류를_모르면_행번호와_함께_400() throws Exception {
         upsert("references", "b-ref-bad", """
                 {"rowNo":9,"data":{"type":"TITLE","name":"이상한값"}}""")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("MIG_001"))
                 .andExpect(jsonPath("$.error.message").value(containsString("행 9")));
+    }
+
+    // ===== 사번 → 사원 =====
+
+    @Test
+    void 사번으로_사원_ID와_명세서용_정보를_찾고_없는_사번은_빠진다() throws Exception {
+        Map<String, Object> dev = jdbc.queryForMap("""
+                SELECT e.emp_id, e.name, d.name AS dept_name, p.name AS position_name, e.grade_id, e.hire_date
+                FROM employee e JOIN department d ON d.dept_id = e.dept_id JOIN position p ON p.position_id = e.position_id
+                WHERE e.emp_no = 'DEV0101'""");
+
+        mvc.perform(post(BASE + "/employees/lookup").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"empNos\":[\"DEV0101\",\"NO-SUCH\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].empNo").value("DEV0101"))
+                .andExpect(jsonPath("$.data[0].empId").value(((Number) dev.get("emp_id")).longValue()))
+                .andExpect(jsonPath("$.data[0].name").value(dev.get("name")))
+                .andExpect(jsonPath("$.data[0].deptName").value(dev.get("dept_name")))
+                .andExpect(jsonPath("$.data[0].positionName").value(dev.get("position_name")))
+                .andExpect(jsonPath("$.data[0].gradeId").value(((Number) dev.get("grade_id")).longValue()))
+                .andExpect(jsonPath("$.data[0].hireDate").value(dev.get("hire_date").toString()));
     }
 
     // ===== 조직 =====
