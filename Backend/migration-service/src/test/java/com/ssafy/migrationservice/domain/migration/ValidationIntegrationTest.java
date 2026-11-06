@@ -85,7 +85,10 @@ class ValidationIntegrationTest extends AbstractIntegrationTest {
 
         List<Map<String, Object>> groups = JsonPath.read(issues, "$.data.groups");
         Map<String, Object> missing = groups.stream().filter(g -> "MISSING_REQUIRED_COLUMN".equals(g.get("code"))).findFirst().orElseThrow();
-        assertThat((String) missing.get("message")).startsWith("필수 컬럼 6개가 없습니다: 이메일, 직급, 직책, 직군, 직종, 직무");
+        // 직급 열은 없지만 직위가 있어 직위를 직급으로 쓴다 (필수 누락에서 빠지고 파일 단위 경고)
+        assertThat((String) missing.get("message")).startsWith("필수 컬럼 5개가 없습니다: 이메일, 직책, 직군, 직종, 직무");
+        assertThat(groups).anySatisfy(g -> assertThat(g.get("code")).isEqualTo("GRADE_FROM_POSITION"));
+        assertThat(groups).anySatisfy(g -> assertThat(g.get("code")).isEqualTo("GRADE_STEP_DEFAULTED"));
 
         Map<String, Object> required = groups.stream().filter(g -> "REQUIRED".equals(g.get("code"))).findFirst().orElseThrow();
         assertThat((String) required.get("message")).isEqualTo("입사일이 비어 있습니다");

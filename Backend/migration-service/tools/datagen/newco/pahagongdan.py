@@ -536,10 +536,11 @@ def write_roster(cdir, emps, seed):
     head_rows, first = B.write_roster_xlsx(cdir / "직원명부.xlsx", "직원명부", ROSTER_COLS, rows,
                                            widths={"name": 9, "_rrn": 16, "dept": 11, "hireDate": 16, "email": 26, "mobile": 14})
     mapping = {h: (None if f.startswith("_") else f) for f, h in ROSTER_COLS}
+    mapping["호봉"] = "gradeStep"  # 이관 사원 스키마의 호봉 필드 (직급과 합쳐 '2급 27호봉'으로 적재)
     errors = errs.rows(first)
-    for x in errors:  # 매핑에 없는 열(호봉)은 헤더 이름으로 남긴다
+    for x in errors:  # 호봉 열은 이관 사원 스키마의 gradeStep
         if x["field"] == "_step":
-            x["field"] = "호봉"
+            x["field"] = "gradeStep"
     return {"mapping": mapping, "errors": errors, "rows": len(rows),
             "layout": {"sheet": "직원명부", "headerRows": head_rows, "firstDataRow": first,
                        "notes": ["주민등록번호는 마스킹 값만 ('880312-1******')", "임용일 15%는 '2015년 3월 2일'·'2015/03/02' 문자",

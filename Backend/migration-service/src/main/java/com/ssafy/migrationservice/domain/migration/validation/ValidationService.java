@@ -56,6 +56,7 @@ public class ValidationService {
     private final SalaryHistoryChecker salaryHistoryChecker;
     private final CrossFileTotalsChecker crossFileTotalsChecker;
     private final DeptHeadChecker deptHeadChecker;
+    private final PayGradeBaseChecker payGradeBaseChecker;
 
     @Transactional
     public void validate(MigrationFile file) {
@@ -71,6 +72,7 @@ public class ValidationService {
         issues.addAll(crossFileTotalsChecker.check(file, rows));
         issues.addAll(DutyRosterChecker.check(file, rows));
         issues.addAll(deptHeadChecker.check(file, rows));
+        issues.addAll(payGradeBaseChecker.check(file, rows));
         Optional<EntitySchema> schemaOpt = EntitySchemas.of(file.getEntity());
         if (schemaOpt.isEmpty()) {
             if (file.getEntity() != MigrationEntity.REFERENCE) {
@@ -84,10 +86,17 @@ public class ValidationService {
         Map<String, String> fieldToColumn = mappingService.fieldToColumn(file.getFileId());
 
         // ① 파일 구조: 필수 필드가 어느 컬럼에도 연결되지 않음 → 한 건으로 묶어 보여준다
+        //   사원 직급은 열이 없어도 직위가 있으면 직위를 직급으로 쓴다 (회사 안에는 직급이 있고 파일에만 없는 경우)
+        boolean gradeFromPosition = file.getEntity() == MigrationEntity.HR_EMPLOYEE
+                && !fieldToColumn.containsKey("grade") && fieldToColumn.containsKey("position");
         List<String> missing = schema.fields().stream()
                 .filter(f -> f.required() && !fieldToColumn.containsKey(f.name()))
+                .filter(f -> !(gradeFromPosition && f.name().equals("grade")))
                 .map(FieldSpec::label)
                 .toList();
+        if (file.getEntity() == MigrationEntity.HR_EMPLOYEE) {
+            issues.addAll(GradeStepChecker.check(file, fieldToColumn, rows, gradeFromPosition));
+        }
         if (!missing.isEmpty()) {
             String labels = String.join(", ", missing);
             issues.add(new ValidationIssue(file.getFileId(), null, null, null, Severity.BLOCK,

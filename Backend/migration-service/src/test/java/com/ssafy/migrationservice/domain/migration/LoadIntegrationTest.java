@@ -45,9 +45,17 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
             00124,김민수,kim@nexa.com,인사팀,대리,G2,팀원,경영지원,인사,채용,2023-03-15,계약직
             """;
 
+    // 지난 급여 11월. 지급계는 매핑된 지급 항목 합보다 5만원 많다 (매핑 안 된 수당 → 기타수당)
+    private static final String PAY_CSV = """
+            사번,성명,귀속월,기본급,식대,연장근로수당,지급계,소득세,국민연금,공제계,실지급액
+            00123,홍길동,2026-11,3000000,200000,100000,3350000,50000,140000,190000,3160000
+            00124,김민수,2026-11,2500000,200000,0,2700000,30000,110000,140000,2560000
+            """;
+
     @DynamicPropertySource
     static void hrUrl(DynamicPropertyRegistry registry) {
         registry.add("migration.targets.hr.base-url", HR::baseUrl);
+        registry.add("migration.targets.pay.base-url", HR::baseUrl);    // 급여 이관 API도 같은 가짜 서버
     }
 
     @Autowired
@@ -270,5 +278,72 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("G3 1호봉")));
         assertThat(HR.rows("references")).isEmpty();
         assertThat(HR.rows("orgs")).isEmpty();
+    }
+
+    @Test
+    void 지난_급여는_사원_다음에_직급별_기본급과_명세서로_들어간다() throws Exception {
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        upload(id, "HR_EMPLOYEE", EMP_CSV);
+        upload(id, "PAY_RESULT_HISTORY", PAY_CSV);
+        applyFixes(id);
+
+        mvc.perform(post(BASE + "/{id}/loads", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("LOADED"))
+                .andExpect(jsonPath("$.data.batches[*].entity")
+                        .value(contains("HR_CODE", "HR_ORG", "HR_EMPLOYEE", "PAY_PROFILE", "PAY_RESULT_HISTORY")))
+                .andExpect(jsonPath("$.data.batches[3].created").value(2))      // 직급 G3·G2
+                .andExpect(jsonPath("$.data.batches[4].created").value(2));
+
+        // 직급별 기본급: user-service 직급 ID로
+        assertThat(HR.rows("grades")).extracting(r -> r.data().get("gradeId").asLong() + "=" + r.data().get("baseAmount").asLong())
+                .containsExactlyInAnyOrder(FakeHrServer.gradeId("G3 1호봉") + "=3000000", FakeHrServer.gradeId("G2 1호봉") + "=2500000");
+        // 명세서: 사번 → 사원 ID, 귀속월, pay_item 코드별 금액 (매핑 안 된 5만원은 기타수당)
+        tools.jackson.databind.JsonNode hong = HR.rows("payslips").stream()
+                .filter(r -> r.data().get("empId").asLong() == FakeHrServer.empId("00123")).findFirst().orElseThrow().data();
+        assertThat(hong.get("payYear").asInt()).isEqualTo(2026);
+        assertThat(hong.get("payMonth").asInt()).isEqualTo(11);
+        assertThat(hong.get("empName").asString()).isEqualTo("홍길동");
+        assertThat(hong.get("netPay").asLong()).isEqualTo(3160000);
+        assertThat(hong.get("items").toString()).isEqualTo(
+                "{\"BASE_PAY\":3000000,\"MEAL_ALLOWANCE\":200000,\"OT_EXTENDED_PAY\":100000,\"INCOME_TAX\":50000,"
+                        + "\"NATIONAL_PENSION\":140000,\"OTHER_EARN\":50000}");
+
+        mvc.perform(get(BASE + "/{id}/reconciliation", id))
+                .andExpect(jsonPath("$.data.length()").value(5))
+                .andExpect(jsonPath("$.data[*].match").value(contains(true, true, true, true, true)));
+    }
+
+    @Test
+    void 직원명부에_없는_사번이_있는_급여는_적재하지_않는다() throws Exception {
+        long id = createJob();
+        upload(id, "HR_EMPLOYEE", EMP_CSV);
+        long pay = upload(id, "PAY_RESULT_HISTORY", PAY_CSV.replace("00124,김민수", "99999,김민수"));
+
+        mvc.perform(get(BASE + "/{id}/issues", id).param("fileId", String.valueOf(pay)).param("severity", "BLOCK"))
+                .andExpect(jsonPath("$.data.content[*].code").value(contains("EMP_NOT_IN_ROSTER")));
+        mvc.perform(post(BASE + "/{id}/loads", id))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("LOAD_001"));
+        assertThat(HR.rows("payslips")).isEmpty();
+    }
+
+    @Test
+    void 직급은_호봉_열과_합치고_호봉이_없으면_1호봉으로_보낸다() throws Exception {
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        // 00123 은 호봉 열(27), 00124 는 호봉 없음
+        upload(id, "HR_EMPLOYEE", EMP_CSV.replace("사번,", "호봉,사번,").replace("00123,", "27,00123,").replace("00124,", ",00124,"));
+        applyFixes(id);
+
+        mvc.perform(post(BASE + "/{id}/loads", id)).andExpect(jsonPath("$.data.status").value("LOADED"));
+
+        assertThat(HR.rows("references")).filteredOn(r -> r.data().get("type").asString().equals("GRADE"))
+                .extracting(r -> r.data().get("name").asString() + " " + r.data().get("level").asInt())
+                .containsExactlyInAnyOrder("G3 27", "G2 1");
+        assertThat(HR.rows("employees")).extracting(r -> r.data().get("grade").asString())
+                .containsExactlyInAnyOrder("G3 27호봉", "G2 1호봉");
+        assertThat(HR.rows("employees")).allSatisfy(r -> assertThat(r.data().has("gradeStep")).isFalse());
     }
 }

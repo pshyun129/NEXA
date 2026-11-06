@@ -3,6 +3,7 @@ package com.ssafy.migrationservice.domain.migration.load;
 import com.ssafy.migrationservice.domain.migration.reader.ParsedTable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -15,7 +16,8 @@ import java.util.regex.Pattern;
  * 사원 파일에서 기준정보(직위·직급·직책·직무 코드) 행을 뽑는다. 회사마다 체계가 달라 사원보다 먼저 대상에 넣는다.
  * 값마다 한 행 (같은 값은 한 번만). 행 번호는 원본 행이 아니라 이 목록의 순번이다.
  * - 직위 서열: 흔한 직위 순서로 매기고, 모르는 직위는 그 뒤에 처음 나온 순서대로 붙인다
- * - 직급: 'G3 2호봉'·'G3-2'처럼 호봉이 붙어 있으면 이름과 호봉으로 나눈다 (user-service 사원 적재와 같은 규칙)
+ * - 직급: NEXA 직급은 호봉이 꼭 있어 GradeResolver 로 이름 + 호봉을 정한다 (호봉 열 합치기, 직급 열이 없으면 직위, 모르면 1호봉).
+ *   호봉을 정할 수 없는 직급은 level 없이 넣어 두고 적재 전에 막는다 (LoadService.references 의 AMBIGUOUS)
  * 대상에 이미 있는 값은 대상이 그대로 둔다 (서열도 바꾸지 않는다).
  */
 public final class ReferenceRows {
@@ -35,9 +37,15 @@ public final class ReferenceRows {
     }
 
     /** fieldToColumn: 사원 파일의 필드 → 원본 컬럼 */
-    public static List<LoadRow> from(Map<String, String> fieldToColumn, List<ParsedTable.Row> rows) {
+    public static List<LoadRow> from(Map<String, String> fieldToColumn, List<ParsedTable.Row> rows, GradeResolver grades) {
         Set<String> positions = distinct(rows, fieldToColumn.get("position"));
-        Set<String> grades = distinct(rows, fieldToColumn.get("grade"));
+        Set<List<Object>> gradeKeys = new LinkedHashSet<>();
+        for (ParsedTable.Row r : rows) {
+            GradeResolver.Grade g = grades.resolve(fieldToColumn, r);
+            if (g != null) {
+                gradeKeys.add(Arrays.asList(g.name(), g.level()));
+            }
+        }
         Set<String> duties = distinct(rows, fieldToColumn.get("duty"));
         Set<List<String>> jobs = new LinkedHashSet<>();
         String family = fieldToColumn.get("jobFamily");
@@ -57,10 +65,7 @@ public final class ReferenceRows {
         List<Map<String, Object>> data = new ArrayList<>();
         Map<String, Integer> ranks = positionRanks(positions);
         positions.forEach(p -> data.add(row(POSITION, "name", p, "rankOrder", ranks.get(p))));
-        for (String g : grades) {
-            Grade parsed = parseGrade(g);
-            data.add(row(GRADE, "name", parsed.name(), "level", parsed.level()));
-        }
+        gradeKeys.forEach(g -> data.add(row(GRADE, "name", g.get(0), "level", g.get(1))));
         duties.forEach(d -> data.add(row(DUTY, "name", d)));
         jobs.forEach(j -> data.add(row(JOB_CODE, "family", j.get(0), "kind", j.get(1), "role", j.get(2))));
 

@@ -102,7 +102,9 @@ public class RosterReferenceChecker {
             }
             Set<String> rosterNames = roster.namesByEmpNo().get(key);
             if (rosterNames == null) {
-                issues.add(new ValidationIssue(file.getFileId(), row.rowNo(), "empNo", empCol, Severity.WARN, IssueCode.EMP_NOT_IN_ROSTER,
+                // 적재하는 파일이면 대상에서 사원을 못 찾아 묶음 전체가 실패하므로 막는다 (참고 자료는 경고만)
+                Severity severity = EntitySchemas.of(file.getEntity()).isPresent() ? Severity.BLOCK : Severity.WARN;
+                issues.add(new ValidationIssue(file.getFileId(), row.rowNo(), "empNo", empCol, severity, IssueCode.EMP_NOT_IN_ROSTER,
                         "직원명부에 없는 사번입니다: '" + raw + "'", raw, null));
             } else if (name != null && !rosterNames.isEmpty() && !rosterNames.contains(name)) {
                 String rosterName = String.join(", ", rosterNames);

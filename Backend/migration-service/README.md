@@ -8,7 +8,7 @@
 
 ```text
 작업 생성 → 파일 업로드(읽기·매핑 추천·검증 자동) → 매핑 수정 / 자동 정리 / 행 직접 수정
-→ 기준정보 확인 → 미리보기(dryRun) → 적재(기준정보 → 조직 → 직원) → 대사 → 필요하면 묶음 단위 되돌리기
+→ 기준정보 확인 → 미리보기(dryRun) → 적재(기준정보 → 조직 → 직원 → 직급별 기본급 → 지난 급여명세서) → 대사 → 필요하면 묶음 단위 되돌리기
 ```
 
 ## 단독 실행
@@ -30,6 +30,7 @@ MIGRATION_DB_PASSWORD=localpw \
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5433/nexa_migration` | |
 | `MIGRATION_DB_PASSWORD` | (없음) | |
 | `HR_SERVICE_URL` | `http://localhost:8081` | user-service 이관용 내부 API 주소 |
+| `PAY_SERVICE_URL` | `http://localhost:8085` | payroll-service 이관용 내부 API 주소 |
 | `JWT_JWKS_URI` | `http://localhost:8081/.well-known/jwks.json` | 토큰 검증용 user-service 공개키 주소. 이관 API는 관리자(ADMIN) 토큰만 받음 |
 | `MIGRATION_PERMIT_URLS` | `/actuator/health,/error` | 토큰 서버 없이 로컬 평가할 때만 `,/api/v1/admin/migrations/**`를 더해 연다. 배포에서는 쓰지 말 것 |
 | `GMS_KEY` | (없음) | 매핑 추천 LLM 키. 없으면 동의어 추천만 씀. 저장소·설정 파일에 넣지 말 것 |
@@ -42,8 +43,10 @@ MIGRATION_DB_PASSWORD=localpw \
 ./gradlew test   # Docker 필요 (Testcontainers로 Postgres 17을 띄움)
 ```
 
-적재 테스트는 `FakeHrServer`(실제 HTTP 가짜 서버)로 확인한다. user-service의 이관용 내부 API(`/internal/v1/hr/migration`)와는
-시연 파일로 로컬에서 끝까지 확인했다 (`tools/datagen/README.md` '시연 파일').
+시연·리허설 순서와 숫자는 [`tools/datagen/demo/README.md`](tools/datagen/demo/README.md)에 있다.
+
+적재 테스트는 `FakeHrServer`(실제 HTTP 가짜 서버, 인사·급여 이관 API를 함께 흉내)로 확인한다. user-service(`/internal/v1/hr/migration`)·
+payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 파일로 로컬에서 끝까지 확인했다 (`tools/datagen/demo/README.md`).
 
 사원의 부서 값은 같은 작업 조직 파일의 부서코드로 바꿔 보낸다. user-service는 부서를 코드로 먼저 찾고 이름은 하나뿐일 때만 쓰므로,
 같은 이름의 기존 부서가 있어도 새로 넣은 부서로 들어간다.
@@ -51,9 +54,20 @@ MIGRATION_DB_PASSWORD=localpw \
 직위·직급·직책·직군>직종>직무는 회사마다 체계가 달라서, 사원 파일에 나온 값을 모아 기준정보 묶음(`HR_CODE`, 사원 파일 이름으로)을
 사원보다 먼저 넣는다. user-service는 없는 값만 만들고 있는 값은 그대로 둔다 (서열도 바꾸지 않음).
 - 직위 서열: 사원·주임·대리·과장·차장·부장·이사·상무·전무·부사장·사장·대표이사 순으로 매기고, 모르는 직위는 그 뒤에 나온 순서대로
-- 직급: `G3 2호봉`·`G3-2`는 이름 G3 + 호봉 2로 나눠 보낸다. 호봉 없이 `G3`라고만 적었는데 대상(또는 같은 파일)에 G3가 호봉별로 여러 개면
-  사원 적재 때 하나로 못 고르므로 적재를 막는다 (`LOAD_009`, `GET /{id}/references`에서 `AMBIGUOUS`)
+- 직급: NEXA 직급은 호봉이 꼭 있어 항상 이름 + 호봉으로 보낸다 (`GradeResolver`)
+  - `G3 2호봉`·`G3-2`는 이름 G3 + 호봉 2. 호봉 열이 따로 있으면 합친다 (`2급` + 27 → `2급 27호봉`)
+  - 직급 열이 없고 직위가 있으면 직위를 직급으로 쓴다 (`GRADE_FROM_POSITION`, 필수 열 누락으로 막지 않음)
+  - 호봉을 모르면 그 직급의 알려진 호봉(대상 + 같은 파일)이 없을 때 1호봉, 하나면 그 호봉 (`GRADE_STEP_DEFAULTED`).
+    여럿이면 하나로 못 고르므로 적재를 막는다 (`LOAD_009`, `GET /{id}/references`에서 `AMBIGUOUS`)
 - 되돌리기는 사원 → 조직 → 기준정보 순. 사원 파일 하나에서 묶음이 둘(기준정보·사원) 나오고 대사도 묶음마다 한 줄
+
+지난 급여(`PAY_RESULT_HISTORY`, 급여대장 한 행 = 한 사람의 한 달)는 사원 다음에 payroll로 넣는다.
+- 사번을 user-service에서 찾아(`employees/lookup`) 사원 ID와 명세서용 이름·부서명·직위명·입사일을 붙인다. 귀속월은 귀속월 열, 없으면 시트·파일 이름(2026-11)
+- 금액 필드는 payroll 급여 항목 코드와 1:1 (기본급 → `BASE_PAY` …). 매핑되지 않은 지급·공제 열은 지급계·공제계와의 차이로 기타수당·기타공제가 되어 항목 합 = 합계
+- 그 앞에 직급별 기본급 묶음(`PAY_PROFILE`, 급여 파일 이름으로): 가장 최근 달 그 직급 사람들 기본급의 최빈값. payroll은 없는 직급만 만든다
+- 지난 명세서는 계산하지 않고 급여대장 값 그대로 저장한다. 근태 시간은 연장근로시간만 옮기고 나머지는 0
+- 적재하는 급여 파일에서 직원명부에 없는 사번은 적재 불가 (참고 자료로 올리면 경고)
+- 되돌리기는 급여명세서 → 직급별 기본급 → 사원 순
 
 ## API (`/api/v1/admin/migrations`)
 
@@ -110,7 +124,7 @@ MIGRATION_DB_PASSWORD=localpw \
     휴일 8시간 초과분을 대부분 1.5배로 계산했으면 시트 단위 한 건. 상시 5인 미만 사업장은 적용 제외라 경고로만 둠
   - 최저임금: 지급계 왼쪽 지급 항목 중 가산수당을 뺀 합이 귀속연도 최저시급 × 209시간보다 적은 행 `BELOW_MINIMUM_WAGE`.
     30% 넘게 걸리면 단시간 근로자·월 중 입사자 자료로 보고 한 건으로 묶음. 귀속연도를 모르면 하지 않음
-- 직원명부 대조: 직원명부가 아닌 파일의 사번이 같은 작업의 직원명부에 있는지 `EMP_NOT_IN_ROSTER`, 이름이 같은지 `EMP_NAME_MISMATCH`,
+- 직원명부 대조: 직원명부가 아닌 파일의 사번이 같은 작업의 직원명부에 있는지 `EMP_NOT_IN_ROSTER`(적재하는 파일이면 적재 불가), 이름이 같은지 `EMP_NAME_MISMATCH`,
   사번 빈 칸 `EMP_KEY_MISSING`(이름으로 찾은 사번 제안). 숫자 셀이라 앞자리 0이 빠진 사번은 명부 자리수로 채워 대조하고 `EMPNO_ZERO_PADDED`
 - 직원명부 날짜 대조 (경고): 다른 파일의 입사일 ≠ 명부 입사일 `ROSTER_HIRE_DATE_MISMATCH`, 4대보험 취득일 ≠ 입사일 `INSURANCE_ACQ_DATE_MISMATCH`(보험별 열은 한 건으로),
   상실일 ≠ 퇴사일 다음 날·퇴사자인데 상실일 없음 `INSURANCE_LOSS_DATE_MISMATCH`. 명부에 사번이 중복이거나 퇴사일 < 입사일(명부 오류)이면 그 날짜는 쓰지 않고,
@@ -121,6 +135,8 @@ MIGRATION_DB_PASSWORD=localpw \
   가족수 대조는 이름에 연월이 없는 파일(부양가족 집계) 쪽에만 내고, 급여 시트를 나중에 올리면 그 파일을 다시 검증
 - 급여 행 (경고): 실지급액 음수 `NEGATIVE_NET_PAY`, 귀속월 열이 있는 급여(여러 달이 세로로 쌓인 파일)에서 사람마다 빠진 달 `PAY_MONTH_GAP`,
   귀속월(행의 귀속월 열, 없으면 시트·파일 이름)이 직원명부 재직 기간(입사 달 ~ 퇴사 달) 밖인데 금액이 있는 행 `PAID_OUTSIDE_EMPLOYMENT`
+- 직급별 기본급 (경고, 지난 급여 파일): 가장 최근 달에서 직원명부 직급이 같은데 기본급이 그 직급의 최빈값과 다른 행 `PAY_GRADE_BASE_VARIES`.
+  적재하면 직급별 기본급은 최빈값으로 만들어진다. 30% 넘게 다르면(연봉제) 한 건으로 묶음
 - 연봉이력 (경고): 사람·연도별 행(연도 + 연봉 열) 또는 연도별 열(`SAL_2026`, `연봉(2026)`)을 읽어
   - 인상률을 비율(0.035)이 아니라 %(3.5)로 적은 칸 `RAISE_RATE_AS_PERCENT` (같은 열 값의 80% 이상이 1 미만일 때만)
   - 급여 시트 연도의 월 기본급(없으면 연봉 ÷ 12) ≠ 가장 늦은 달 급여 시트 기본급 `SALARY_PAYROLL_MISMATCH` (100원·1,000원 허용)
@@ -176,7 +192,7 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다. 나머지 �
 | `SELF_PARENT` | 적재 불가 | 부서의 상위부서가 자기 자신 |
 | `PARENT_NOT_IN_FILE` | 확인 필요 | 상위부서 코드가 조직 파일에 없음 |
 | **직원명부 대조** | | |
-| `EMP_NOT_IN_ROSTER` | 확인 필요 | 사번이 직원명부에 없음 |
+| `EMP_NOT_IN_ROSTER` | 확인 필요 · 적재 불가 | 사번이 직원명부에 없음 (적재하는 파일이면 적재 불가) |
 | `EMP_NAME_MISMATCH` | 확인 필요 | 사번은 있는데 이름이 다름 |
 | `EMP_KEY_MISSING` | 확인 필요 | 사번 빈 칸 (이름으로 찾은 사번 제안) |
 | `EMPNO_ZERO_PADDED` | 확인 필요 | 앞자리 0이 빠진 사번을 명부 자리 수로 채워 대조함 |
@@ -184,6 +200,9 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다. 나머지 �
 | `INSURANCE_ACQ_DATE_MISMATCH` | 확인 필요 | 4대보험 취득일 ≠ 입사일 |
 | `INSURANCE_LOSS_DATE_MISMATCH` | 확인 필요 | 4대보험 상실일 ≠ 퇴사일 다음 날, 또는 퇴사자인데 상실일 없음 |
 | `PAID_OUTSIDE_EMPLOYMENT` | 확인 필요 | 재직 기간 밖 달에 급여가 있음 |
+| `GRADE_FROM_POSITION` | 확인 필요 | 직급 열이 없어 직위를 직급으로 씀 (파일 단위) |
+| `GRADE_STEP_DEFAULTED` | 확인 필요 | 호봉이 없는 직급이 있음. NEXA에 없으면 1호봉, 하나뿐이면 그 호봉으로 넣음 (파일 단위) |
+| `PAY_GRADE_BASE_VARIES` | 확인 필요 | 같은 직급인데 기본급이 그 직급의 최빈값과 다름 (직급별 기본급은 최빈값으로 만들어짐) |
 | `FAMILY_COUNT_MISMATCH` | 확인 필요 | 부양가족 수가 급여의 공제가족수와 다름 |
 | `SALARY_PAYROLL_MISMATCH` | 확인 필요 | 연봉이력의 월 기본급 ≠ 급여 기본급 |
 | `SALARY_HISTORY_MISMATCH` | 확인 필요 | 다른 파일의 연도별 연봉 ≠ 연봉이력 |
@@ -212,13 +231,19 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다. 나머지 �
 | `HEAD_VACANT` | 확인 필요 | 부서장이 비어 있고 직책으로도 정할 수 없음 (공석이면 결재선 자동 결정 409) |
 | `HEAD_COLUMN_MISSING` | 확인 필요 | 조직 파일에 부서장 열이 없음 (파일 단위) |
 
-## 대상 서비스 내부 API (user-service가 구현해야 함, 합의 필요)
+## 대상 서비스 내부 API
+
+user-service(`/internal/v1/hr/migration`)와 payroll-service(`/internal/v1/pay/migration`)가 같은 모양으로 연다. 토큰 없음, gateway 미노출.
 
 ```text
-POST   /internal/v1/hr/migration/{orgs|employees}/upsert?batchId=   {"rows":[{"rowNo":2,"data":{...}}]}
-       → ApiResult{data:{created, updated}}
-DELETE /internal/v1/hr/migration/batches/{batchId}
-GET    /internal/v1/hr/migration/batches/{batchId}/summary           → ApiResult{data:{count}}
+POST   {prefix}/{path}/upsert?batchId=   {"rows":[{"rowNo":2,"data":{...}}]} → ApiResult{data:{created, updated}}
+DELETE {prefix}/batches/{batchId}
+GET    {prefix}/batches/{batchId}/summary                              → ApiResult{data:{count}}
+
+인사 path: references(기준정보) · orgs · employees
+          GET  /internal/v1/hr/migration/references                → 지금 있는 직위·직급·직책·직무
+          POST /internal/v1/hr/migration/employees/lookup {empNos} → 사번 → 사원 ID·명세서용 사원 정보
+급여 path: grades(직급별 기본급) · payslips(지난 급여명세서)
 ```
 
 ## 아직 안 된 것
@@ -227,5 +252,5 @@ GET    /internal/v1/hr/migration/batches/{batchId}/summary           → ApiResu
 - 임시 테이블(`staging_row`) 민감정보 암호화
 - 업로드·적재 비동기 처리 (지금은 동기)
 - 대상 서비스 코드 목록과 대조하는 코드 매핑, 엑셀 양식 다운로드, 전환 완료
-- 급여·연차 등(`PAY_*`, `LEAVE_BALANCE`) 필드 정의: 대상 서비스와 합의 전이라 없음 (지금은 읽기·수식 검사·직원명부 대조만)
+- 연차·급여 설정 등(`LEAVE_BALANCE`, `PAY_YTD_BALANCE`) 필드 정의: 대상 서비스와 합의 전이라 없음 (지금은 읽기·수식 검사·직원명부 대조만)
 - 수식 규칙의 설정 시트 참조(`설정!$B$9`)를 값·라벨로 풀어 보여 주기 (지금 규칙 요약은 '설정 시트 B9 값'으로만 적음), ROUND·VLOOKUP이 섞인 수식 검산, 국민연금 상·하한, 파일 사이 대조(4대보험 보수월액 ↔ 급여)

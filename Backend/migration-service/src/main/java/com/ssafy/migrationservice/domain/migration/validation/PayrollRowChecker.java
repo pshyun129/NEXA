@@ -53,7 +53,7 @@ public final class PayrollRowChecker {
     }
 
     /** 행의 귀속월 열 → 없으면 파일의 연월. 모르면 null */
-    static YearMonth payMonth(MigrationFile file, ParsedTable.Row row) {
+    public static YearMonth payMonth(MigrationFile file, ParsedTable.Row row) {
         String col = payMonthColumn(file);
         YearMonth ym = col == null ? null : parse(row.values().get(col));
         if (ym == null) {
