@@ -6,6 +6,7 @@ import com.ssafy.payrollservice.global.exception.ErrorCode;
 import com.ssafy.nexa.security.BearerTokenRelayInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -26,8 +27,9 @@ public class AttendanceClient {
 
     @Autowired
     public AttendanceClient(@Value("${payroll.clients.attendance.base-url}") String baseUrl,
-                            BearerTokenRelayInterceptor bearerTokenRelay) {
-        this(RestClient.builder().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
+                            BearerTokenRelayInterceptor bearerTokenRelay,
+                            @LoadBalanced RestClient.Builder loadBalancedBuilder) {
+        this(loadBalancedBuilder.clone().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
     }
 
     // 요청한 관리자의 access 토큰을 근태 서비스로 넘긴다 (근태 서비스가 다시 검증).

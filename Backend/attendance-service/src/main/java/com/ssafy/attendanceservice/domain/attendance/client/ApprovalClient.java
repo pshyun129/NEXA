@@ -6,6 +6,7 @@ import com.ssafy.attendanceservice.global.exception.ErrorCode;
 import com.ssafy.nexa.security.BearerTokenRelayInterceptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -28,8 +29,9 @@ public class ApprovalClient {
 
     @Autowired
     public ApprovalClient(@Value("${attendance.clients.approval.base-url}") String baseUrl,
-                          BearerTokenRelayInterceptor bearerTokenRelay) {
-        this(RestClient.builder().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
+                          BearerTokenRelayInterceptor bearerTokenRelay,
+                          @LoadBalanced RestClient.Builder loadBalancedBuilder) {
+        this(loadBalancedBuilder.clone().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
     }
 
     // 신청한 사원의 access 토큰을 결재 서비스로 넘긴다 (결재 서비스가 다시 검증).

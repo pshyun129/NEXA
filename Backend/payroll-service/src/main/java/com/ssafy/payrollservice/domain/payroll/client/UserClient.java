@@ -6,6 +6,7 @@ import com.ssafy.payrollservice.global.exception.BusinessException;
 import com.ssafy.payrollservice.global.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -26,8 +27,9 @@ public class UserClient {
 
     @Autowired
     public UserClient(@Value("${payroll.clients.user.base-url}") String baseUrl,
-                      BearerTokenRelayInterceptor bearerTokenRelay) {
-        this(RestClient.builder().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
+                      BearerTokenRelayInterceptor bearerTokenRelay,
+                      @LoadBalanced RestClient.Builder loadBalancedBuilder) {
+        this(loadBalancedBuilder.clone().requestFactory(timeoutRequestFactory()), baseUrl, bearerTokenRelay);
     }
 
     // 요청한 사원(명세서 생성은 관리자)의 access 토큰을 user-service로 넘긴다 (user-service가 다시 검증).

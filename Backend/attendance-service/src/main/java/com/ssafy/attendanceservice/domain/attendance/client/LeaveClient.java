@@ -5,6 +5,7 @@ import com.ssafy.attendanceservice.global.exception.BusinessException;
 import com.ssafy.attendanceservice.global.exception.ErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -23,8 +24,9 @@ public class LeaveClient {
     private final RestClient restClient;
 
     @Autowired
-    public LeaveClient(@Value("${attendance.clients.leave.base-url}") String baseUrl) {
-        this(RestClient.builder().requestFactory(timeoutRequestFactory()), baseUrl);
+    public LeaveClient(@Value("${attendance.clients.leave.base-url}") String baseUrl,
+                       @LoadBalanced RestClient.Builder loadBalancedBuilder) {
+        this(loadBalancedBuilder.clone().requestFactory(timeoutRequestFactory()), baseUrl);
     }
 
     // 테스트에서 요청 팩토리를 바꿔 끼울 수 있게 빌더를 받는다
