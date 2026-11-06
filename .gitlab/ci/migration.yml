@@ -10,7 +10,14 @@ build-migration:
 
   script:
     - cd Backend/migration-service
-    - bash gradlew --no-daemon test bootJar
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "push" ] && [ "$CI_COMMIT_BRANCH" = "develop" ]; then
+        echo "develop: 테스트 생략, JAR 생성"
+        bash gradlew --no-daemon bootJar -x test
+      else
+        echo "MR 또는 수동 실행: 테스트 및 JAR 생성"
+        bash gradlew --no-daemon test bootJar
+      fi
 
   artifacts:
     when: always
