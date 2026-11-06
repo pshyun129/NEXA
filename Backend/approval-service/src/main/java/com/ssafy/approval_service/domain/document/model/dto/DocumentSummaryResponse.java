@@ -21,6 +21,7 @@ public record DocumentSummaryResponse(
         OffsetDateTime completedAt,     // 완료일시
         SourceType sourceType,          // 출처 서비스 (DIRECT 면 직접 기안)
         Long sourceId,                  // 출처 서비스의 원본 신청 ID (DIRECT 면 null)
+        String sourceLabel,             // 출처 표시 이름 (예: 워크플로우 이름). 없으면 null
         List<Long> currentApproverIds,  // 현재 차례인 사원 ID. 진행 중이 아니면 []
         Integer currentStep,            // 현재 차례가 결재자 중 몇 번째인지 (1부터). 진행 중이 아니면 null
         int totalSteps,                 // 결재자(결재·합의) 수
@@ -38,6 +39,7 @@ public record DocumentSummaryResponse(
                 document.getCompletedAt(),
                 document.getSourceType(),
                 document.getSourceId(),
+                document.getSourceLabel(),
                 progress.currentApproverIds(),
                 progress.currentStep(),
                 progress.totalSteps(),

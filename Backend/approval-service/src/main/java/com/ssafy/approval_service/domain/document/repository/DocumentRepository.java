@@ -1,18 +1,26 @@
 package com.ssafy.approval_service.domain.document.repository;
 
+import com.ssafy.approval_service.domain.approval.model.entity.enums.LineAction;
+import com.ssafy.approval_service.domain.approval.model.entity.enums.LineRole;
 import com.ssafy.approval_service.domain.document.model.entity.Document;
 import com.ssafy.approval_service.domain.document.model.entity.enums.DocumentStatus;
 import com.ssafy.approval_service.domain.document.model.entity.enums.FormType;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 목록 조회(find*)는 Pageable 을 받는다. 정렬은 각 쿼리의 ORDER BY 로 고정이고(문서함마다 의미가 다름),
+ * 페이지가 흔들리지 않게 마지막 정렬 키는 docId 다. Pageable.unpaged() 면 전체
+ */
 public interface DocumentRepository extends JpaRepository<Document, Long> {
 
     /**
@@ -27,13 +35,14 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
               AND (:admin = true
                    OR d.drafterId = :employeeId
                    OR EXISTS (SELECT 1 FROM ApprovalLine l WHERE l.document = d AND l.empId = :employeeId))
-            ORDER BY d.draftedAt DESC
+            ORDER BY d.draftedAt DESC, d.docId DESC
             """)
     List<Document> findReadableByStatusAndFormType(@Param("status") DocumentStatus status,
                                                    @Param("formType") FormType formType,
                                                    @Param("drafterId") Long drafterId,
                                                    @Param("employeeId") Long employeeId,
-                                                   @Param("admin") boolean admin);
+                                                   @Param("admin") boolean admin,
+                                                   Pageable pageable);
 
     /** findReadableByStatusAndFormType 과 같은 조건의 건수 */
     @Query("""
@@ -68,7 +77,8 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
             """)
     List<Document> findPendingFor(@Param("status") DocumentStatus status,
                                   @Param("formType") FormType formType,
-                                  @Param("employeeId") Long employeeId);
+                                  @Param("employeeId") Long employeeId,
+                                  Pageable pageable);
 
     /** findPendingFor 와 같은 조건의 건수 */
     @Query("""
@@ -82,6 +92,70 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     long countPendingFor(@Param("status") DocumentStatus status,
                          @Param("formType") FormType formType,
                          @Param("employeeId") Long employeeId);
+
+    /**
+     * 참조함: 요청자의 결재선 줄 중 역할(roles)과 처리 상태(actions)가 맞는 줄이 있는 문서. 최신 문서부터.
+     * 문서 상태는 따지지 않는다 (status 를 주면 교집합)
+     */
+    @Query("""
+            SELECT d FROM Document d
+            WHERE (:status IS NULL OR d.status = :status)
+              AND (:formType IS NULL OR d.formType = :formType)
+              AND EXISTS (""" + MY_LINE + """
+            )
+            ORDER BY d.draftedAt DESC, d.docId DESC
+            """)
+    List<Document> findByMyLine(@Param("status") DocumentStatus status,
+                                @Param("formType") FormType formType,
+                                @Param("employeeId") Long employeeId,
+                                @Param("roles") Collection<LineRole> roles,
+                                @Param("actions") Collection<LineAction> actions,
+                                Pageable pageable);
+
+    /**
+     * 처리함: 요청자의 줄 중 역할(roles)·처리 상태(actions)가 맞는 줄이 있는 문서. 요청자가 처리한 시각이 최근인 문서부터.
+     * 정렬 기준(actedAt)이 결재선에 있어서 결재선에서 출발한다. 한 문서에 내 줄이 여럿이면 GROUP BY 로 한 번만, 가장 최근 처리 시각으로 정렬한다.
+     * 건수는 countByMyLine 과 조건이 같다
+     */
+    @Query("""
+            SELECT d FROM ApprovalLine l JOIN l.document d
+            WHERE l.empId = :employeeId
+              AND l.role IN :roles
+              AND l.action IN :actions
+              AND (:status IS NULL OR d.status = :status)
+              AND (:formType IS NULL OR d.formType = :formType)
+            GROUP BY d
+            ORDER BY MAX(l.actedAt) DESC, d.docId DESC
+            """)
+    List<Document> findByMyLineOrderByActedAt(@Param("status") DocumentStatus status,
+                                              @Param("formType") FormType formType,
+                                              @Param("employeeId") Long employeeId,
+                                              @Param("roles") Collection<LineRole> roles,
+                                              @Param("actions") Collection<LineAction> actions,
+                                Pageable pageable);
+
+    /** findByMyLine 과 같은 조건의 건수 */
+    @Query("""
+            SELECT COUNT(d) FROM Document d
+            WHERE (:status IS NULL OR d.status = :status)
+              AND (:formType IS NULL OR d.formType = :formType)
+              AND EXISTS (""" + MY_LINE + """
+            )
+            """)
+    long countByMyLine(@Param("status") DocumentStatus status,
+                       @Param("formType") FormType formType,
+                       @Param("employeeId") Long employeeId,
+                       @Param("roles") Collection<LineRole> roles,
+                       @Param("actions") Collection<LineAction> actions);
+
+    /** 문서 d 에 요청자(:employeeId)의 줄 중 역할·처리 상태가 맞는 줄이 있는지. findByMyLine / countByMyLine 이 같이 쓴다 */
+    String MY_LINE = """
+            SELECT 1 FROM ApprovalLine l
+            WHERE l.document = d
+              AND l.empId = :employeeId
+              AND l.role IN :roles
+              AND l.action IN :actions
+            """;
 
     /** 문서 d 에서 요청자(:employeeId)의 줄이 현재 차례인지. findPendingFor / countPendingFor 가 같이 쓴다 */
     String MY_TURN_LINE = """

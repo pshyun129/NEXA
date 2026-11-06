@@ -27,6 +27,7 @@ public record DocumentInfoResponse(
         OffsetDateTime completedAt,                 // 완료일시
         SourceType sourceType,                      // 출처 서비스
         Long sourceId,                              // 출처 서비스의 원본 신청 ID
+        String sourceLabel,                         // 출처 표시 이름 (예: 워크플로우 이름). 없으면 null
         UUID requestKey,                            // 생성 요청 키
         ApprovalLevel approvalLevel,                // 규정상 전결 단계 (이 기능 전에 만든 문서는 null)
         ApprovalAttributes attributes,              // 전결 판단에 쓴 신청 값 (없으면 null)
@@ -47,6 +48,7 @@ public record DocumentInfoResponse(
                 document.getCompletedAt(),
                 document.getSourceType(),
                 document.getSourceId(),
+                document.getSourceLabel(),
                 document.getRequestKey(),
                 document.getApprovalLevel(),
                 document.getAttributes(),

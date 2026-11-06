@@ -5,8 +5,14 @@ import com.ssafy.user_service.domain.user.dto.EmployeeSummary;
 import com.ssafy.user_service.domain.user.dto.EmployeeTerminateRequest;
 import com.ssafy.user_service.domain.user.entity.Employee;
 
+import org.springframework.data.domain.Page;
+
 import java.util.Collection;
+import org.springframework.data.domain.Page;
+
 import java.util.List;
+import org.springframework.data.domain.Page;
+
 import java.util.Optional;
 
 public interface EmployeeService {
@@ -23,11 +29,13 @@ public interface EmployeeService {
     /** 부서명/직급명을 포함한 요약. 참조가 깨져 있으면 BusinessException */
     EmployeeSummary summarize(Employee employee);
 
-    List<Employee> findAll();
+    /**
+     * 사원 목록 (사원 ID 순). deptId 가 있으면 그 부서원만(없는 부서면 BusinessException).
+     * page·size 가 둘 다 null 이면 전체, 아니면 page(0부터, 기본 0)·size(1~100, 기본 20) 로 나눈다
+     */
+    Page<Employee> findList(Long deptId, Integer page, Integer size);
 
     /** 여러 사원을 한 번에 조회. 없는 ID는 결과에서 빠진다. 최대 개수를 넘으면 BusinessException */
     List<Employee> findAllByIds(Collection<Long> employeeIds);
 
-    /** 부서 기준 사원 목록. 존재하지 않는 부서면 BusinessException */
-    List<Employee> findByDeptId(Long deptId);
 }

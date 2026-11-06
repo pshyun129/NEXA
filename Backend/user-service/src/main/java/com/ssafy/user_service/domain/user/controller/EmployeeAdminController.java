@@ -12,6 +12,7 @@ import com.ssafy.user_service.global.exception.ErrorCode;
 import com.ssafy.user_service.global.security.SecurityConstants;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -35,24 +36,29 @@ public class EmployeeAdminController {
     }
 
     /**
-     * 사원 목록. ids가 있으면 그 사원들만(없는 ID는 빠짐), deptId가 있으면 해당 부서원만, 둘 다 없으면 전체.
+     * 사원 목록. ids가 있으면 그 사원들만(없는 ID는 빠짐), deptId가 있으면 해당 부서원만, 둘 다 없으면 전체. 사원 ID 순.
+     * page(0부터)·size(1~100, 기본 20)로 나눌 수 있다. 둘 다 없으면 전체 (ids 와는 함께 쓸 수 없다).
      * ids는 결재선 검증·이름 표시처럼 여러 사원을 한 번에 확인할 때 쓴다 (approval-service, 프런트엔드)
      */
     @GetMapping
     public ResponseEntity<ApiResult<EmployeeListResponse>> getList(@RequestParam(required = false) Long deptId,
-                                                                   @RequestParam(required = false) List<Long> ids) {
-        if (ids != null && deptId != null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "ids와 deptId는 함께 쓸 수 없습니다.");
-        }
-        List<Employee> employees;
+                                                                   @RequestParam(required = false) List<Long> ids,
+                                                                   @RequestParam(required = false) Integer page,
+                                                                   @RequestParam(required = false) Integer size) {
         if (ids != null) {
-            employees = employeeService.findAllByIds(ids);
-        } else if (deptId != null) {
-            employees = employeeService.findByDeptId(deptId);
-        } else {
-            employees = employeeService.findAll();
+            // ids 는 화면 목록이 아니라 여러 사원 일괄 확인용 (개수 제한 있음) 이라 다른 조건·페이지와 섞지 않는다
+            if (deptId != null || page != null || size != null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "ids는 deptId·page·size와 함께 쓸 수 없습니다.");
+            }
+            return ResponseEntity.ok(ApiResult.success(
+                    EmployeeListResponse.all(employeeInfoAssembler.toResponses(employeeService.findAllByIds(ids)))));
         }
-        return ResponseEntity.ok(ApiResult.success(new EmployeeListResponse(employeeInfoAssembler.toResponses(employees))));
+        Page<Employee> result = employeeService.findList(deptId, page, size);
+        List<EmployeeInfoResponse> employees = employeeInfoAssembler.toResponses(result.getContent());
+        EmployeeListResponse response = result.getPageable().isPaged()
+                ? new EmployeeListResponse(employees, result.getTotalElements(), result.getNumber(), result.getSize())
+                : EmployeeListResponse.all(employees);
+        return ResponseEntity.ok(ApiResult.success(response));
     }
 
     /**

@@ -15,7 +15,9 @@ import java.util.UUID;
 public interface DocumentService {
 
     /** 결재상태/문서양식/문서함으로 목록 조회. 모두 null 허용. 요청자가 조회할 수 있는 문서만 */
-    DocumentListResponse findByStatusAndType(String approvalStatus, String formType, String box, AuthUser requester);
+    /** page·size 가 둘 다 null 이면 전체, 아니면 page(0부터)·size(1~100) 로 나눈다 */
+    DocumentListResponse findByStatusAndType(String approvalStatus, String formType, String box,
+                                             Integer page, Integer size, AuthUser requester);
 
     /** findByStatusAndType 과 같은 조건의 건수 */
     DocumentCountResponse countByStatusAndType(String approvalStatus, String formType, String box, AuthUser requester);

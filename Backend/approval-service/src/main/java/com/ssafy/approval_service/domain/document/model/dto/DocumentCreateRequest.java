@@ -19,6 +19,7 @@ import java.util.UUID;
  * 결재선은 받지 않는다. 위임전결 규정과 조직도로 서버가 만든다 (예전 요청의 approvalLines 는 무시된다).
  * 참조자·열람자, 추가 결재자는 상신 후 결재선 API 로 넣는다.
  * attributes 는 전결 단계를 정하는 신청 값이다 (휴가 일수, 해외 출장 여부, 금액 등).
+ * sourceLabel 은 출처를 화면에 보여 줄 이름이다 (예: 업무 자동화 워크플로우 이름). 선택이고, 직접 기안이면 보낼 수 없다.
  */
 public record DocumentCreateRequest(
         @NotBlank @Size(max = 255) String title,            // 제목
@@ -26,11 +27,14 @@ public record DocumentCreateRequest(
         SourceType sourceType,                              // 출처 서비스 (생략 시 DIRECT)
         Long sourceId,                                      // 출처 서비스의 원본 신청 ID
         UUID requestKey,                                    // 생성 요청 키 (출처가 있으면 필수)
-        @Valid ApprovalAttributes attributes                // 전결 판단용 신청 값 (선택)
+        @Valid ApprovalAttributes attributes,               // 전결 판단용 신청 값 (선택)
+        @Size(max = 100) String sourceLabel                 // 출처 표시 이름 (선택, 예: 워크플로우 이름). 뒤에 추가해 기존 생성자 호출 순서를 유지
 ) {
     public DocumentCreateRequest {
         if (sourceType == null) {
             sourceType = SourceType.DIRECT;
         }
+        // 공백만 있으면 보내지 않은 것으로 본다
+        sourceLabel = sourceLabel == null || sourceLabel.isBlank() ? null : sourceLabel.strip();
     }
 }

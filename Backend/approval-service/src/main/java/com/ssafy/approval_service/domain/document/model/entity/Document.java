@@ -67,6 +67,9 @@ public class Document {
     @Column(name = "source_id")
     private Long sourceId;                  // 출처 서비스의 원본 신청 ID (DIRECT 면 null)
 
+    @Column(name = "source_label", length = 100)
+    private String sourceLabel;             // 출처 표시 이름 (상신 시점 스냅샷, 예: 워크플로우 이름). DIRECT 면 null
+
     @Column(name = "request_key", unique = true)
     private UUID requestKey;                // 생성 요청 키. 같은 키로 다시 요청하면 이 문서를 돌려준다
 
@@ -80,13 +83,14 @@ public class Document {
 
     @Builder
     private Document(FormType formType, String title, Long drafterId,
-                     SourceType sourceType, Long sourceId, UUID requestKey,
+                     SourceType sourceType, Long sourceId, String sourceLabel, UUID requestKey,
                      ApprovalLevel approvalLevel, ApprovalAttributes attributes) {
         this.formType = formType;
         this.title = title;
         this.drafterId = drafterId;
         this.sourceType = sourceType == null ? SourceType.DIRECT : sourceType;
         this.sourceId = sourceId;
+        this.sourceLabel = sourceLabel;
         this.requestKey = requestKey;
         this.approvalLevel = approvalLevel;
         this.attributes = attributes == null || attributes.isEmpty() ? null : attributes;

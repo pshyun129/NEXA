@@ -19,6 +19,10 @@ import com.ssafy.user_service.global.exception.BusinessException;
 import com.ssafy.user_service.global.exception.ErrorCode;
 import com.ssafy.user_service.global.security.TokenStore;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +35,10 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class EmployeeServiceImplV1 implements EmployeeService {
+
+    private static final Sort LIST_SORT = Sort.by("empId");
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
 
     /** 일괄 조회 최대 개수. 결재선 인원보다 넉넉하게 두고, 전체 조회 우회는 막는다 */
     private static final int MAX_BULK_IDS = 100;
@@ -102,8 +110,29 @@ public class EmployeeServiceImplV1 implements EmployeeService {
     }
 
     @Override
-    public List<Employee> findAll() {
-        return employeeRepository.findAll();
+    public Page<Employee> findList(Long deptId, Integer page, Integer size) {
+        Pageable pageable = pageRequest(page, size);
+        if (deptId == null) {
+            return employeeRepository.findAll(pageable);
+        }
+        if (!departmentRepository.existsById(deptId)) throw new BusinessException(ErrorCode.DEPARTMENT_NOT_FOUND);
+        return employeeRepository.findByJobDeptId(deptId, pageable);
+    }
+
+    /** 사원 ID 순 고정 (페이지 경계가 흔들리지 않게). page·size 가 둘 다 없으면 전체 */
+    private static Pageable pageRequest(Integer page, Integer size) {
+        if (page == null && size == null) {
+            return Pageable.unpaged(LIST_SORT);
+        }
+        int p = page == null ? 0 : page;
+        int s = size == null ? DEFAULT_PAGE_SIZE : size;
+        if (p < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "page는 0 이상이어야 합니다: " + p);
+        }
+        if (s < 1 || s > MAX_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "size는 1~" + MAX_PAGE_SIZE + " 이어야 합니다: " + s);
+        }
+        return PageRequest.of(p, s, LIST_SORT);
     }
 
     @Override
@@ -117,11 +146,6 @@ public class EmployeeServiceImplV1 implements EmployeeService {
         return employeeRepository.findAllById(new HashSet<>(employeeIds));
     }
 
-    @Override
-    public List<Employee> findByDeptId(Long deptId) {
-        if (!departmentRepository.existsById(deptId)) throw new BusinessException(ErrorCode.DEPARTMENT_NOT_FOUND);
-        return employeeRepository.findByJobDeptId(deptId);
-    }
 
     @Override
     public EmployeeSummary summarize(Employee employee) {

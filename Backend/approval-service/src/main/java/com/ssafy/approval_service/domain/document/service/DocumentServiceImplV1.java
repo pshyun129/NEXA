@@ -3,6 +3,8 @@ package com.ssafy.approval_service.domain.document.service;
 import com.ssafy.approval_service.domain.approval.model.entity.ApprovalHistory;
 import com.ssafy.approval_service.domain.approval.model.entity.ApprovalLine;
 import com.ssafy.approval_service.domain.approval.model.entity.enums.HistoryAction;
+import com.ssafy.approval_service.domain.approval.model.entity.enums.LineAction;
+import com.ssafy.approval_service.domain.approval.model.entity.enums.LineRole;
 import com.ssafy.approval_service.domain.approval.repository.ApprovalHistoryRepository;
 import com.ssafy.approval_service.domain.approval.repository.ApprovalLineRepository;
 import com.ssafy.approval_service.domain.approval.policy.ApprovalAttributes;
@@ -27,11 +29,15 @@ import com.ssafy.approval_service.global.exception.BusinessException;
 import com.ssafy.approval_service.global.exception.ErrorCode;
 import com.ssafy.nexa.security.AuthUser;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -42,6 +48,15 @@ import java.util.stream.Collectors;
 public class DocumentServiceImplV1 implements DocumentService {
 
     private static final int FIRST_ROUND = 1;
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    // 참조함: 참조·열람 줄 (처리 상태 무관. 이 줄은 결재 처리 대상이 아니라 늘 PENDING 이다)
+    private static final Set<LineRole> REFERENCE_ROLES = EnumSet.of(LineRole.REFERENCE, LineRole.VIEWER);
+    private static final Set<LineAction> ANY_ACTION = EnumSet.allOf(LineAction.class);
+    // 처리함: 결재·합의 줄 중 처리가 끝난 줄. 전결로 생략된 줄도 포함한다 (내 결재 단계를 지나간 문서)
+    private static final Set<LineRole> APPROVER_ROLES = EnumSet.of(LineRole.APPROVER, LineRole.AGREEMENT);
+    private static final Set<LineAction> DONE_ACTIONS = EnumSet.of(LineAction.AGREE, LineAction.DISAGREE, LineAction.SKIPPED);
 
     private final DocumentRepository documentRepository;
     private final ApprovalLineRepository approvalLineRepository;
@@ -54,37 +69,85 @@ public class DocumentServiceImplV1 implements DocumentService {
 
     @Override
     public DocumentListResponse findByStatusAndType(String approvalStatus, String formType, String box,
-                                                    AuthUser requester) {
-        DocumentStatus status = parseEnum(DocumentStatus.class, approvalStatus, "approvalStatus");
-        FormType type = parseEnum(FormType.class, formType, "formType");
-        DocumentBox documentBox = parseEnum(DocumentBox.class, box, "box");
-        Long employeeId = requester.employeeId();
+                                                    Integer page, Integer size, AuthUser requester) {
+        ListFilter filter = listFilter(approvalStatus, formType, box, requester);
+        Pageable pageable = pageRequest(page, size);
 
-        List<Document> documents = documentBox == DocumentBox.PENDING
-                ? documentRepository.findPendingFor(status, type, employeeId)
-                : documentRepository.findReadableByStatusAndFormType(
-                        status, type, drafterFilter(documentBox, employeeId), employeeId, requester.isAdmin());
-        return DocumentListResponse.of(documents, linesByDocId(documents), employeeId);
+        List<Document> documents = find(filter, pageable);
+        // 페이지가 아니면 받은 목록이 전체라 건수 쿼리를 다시 하지 않는다
+        long totalCount = pageable.isPaged() ? count(filter) : documents.size();
+        return DocumentListResponse.of(documents, linesByDocId(documents), filter.employeeId(), totalCount, pageable);
     }
 
     @Override
     public DocumentCountResponse countByStatusAndType(String approvalStatus, String formType, String box,
                                                       AuthUser requester) {
-        DocumentStatus status = parseEnum(DocumentStatus.class, approvalStatus, "approvalStatus");
-        FormType type = parseEnum(FormType.class, formType, "formType");
-        DocumentBox documentBox = parseEnum(DocumentBox.class, box, "box");
-        Long employeeId = requester.employeeId();
-
-        long count = documentBox == DocumentBox.PENDING
-                ? documentRepository.countPendingFor(status, type, employeeId)
-                : documentRepository.countReadableByStatusAndFormType(
-                        status, type, drafterFilter(documentBox, employeeId), employeeId, requester.isAdmin());
-        return new DocumentCountResponse(count);
+        return new DocumentCountResponse(count(listFilter(approvalStatus, formType, box, requester)));
     }
 
-    /** 기안함이면 기안자를 요청자로 제한 */
-    private static Long drafterFilter(DocumentBox box, Long employeeId) {
-        return box == DocumentBox.DRAFTED ? employeeId : null;
+    /** 목록 조건. box 가 없으면 조회할 수 있는 문서 전체 */
+    private record ListFilter(DocumentStatus status, FormType type, DocumentBox box, Long employeeId, boolean admin) {
+    }
+
+    private ListFilter listFilter(String approvalStatus, String formType, String box, AuthUser requester) {
+        return new ListFilter(
+                parseEnum(DocumentStatus.class, approvalStatus, "approvalStatus"),
+                parseEnum(FormType.class, formType, "formType"),
+                parseEnum(DocumentBox.class, box, "box"),
+                requester.employeeId(), requester.isAdmin());
+    }
+
+    /** 문서함별 목록. 정렬은 쿼리마다 고정 (DocumentBox 주석 참고) */
+    private List<Document> find(ListFilter f, Pageable pageable) {
+        if (f.box() == null) {
+            return documentRepository.findReadableByStatusAndFormType(
+                    f.status(), f.type(), null, f.employeeId(), f.admin(), pageable);
+        }
+        return switch (f.box()) {
+            case DRAFTED -> documentRepository.findReadableByStatusAndFormType(
+                    f.status(), f.type(), f.employeeId(), f.employeeId(), f.admin(), pageable);
+            case PENDING -> documentRepository.findPendingFor(f.status(), f.type(), f.employeeId(), pageable);
+            case REFERENCE -> documentRepository.findByMyLine(
+                    f.status(), f.type(), f.employeeId(), REFERENCE_ROLES, ANY_ACTION, pageable);
+            case COMPLETED -> documentRepository.findByMyLineOrderByActedAt(
+                    f.status(), f.type(), f.employeeId(), APPROVER_ROLES, DONE_ACTIONS, pageable);
+        };
+    }
+
+    /** find 와 같은 조건의 건수 */
+    private long count(ListFilter f) {
+        if (f.box() == null) {
+            return documentRepository.countReadableByStatusAndFormType(
+                    f.status(), f.type(), null, f.employeeId(), f.admin());
+        }
+        return switch (f.box()) {
+            case DRAFTED -> documentRepository.countReadableByStatusAndFormType(
+                    f.status(), f.type(), f.employeeId(), f.employeeId(), f.admin());
+            case PENDING -> documentRepository.countPendingFor(f.status(), f.type(), f.employeeId());
+            case REFERENCE -> documentRepository.countByMyLine(
+                    f.status(), f.type(), f.employeeId(), REFERENCE_ROLES, ANY_ACTION);
+            case COMPLETED -> documentRepository.countByMyLine(
+                    f.status(), f.type(), f.employeeId(), APPROVER_ROLES, DONE_ACTIONS);
+        };
+    }
+
+    /**
+     * page·size 가 둘 다 없으면 전체(기존 동작 유지). 하나라도 있으면 페이지로 나눈다.
+     * page 는 0부터(기본 0), size 는 1~MAX_PAGE_SIZE(기본 DEFAULT_PAGE_SIZE)
+     */
+    private static Pageable pageRequest(Integer page, Integer size) {
+        if (page == null && size == null) {
+            return Pageable.unpaged();
+        }
+        int p = page == null ? 0 : page;
+        int s = size == null ? DEFAULT_PAGE_SIZE : size;
+        if (p < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "page 는 0 이상이어야 합니다: " + p);
+        }
+        if (s < 1 || s > MAX_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "size 는 1~" + MAX_PAGE_SIZE + " 이어야 합니다: " + s);
+        }
+        return PageRequest.of(p, s);
     }
 
     /** 목록 문서들의 결재선을 IN 조회 한 번으로 가져와 문서별로 묶는다 (문서마다 조회하지 않도록) */
@@ -106,6 +169,9 @@ public class DocumentServiceImplV1 implements DocumentService {
     public DocumentCreateResult create(DocumentCreateRequest request, Long drafterId) {
         // 출처 검증: 원본 신청 ID·요청 키 유무, 양식과 출처의 조합
         validateSource(request.formType(), request.sourceType(), request.sourceId(), request.requestKey());
+        if (request.sourceType() == SourceType.DIRECT && request.sourceLabel() != null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "직접 기안 문서는 sourceLabel을 보낼 수 없습니다.");
+        }
 
         // 같은 요청 키로 이미 만든 문서가 있으면 새로 만들지 않고 돌려준다 (재시도 대비)
         if (request.requestKey() != null) {
@@ -127,6 +193,7 @@ public class DocumentServiceImplV1 implements DocumentService {
                 .drafterId(drafterId)
                 .sourceType(request.sourceType())
                 .sourceId(request.sourceId())
+                .sourceLabel(request.sourceLabel())
                 .requestKey(request.requestKey())
                 .approvalLevel(level)
                 .attributes(request.attributes())

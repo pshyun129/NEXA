@@ -103,7 +103,7 @@ class DocumentCreateServiceTest {
     /** 출처가 있는 요청에는 요청 키를 채운다 (필수) */
     private static DocumentCreateRequest request(FormType formType, SourceType sourceType, Long sourceId) {
         UUID requestKey = sourceType == null || sourceType == SourceType.DIRECT ? null : UUID.randomUUID();
-        return new DocumentCreateRequest("테스트 문서", formType, sourceType, sourceId, requestKey, null);
+        return new DocumentCreateRequest("테스트 문서", formType, sourceType, sourceId, requestKey, null, null);
     }
 
     private static DocumentCreateRequest request(SourceType sourceType, Long sourceId) {
@@ -159,7 +159,7 @@ class DocumentCreateServiceTest {
     void 일반_기안은_업무_자동화에서_만들_수_있고_금액으로_전결_단계를_정한다() {
         when(documentRepository.save(any())).thenAnswer(DocumentCreateServiceTest::persist);
         var request = new DocumentCreateRequest("구매 품의", FormType.GENERAL, SourceType.AUTOMATION, 501L,
-                UUID.randomUUID(), new ApprovalAttributes(null, null, null, null, 5_000_000L));
+                UUID.randomUUID(), new ApprovalAttributes(null, null, null, null, 5_000_000L), null);
 
         service.create(request, 1L);
 
@@ -179,7 +179,7 @@ class DocumentCreateServiceTest {
     @Test
     void 업무_자동화인데_원본_ID나_요청_키가_없으면_400() {
         expectError(request(FormType.GENERAL, SourceType.AUTOMATION, null), ErrorCode.INVALID_DOCUMENT_SOURCE);
-        expectError(new DocumentCreateRequest("t", FormType.GENERAL, SourceType.AUTOMATION, 501L, null, null),
+        expectError(new DocumentCreateRequest("t", FormType.GENERAL, SourceType.AUTOMATION, 501L, null, null, null),
                 ErrorCode.REQUEST_KEY_REQUIRED);
     }
 
@@ -238,7 +238,7 @@ class DocumentCreateServiceTest {
 
     @Test
     void 출처가_있는데_요청_키가_없으면_400() {
-        var request = new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 42L, null, null);
+        var request = new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 42L, null, null, null);
         expectError(request, ErrorCode.REQUEST_KEY_REQUIRED);
     }
 
@@ -249,7 +249,7 @@ class DocumentCreateServiceTest {
         when(documentRepository.findByRequestKey(key)).thenReturn(Optional.of(existing));
 
         var result = service.create(
-                new DocumentCreateRequest("재시도", FormType.LEAVE, SourceType.LEAVE, 42L, key, null), 1L);
+                new DocumentCreateRequest("재시도", FormType.LEAVE, SourceType.LEAVE, 42L, key, null, null), 1L);
 
         assertThat(result.created()).isFalse();
         assertThat(result.response().documentId()).isEqualTo(12L);
@@ -266,12 +266,12 @@ class DocumentCreateServiceTest {
 
         // 원본 신청 ID가 다르다
         assertThatThrownBy(() -> service.create(
-                new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 99L, key, null), 1L))
+                new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 99L, key, null, null), 1L))
                 .isInstanceOf(BusinessException.class)
                 .matches(t -> ((BusinessException) t).getErrorCode() == ErrorCode.REQUEST_KEY_CONFLICT);
         // 기안자가 다르다
         assertThatThrownBy(() -> service.create(
-                new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 42L, key, null), 2L))
+                new DocumentCreateRequest("t", FormType.LEAVE, SourceType.LEAVE, 42L, key, null, null), 2L))
                 .matches(t -> ((BusinessException) t).getErrorCode() == ErrorCode.REQUEST_KEY_CONFLICT);
         verify(documentRepository, never()).save(any());
     }
@@ -279,7 +279,7 @@ class DocumentCreateServiceTest {
     // ===== 결재선 자동 결정 (위임전결 규정) =====
 
     private static DocumentCreateRequest leave(ApprovalAttributes attributes) {
-        return new DocumentCreateRequest("휴가", FormType.LEAVE, SourceType.LEAVE, 42L, UUID.randomUUID(), attributes);
+        return new DocumentCreateRequest("휴가", FormType.LEAVE, SourceType.LEAVE, 42L, UUID.randomUUID(), attributes, null);
     }
 
     @Test
