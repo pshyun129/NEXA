@@ -6,6 +6,8 @@ import com.ssafy.payrollservice.domain.payroll.calculator.EarningCalculator;
 import com.ssafy.payrollservice.domain.payroll.calculator.EarningResult;
 import com.ssafy.payrollservice.domain.payroll.client.AttendanceClient;
 import com.ssafy.payrollservice.domain.payroll.client.AttendanceSummary;
+import com.ssafy.payrollservice.domain.payroll.client.EmployeeInfo;
+import com.ssafy.payrollservice.domain.payroll.client.UserClient;
 import com.ssafy.payrollservice.domain.payroll.dto.PayslipGenerateRequest;
 import com.ssafy.payrollservice.domain.payroll.dto.PayslipGenerateResponse;
 import com.ssafy.payrollservice.domain.payroll.entity.PayGrade;
@@ -39,6 +41,7 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
     private final PayGradeRepository payGradeRepository;
     private final PayItemRepository payItemRepository;
     private final AttendanceClient attendanceClient;
+    private final UserClient userClient;
 
     @Override
     @Transactional
@@ -52,30 +55,36 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
             throw new BusinessException(ErrorCode.PAYSLIP_ALREADY_EXISTS);
         }
 
-        // 2. 직급 기본급
-        PayGrade grade = payGradeRepository.findById(request.gradeId())
+        // 2. 사원 정보 (user-service, 요청한 관리자의 토큰으로)
+        EmployeeInfo employee = userClient.getEmployee(request.empId());
+        if (employee.gradeId() == null) {
+            throw new BusinessException(ErrorCode.PAY_GRADE_NOT_FOUND, "사원의 직급이 지정되지 않았습니다.");
+        }
+
+        // 3. 직급 기본급
+        PayGrade grade = payGradeRepository.findById(employee.gradeId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAY_GRADE_NOT_FOUND));
 
-        // 3. 근태 월 집계 (미확정일이 있어도 그대로 생성)
+        // 4. 근태 월 집계 (미확정일이 있어도 그대로 생성)
         AttendanceSummary attendance = attendanceClient.getSummary(request.empId(), month);
         AttendanceSummary.WorkTime workTime = attendance.workTime();
 
-        // 4. 지급 → 공제 계산 (승인 여부와 관계없이 실제 일한 시간 기준, 무급휴가는 지급에서 차감)
+        // 5. 지급 → 공제 계산 (승인 여부와 관계없이 실제 일한 시간 기준, 무급휴가는 지급에서 차감)
         EarningResult earning = EarningCalculator.calculate(grade.getBaseAmount(),
                 workTime.otExtendedMin(), attendance.nightTotalMin(), workTime.otHolidayMin(),
                 attendance.unpaidLeaveMin());
         DeductionResult deduction = DeductionCalculator.calculate(earning.total());
 
-        // 5. 명세서 저장 (사원 정보, 근태 집계 스냅샷)
+        // 6. 명세서 저장 (생성 시점의 사원 정보, 근태 집계 스냅샷)
         Payslip payslip = payslipRepository.save(Payslip.builder()
                 .empId(request.empId())
                 .payYear(payYear)
                 .payMonth(payMonth)
                 .payDate(month.atDay(PAY_DAY))
-                .empName(request.empName())
-                .deptName(request.deptName())
-                .positionName(request.positionName())
-                .hireDate(request.hireDate())
+                .empName(employee.name())
+                .deptName(employee.deptName())
+                .positionName(employee.positionName())
+                .hireDate(employee.hireDate())
                 .workDays((short) attendance.workedDays())
                 .totalMin(workTime.totalMin())
                 .regularMin(workTime.regularMin())
@@ -88,7 +97,7 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
                 .netPay(earning.total() - deduction.total())
                 .build());
 
-        // 6. 항목 14개 저장 (0원 항목 포함)
+        // 7. 항목 14개 저장 (0원 항목 포함)
         Map<String, PayItem> payItems = payItemRepository.findAll().stream()
                 .collect(Collectors.toMap(PayItem::getItemCode, Function.identity()));
 

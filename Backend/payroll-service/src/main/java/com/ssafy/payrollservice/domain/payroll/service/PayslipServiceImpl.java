@@ -2,6 +2,7 @@ package com.ssafy.payrollservice.domain.payroll.service;
 
 import com.ssafy.payrollservice.domain.payroll.calculator.RetirementCalculator;
 import com.ssafy.payrollservice.domain.payroll.calculator.RetirementResult;
+import com.ssafy.payrollservice.domain.payroll.client.UserClient;
 import com.ssafy.payrollservice.domain.payroll.dto.ContractResponse;
 import com.ssafy.payrollservice.domain.payroll.dto.PayslipDetailResponse;
 import com.ssafy.payrollservice.domain.payroll.dto.PayslipListResponse;
@@ -31,6 +32,7 @@ public class PayslipServiceImpl implements PayslipService {
     private final PayslipItemRepository payslipItemRepository;
     private final PayGradeRepository payGradeRepository;
     private final PayslipPdfRenderer payslipPdfRenderer;
+    private final UserClient userClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -84,8 +86,8 @@ public class PayslipServiceImpl implements PayslipService {
             throw new BusinessException(ErrorCode.RETIREMENT_PAYSLIP_NOT_FOUND);
         }
 
-        // TODO: user-service 연동 후 입사일은 사원 정보로 교체
-        LocalDate hireDate = recent.get(0).getHireDate();
+        // 입사일은 지금 사원 정보 기준 (명세서의 입사일은 생성 시점 스냅샷)
+        LocalDate hireDate = userClient.getEmployee(empId).hireDate();
         if (!resignDate.isAfter(hireDate)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "퇴직일은 입사일 이후여야 합니다.");
         }

@@ -133,8 +133,7 @@ class SecurityIntegrationTest {
         return post("/api/v1/pay/admin/payslips/generate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"empId":7,"month":"2026-10","empName":"홍길동","deptName":"개발팀",
-                         "positionName":"사원","hireDate":"2024-01-02","gradeId":1}""");
+                        {"empId":7,"month":"2026-10"}""");
     }
 
     private static RequestPostProcessor user(long empId) {

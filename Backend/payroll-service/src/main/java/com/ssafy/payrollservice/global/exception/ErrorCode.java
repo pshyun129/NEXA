@@ -24,6 +24,8 @@ public enum ErrorCode {
     CONTRACT_NOT_FOUND(HttpStatus.NOT_FOUND, "PAY_006", "급여 정보가 없습니다. 급여명세서가 생성된 뒤 조회할 수 있습니다."),
     RETIREMENT_PAYSLIP_NOT_FOUND(HttpStatus.NOT_FOUND, "PAY_007", "퇴직일 이전 급여명세서가 없어 퇴직금을 계산할 수 없습니다."),
     PAYSLIP_PDF_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PAY_008", "급여명세서 PDF를 만들 수 없습니다."),
+    USER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "PAY_009", "사원 정보를 조회할 수 없습니다."),
+    EMPLOYEE_NOT_FOUND(HttpStatus.NOT_FOUND, "PAY_010", "존재하지 않는 사원입니다."),
 
     // 공통 (다른 서비스 코드와 동일)
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON_001", "요청 값이 올바르지 않습니다."),
