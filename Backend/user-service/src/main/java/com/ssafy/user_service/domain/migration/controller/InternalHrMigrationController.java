@@ -1,6 +1,7 @@
 package com.ssafy.user_service.domain.migration.controller;
 
 import com.ssafy.user_service.domain.migration.dto.MigrationBatchSummaryResponse;
+import com.ssafy.user_service.domain.migration.dto.MigrationReferencesResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertRequest;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertResponse;
 import com.ssafy.user_service.domain.migration.service.HrMigrationService;
@@ -22,9 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * migration-service 전용 내부 API (토큰 없음, gateway 미노출). 형식은 migration HrTargetLoader 와 맞춘 계약이다.
- * POST   /{orgs|employees}/upsert?batchId=   → {created, updated}
+ * POST   /{references|orgs|employees}/upsert?batchId=   → {created, updated}
  * DELETE /batches/{batchId}                  → 되돌리기 (data 없음)
  * GET    /batches/{batchId}/summary          → {count}
+ * GET    /references                         → 지금 있는 직위·직급·직책·직무 코드
  */
 @RestController
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class InternalHrMigrationController {
             @Valid @RequestBody MigrationUpsertRequest request) {
         checkBatchId(batchId);
         MigrationUpsertResponse result = switch (entity) {
+            case "references" -> hrMigrationService.upsertReferences(batchId, request);
             case "orgs" -> hrMigrationService.upsertDepartments(batchId, request);
             case "employees" -> hrMigrationService.upsertEmployees(batchId, request);
             default -> throw new BusinessException(ErrorCode.NOT_FOUND, "지원하지 않는 이관 대상입니다: " + entity);
@@ -61,6 +64,11 @@ public class InternalHrMigrationController {
             @PathVariable String batchId) {
         checkBatchId(batchId);
         return ResponseEntity.ok(ApiResult.success(hrMigrationService.summarize(batchId)));
+    }
+
+    @GetMapping("/references")
+    public ResponseEntity<ApiResult<MigrationReferencesResponse>> references() {
+        return ResponseEntity.ok(ApiResult.success(hrMigrationService.references()));
     }
 
     private static void checkBatchId(String batchId) {

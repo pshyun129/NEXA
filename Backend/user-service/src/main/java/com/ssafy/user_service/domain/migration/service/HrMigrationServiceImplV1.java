@@ -1,12 +1,15 @@
 package com.ssafy.user_service.domain.migration.service;
 
 import com.ssafy.user_service.domain.migration.dto.MigrationBatchSummaryResponse;
+import com.ssafy.user_service.domain.migration.dto.MigrationReferencesResponse;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertRequest;
 import com.ssafy.user_service.domain.migration.dto.MigrationUpsertResponse;
 import com.ssafy.user_service.domain.migration.repository.MigrationBatchRowRepository;
 import com.ssafy.user_service.domain.migration.repository.MigrationBatchRowRepository.Action;
 import com.ssafy.user_service.domain.migration.repository.MigrationBatchRowRepository.Entry;
 import com.ssafy.user_service.domain.migration.repository.MigrationBatchRowRepository.Target;
+import com.ssafy.user_service.domain.user.service.DutyService;
+import com.ssafy.user_service.domain.user.service.ReferenceCodeService;
 import com.ssafy.user_service.global.exception.BusinessException;
 import com.ssafy.user_service.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -22,9 +25,18 @@ import java.util.List;
 @RequiredArgsConstructor
 public class HrMigrationServiceImplV1 implements HrMigrationService {
 
+    private final ReferenceMigrationLoader referenceLoader;
     private final DepartmentMigrationLoader departmentLoader;
     private final EmployeeMigrationLoader employeeLoader;
     private final MigrationBatchRowRepository batchRowRepository;
+    private final ReferenceCodeService referenceCodeService;
+    private final DutyService dutyService;
+
+    @Override
+    @Transactional
+    public MigrationUpsertResponse upsertReferences(String batchId, MigrationUpsertRequest request) {
+        return referenceLoader.upsert(batchId, request.rows());
+    }
 
     @Override
     @Transactional
@@ -64,10 +76,11 @@ public class HrMigrationServiceImplV1 implements HrMigrationService {
             entries.stream().filter(e -> e.action() == Action.CREATED)
                     .forEach(e -> batchRowRepository.delete(e.target(), e.targetId()));
         } catch (DataIntegrityViolationException e) {
-            // 예: 이 batch 로 만든 부서에 이관 밖에서 사원을 등록했거나, 다른 batch 의 부서가 하위로 붙은 경우
+            // 예: 이 batch 로 만든 부서에 이관 밖에서 사원을 등록했거나, 다른 batch 의 부서가 하위로 붙은 경우,
+            //     이 batch 로 만든 직위·직급·직책·직무를 아직 사원이 쓰는 경우
             log.warn("Migration rollback blocked: batch={}, cause={}", batchId, e.getMostSpecificCause().getMessage());
             throw new BusinessException(ErrorCode.MIGRATION_ROLLBACK_CONFLICT,
-                    "이 batch 로 만든 부서·사원을 다른 데이터가 참조하고 있어 되돌릴 수 없습니다");
+                    "이 batch 로 만든 부서·사원·기준정보를 다른 데이터가 참조하고 있어 되돌릴 수 없습니다");
         }
         batchRowRepository.deleteBatch(batchId);
     }
@@ -76,5 +89,12 @@ public class HrMigrationServiceImplV1 implements HrMigrationService {
     @Transactional(readOnly = true)
     public MigrationBatchSummaryResponse summarize(String batchId) {
         return new MigrationBatchSummaryResponse(batchRowRepository.countRows(batchId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MigrationReferencesResponse references() {
+        return new MigrationReferencesResponse(referenceCodeService.findPositions(), referenceCodeService.findGrades(),
+                dutyService.findAll(), referenceCodeService.findJobCodes(null));
     }
 }

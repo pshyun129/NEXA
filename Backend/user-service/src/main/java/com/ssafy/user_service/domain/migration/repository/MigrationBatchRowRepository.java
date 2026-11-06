@@ -20,7 +20,11 @@ public class MigrationBatchRowRepository {
 
     public enum Target {
         DEPARTMENT("department", "dept_id"),
-        EMPLOYEE("employee", "emp_id");
+        EMPLOYEE("employee", "emp_id"),
+        POSITION("position", "position_id"),
+        GRADE("grade", "grade_id"),
+        DUTY("duty", "duty_id"),
+        JOB_CODE("job_code", "job_code_id");
 
         private final String table;
         private final String pk;
@@ -28,6 +32,11 @@ public class MigrationBatchRowRepository {
         Target(String table, String pk) {
             this.table = table;
             this.pk = pk;
+        }
+
+        /** position 처럼 PostgreSQL 예약어인 테이블 이름이 있어 SQL 에는 따옴표로 감싼다 */
+        private String quoted() {
+            return "\"" + table + "\"";
         }
     }
 
@@ -47,7 +56,8 @@ public class MigrationBatchRowRepository {
         return n != null && n > 0;
     }
 
-    public void recordCreated(String batchId, Target target, long targetId, int rowNo) {
+    /** rowNo 가 null 이면 원본 행이 아닌 부수 생성 (예: 직무 경로를 만들며 생긴 직군·직종) */
+    public void recordCreated(String batchId, Target target, long targetId, Integer rowNo) {
         jdbc.update("""
                 INSERT INTO migration_batch_row (batch_id, entity, target_id, action, row_no)
                 VALUES (?, ?, ?, 'CREATED', ?)""", batchId, target.name(), targetId, rowNo);
@@ -69,7 +79,7 @@ public class MigrationBatchRowRepository {
             return;
         }
         String before = jdbc.queryForObject(
-                "SELECT row_to_json(t)::text FROM " + target.table + " t WHERE " + target.pk + " = ?",
+                "SELECT row_to_json(t)::text FROM " + target.quoted() + " t WHERE " + target.pk + " = ?",
                 String.class, targetId);
         jdbc.update("""
                 INSERT INTO migration_batch_row (batch_id, entity, target_id, action, before_json, row_no)
@@ -120,7 +130,7 @@ public class MigrationBatchRowRepository {
     }
 
     public void delete(Target target, long targetId) {
-        jdbc.update("DELETE FROM " + target.table + " WHERE " + target.pk + " = ?", targetId);
+        jdbc.update("DELETE FROM " + target.quoted() + " WHERE " + target.pk + " = ?", targetId);
     }
 
     public void deleteBatch(String batchId) {
@@ -133,7 +143,7 @@ public class MigrationBatchRowRepository {
                 WHERE table_schema = current_schema() AND table_name = ? AND column_name <> ?
                 ORDER BY ordinal_position""", String.class, target.table, target.pk);
         String cols = columns.stream().map(c -> "\"" + c + "\"").collect(Collectors.joining(", "));
-        return "UPDATE " + target.table + " SET (" + cols + ") = (SELECT " + cols
-                + " FROM json_populate_record(NULL::" + target.table + ", CAST(? AS json))) WHERE " + target.pk + " = ?";
+        return "UPDATE " + target.quoted() + " SET (" + cols + ") = (SELECT " + cols
+                + " FROM json_populate_record(NULL::" + target.quoted() + ", CAST(? AS json))) WHERE " + target.pk + " = ?";
     }
 }
