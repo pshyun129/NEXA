@@ -43,6 +43,9 @@ services:
       USER_SERVICE_URL: http://user-service:8081
       APPROVAL_SERVICE_URL: http://approval-service:8083
 
+      ATTENDANCE_SERVICE_URL: http://attendance-service:8084
+      LEAVE_SERVICE_URL: http://leave-service:8082
+
     volumes:
       - fastapi-uploads:/app/uploads
 
