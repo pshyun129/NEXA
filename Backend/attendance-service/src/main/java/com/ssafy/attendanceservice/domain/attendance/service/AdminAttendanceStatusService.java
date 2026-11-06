@@ -2,6 +2,7 @@ package com.ssafy.attendanceservice.domain.attendance.service;
 
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminDailyStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminPeriodStatusResponse;
+import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceExcel;
 import com.ssafy.nexa.security.AuthUser;
 
 import java.time.LocalDate;
@@ -17,4 +18,7 @@ public interface AdminAttendanceStatusService {
 
     /** 기간별 통계. from이 to보다 늦거나 92일을 넘으면 BusinessException(INVALID_INPUT) */
     AdminPeriodStatusResponse getPeriod(AuthUser user, LocalDate from, LocalDate to, Long deptId, String empStatus);
+
+    /** 기간별 통계 엑셀 (getPeriod와 같은 범위·검증) */
+    AttendanceExcel exportPeriod(AuthUser user, LocalDate from, LocalDate to, Long deptId, String empStatus);
 }

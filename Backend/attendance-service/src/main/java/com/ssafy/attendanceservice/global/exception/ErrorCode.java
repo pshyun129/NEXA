@@ -36,6 +36,7 @@ public enum ErrorCode {
     LEAVE_DAY_CLOCK_IN(HttpStatus.CONFLICT, "ATTN_018", "휴가일에는 출근할 수 없습니다."),
     LEAVE_DAY_REQUEST(HttpStatus.CONFLICT, "ATTN_019", "휴가일에는 신청할 수 없습니다."),
     LEAVE_CALL_FAILED(HttpStatus.BAD_GATEWAY, "ATTN_020", "휴가 서비스 호출에 실패했습니다."),
+    EXCEL_EXPORT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "ATTN_021", "근태 엑셀 파일을 만들 수 없습니다."),
 
     // 공통 (user-service와 동일)
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON_001", "요청 값이 올바르지 않습니다."),

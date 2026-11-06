@@ -4,6 +4,8 @@ import com.ssafy.attendanceservice.domain.attendance.client.EmployeeInfo;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminDailyStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminPeriodStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceDaySummaryResponse;
+import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceExcel;
+import com.ssafy.attendanceservice.domain.attendance.excel.AttendanceExcelRenderer;
 import com.ssafy.attendanceservice.global.exception.BusinessException;
 import com.ssafy.attendanceservice.global.exception.ErrorCode;
 import com.ssafy.attendanceservice.global.util.DateTimeUtils;
@@ -30,6 +32,7 @@ public class AdminAttendanceStatusServiceImpl implements AdminAttendanceStatusSe
 
     private final AttendanceViewScope attendanceViewScope;
     private final AttendanceService attendanceService;
+    private final AttendanceExcelRenderer attendanceExcelRenderer;
 
     @Override
     @Transactional(readOnly = true)
@@ -62,6 +65,12 @@ public class AdminAttendanceStatusServiceImpl implements AdminAttendanceStatusSe
                 .map(employee -> attendanceService.getDaySummaries(employee.empId(), from, to))
                 .toList();
         return AdminPeriodStatusResponse.of(from, to, employees, daysByEmployee);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AttendanceExcel exportPeriod(AuthUser user, LocalDate from, LocalDate to, Long deptId, String empStatus) {
+        return AttendanceExcel.of(from, to, attendanceExcelRenderer.render(getPeriod(user, from, to, deptId, empStatus)));
     }
 
     /** 볼 수 있는 사원 중 재직 상태가 맞는 사원 (사원 ID 순) */

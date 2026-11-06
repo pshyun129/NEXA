@@ -4,6 +4,7 @@ import com.ssafy.attendanceservice.domain.attendance.dto.AdminDailyStatusRespons
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminPeriodStatusResponse;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminWorkStatusLogRequest;
 import com.ssafy.attendanceservice.domain.attendance.dto.AdminWorkStatusLogUpdateRequest;
+import com.ssafy.attendanceservice.domain.attendance.dto.AttendanceExcel;
 import com.ssafy.attendanceservice.domain.attendance.dto.DailyAttendanceResponse;
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceService;
 import com.ssafy.attendanceservice.domain.attendance.service.AdminAttendanceStatusService;
@@ -15,17 +16,23 @@ import com.ssafy.nexa.security.CurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
-/** 관리자 근태 API. 근태 현황(daily, period)은 팀장급 이상, 그 외는 관리자(role ADMIN) */
+/** 관리자 근태 API. 근태 현황(daily, period, export)은 팀장급 이상, 그 외는 관리자(role ADMIN) */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/attn/admin")
 public class AdminAttendanceController {
+
+    private static final MediaType XLSX =
+            MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     private final AttendanceService attendanceService;
     private final AdminAttendanceService adminAttendanceService;
@@ -51,6 +58,22 @@ public class AdminAttendanceController {
             @RequestParam(required = false) String empStatus) {
         return ResponseEntity.ok(ApiResult.success(
                 adminAttendanceStatusService.getPeriod(user, from, to, deptId, empStatus)));
+    }
+
+    // 기간별 근태 통계 엑셀 다운로드 API (기간별 통계와 같은 범위)
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportPeriodStatus(
+            @CurrentUser AuthUser user,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long deptId,
+            @RequestParam(required = false) String empStatus) {
+        AttendanceExcel excel = adminAttendanceStatusService.exportPeriod(user, from, to, deptId, empStatus);
+        return ResponseEntity.ok()
+                .contentType(XLSX)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(excel.fileName()).build().toString())
+                .body(excel.content());
     }
 
     // 직원 일별 타임라인 조회 API
