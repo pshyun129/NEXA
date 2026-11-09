@@ -462,6 +462,85 @@ def submit_and_settle(label, target, leave_type, leave_date, portion, account_re
     return request_id
 
 
+def test_admin_cancellation(request_id, approved_ok):
+    """별도 명시 설정에서만 이번 실행으로 승인한 신청을 취소한다."""
+    path = f"/admin/requests/{request_id}/cancel"
+    reason = REPORT["runName"] + "_CANCEL"
+    if SETTINGS.get("TEST_ADMIN_CANCEL_ENABLED", "false").lower() != "true":
+        api("admin_cancel", "POST", path, body={"reason": reason}, expected=(503,), error="LEAVE_025",
+            ready=request_id is not None)
+        return
+    result = {"scenario": "admin_cancel", "outcome": "BLOCKED", "reason": "이번 실행의 승인 연동 완료가 필요합니다"}
+    REPORT["integrations"].append(result)
+    if not approved_ok or request_id is None or not WRITES_ALLOWED:
+        record("admin_cancel", "BLOCKED", result["reason"])
+        return
+    try:
+        # 이번 실행의 승인 신청만 대상으로 하며 기존 업무 신청을 선택하지 않는다.
+        detail = get("ordinary", PREFIX + f"/me/requests/{request_id}")
+        require(detail["status"] == "APPROVED", "승인된 신청만 관리자 취소 검증 가능")
+        document_id = detail["approvalDocId"]
+        document = get("ordinary", f"/api/v1/documents/{document_id}")
+        require(document["status"] == "APPROVED", "결재 승인 확인 필요")
+        original = [entry for entry in get("ordinary", PREFIX + "/me/ledger", array=True)
+                    if entry.get("leaveReqId") == request_id]
+        consumes = {entry["entryId"]: entry for entry in original if entry["eventType"] == "CONSUME"}
+        before = current_balance() if consumes else None
+        result.update(requestId=request_id, approvalDocId=document_id)
+        response = api("admin_cancel", "POST", path, body={"reason": reason}, expected=(200, 202),
+                       fields=("requestId", "status", "adminCancelStatus", "adminCancelRequestId"))
+        if response is None:
+            raise Blocked("취소 응답 실패 또는 결과 불명: 자동 재전송하지 않습니다")
+        result["cancelRequestId"] = response["adminCancelRequestId"]
+        if response["status"] != "CANCELLED" or response["adminCancelStatus"] != "COMPLETED":
+            raise Blocked("취소 처리 중/UNKNOWN: 저장된 UUID로 수동 복구 확인 필요")
+        uuid.UUID(response["adminCancelRequestId"])
+        same(response, requestId=request_id, cancelledBy=EMPLOYEES["admin"]["empId"], cancelReason=reason)
+        after = [entry for entry in get("ordinary", PREFIX + "/me/ledger", array=True)
+                 if entry.get("leaveReqId") == request_id]
+        restores = [entry for entry in after if entry["eventType"] == "RESTORE"]
+        require(len(restores) == len(consumes), "CONSUME별 RESTORE 누락 또는 중복")
+        require({entry["reversesEntryId"] for entry in restores} == set(consumes), "RESTORE 원본 CONSUME 연결 불일치")
+        for entry in restores:
+            consume = consumes[entry["reversesEntryId"]]
+            same(entry, accountId=consume["accountId"], grantId=consume["grantId"],
+                 quantityDelta=-consume["quantityDelta"], reservedDelta=0)
+        stored = {entry["entryId"]: entry for entry in after}
+        require(all(stored.get(entry["entryId"]) == entry for entry in original), "기존 원장 변경 발생")
+        if before is not None:
+            delta(before, current_balance(), sum(entry["quantityDelta"] for entry in restores), 0)
+        same(get("ordinary", PREFIX + f"/me/requests/{request_id}"), status="CANCELLED")
+        same(get("ordinary", f"/api/v1/documents/{document_id}"), status="APPROVED")
+
+        # 근태 월간 조회에서 동일 날짜·유형의 반영 해제를 확인한다.
+        leave_type = next(item for item in get("admin", PREFIX + "/admin/types", array=True)
+                          if item["leaveTypeId"] == detail["leaveTypeId"])
+        for day in detail["dates"]:
+            leave_date = request_date_in_seoul(day["leaveDate"])
+            def no_attendance_leave():
+                month = get("ordinary", "/api/v1/attn/me/monthly?" + urlencode({"month": leave_date[:7]}))
+                return not any(item["leaveTypeName"] == leave_type["name"] and item["portion"] == day["portion"]
+                               for row in month["days"] if row["workDate"] == leave_date for item in row["leaves"])
+            poll(no_attendance_leave, bool, "관리자 취소 후 Attendance 근태가 남아 있습니다")
+
+        # 완료가 확정된 요청만 같은 사유로 한 번 재호출해 중복 복원 방지를 검증한다.
+        repeated = api("admin_cancel", "POST", path, body={"reason": reason}, expected=(200,),
+                       fields=("status", "adminCancelStatus", "adminCancelRequestId"))
+        require(repeated is not None and repeated["adminCancelRequestId"] == response["adminCancelRequestId"]
+                and repeated["adminCancelStatus"] == "COMPLETED", "완료 재요청 결과 불일치")
+        final = [entry for entry in get("ordinary", PREFIX + "/me/ledger", array=True)
+                 if entry.get("leaveReqId") == request_id]
+        require(final == after, "완료 재요청에서 원장 추가/변경 발생")
+        result.update(outcome="PASS", reason="Attendance 미반영·RESTORE·취소 상태·결재 승인 유지·중복 복원 방지 확인")
+    except Blocked as failure:
+        result["reason"] = str(failure)
+        record("admin_cancel", "BLOCKED", result["reason"])
+    except (AssertionError, KeyError, ValueError, TypeError, StopIteration) as failure:
+        result.update(outcome="FAIL", reason=str(failure) if isinstance(failure, AssertionError) else "관리자 취소 응답/원장 형식 오류")
+        record("admin_cancel", "FAIL", result["reason"])
+    save_result()
+
+
 def user_journey():
     """업무 순서대로 한 번 호출한다. 실패한 데이터에 의존하는 단계만 차단한다."""
     global WRITES_ALLOWED
@@ -644,7 +723,6 @@ def user_journey():
     api("admin_request", "GET", f"/admin/requests/{request_id}", ready=request_id is not None, fields=("requestId", "dates", "status"), verify=lambda d: same(d, requestId=request_id))
     if not any(c["outcome"] == "PASS" for c in REPORT["apis"]["internal_dates"]["checks"]):
         api("internal_dates", "GET", f"/internal/requests/{request_id}/dates", ready=request_id is not None, fields=("requestId", "employeeId", "leaveTypeName", "isPaid", "dates"))
-    api("admin_cancel", "POST", f"/admin/requests/{request_id}/cancel", body={"reason": name + "_CANCEL"}, expected=(503,), error="LEAVE_020", ready=request_id is not None)
     def check_department(data):
         members = get("ordinary", "/api/v1/employees?" + urlencode({"deptId": department_id}), ("employees",))
         ids = {m["empId"] for m in members["employees"] if m["deptId"] == department_id and m["status"] == "EMPLOYED"}
@@ -665,6 +743,7 @@ def user_journey():
     api("department_balances", "GET", f"/departments/{department_id}/balances", "teamlead", ready=department_id is not None,
         fields=("departmentId", "asOf", "employees"), verify=check_department_balances)
     api("department_balances", "GET", f"/departments/{department_id}/balances", "ordinary", ready=department_id is not None, expected=(403,), error="AUTH_009")
+    test_admin_cancellation(approved if approved_ok else request_id, approved_ok)
     for key, row in REPORT["apis"].items():
         if not row["checks"]:
             record(key, "BLOCKED", "초기 데이터 또는 앞선 신청 미준비")

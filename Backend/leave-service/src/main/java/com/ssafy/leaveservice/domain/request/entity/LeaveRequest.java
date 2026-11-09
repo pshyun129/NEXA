@@ -117,6 +117,12 @@ public class LeaveRequest {
     @Column(name = "admin_cancel_status_changed_at")
     private OffsetDateTime adminCancelStatusChangedAt;
 
+    @Column(name = "admin_cancel_target", length = 20)
+    private String adminCancelTarget;
+
+    @Column(name = "admin_cancel_requested_at")
+    private OffsetDateTime adminCancelRequestedAt;
+
     @OneToMany(mappedBy = "leaveRequest", fetch = FetchType.LAZY)
     @OrderBy("leaveDate ASC, startAt ASC, requestDateId ASC")
     private List<LeaveRequestDate> dates = new ArrayList<>();
@@ -144,11 +150,13 @@ public class LeaveRequest {
             String reason,
             OffsetDateTime now
     ) {
-        requireSubmittedForAdminCancellation();
+        requireApprovedForAdminCancellation();
         if (adminCancelStatus != null) {
             throw new BusinessException(ErrorCode.DATA_INTEGRITY_VIOLATION);
         }
         adminCancelStatus = AdminCancellationStatus.IN_PROGRESS;
+        adminCancelTarget = "ATTENDANCE";
+        adminCancelRequestedAt = now;
         adminCancelRequestId = operationId;
         adminCancelRequestedBy = administratorId;
         adminCancelReason = reason;
@@ -171,7 +179,7 @@ public class LeaveRequest {
     }
 
     public void completeAdminCancellation(OffsetDateTime now) {
-        requireSubmittedForAdminCancellation();
+        requireApprovedForAdminCancellation();
         requirePendingAdminCancellation();
         status = LeaveRequestStatus.CANCELLED;
         cancelledAt = now;
@@ -182,9 +190,9 @@ public class LeaveRequest {
         updatedAt = now;
     }
 
-    public void requireSubmittedForAdminCancellation() {
-        // TODO 승인 이벤트와 CONSUME/RESTORE 계약 확정 후 APPROVED 취소는 별도 검증 분기로 추가한다.
-        if (status != LeaveRequestStatus.SUBMITTED || approvalCreationStatus != ApprovalCreationStatus.LINKED
+    public void requireApprovedForAdminCancellation() {
+        // 과거 휴가와 마감 기간의 별도 취소 제한은 업무 정책 확정 후 추가한다.
+        if (status != LeaveRequestStatus.APPROVED || approvalCreationStatus != ApprovalCreationStatus.LINKED
                 || approvalDocId == null || approvalDocId <= 0) {
             throw new BusinessException(ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
         }

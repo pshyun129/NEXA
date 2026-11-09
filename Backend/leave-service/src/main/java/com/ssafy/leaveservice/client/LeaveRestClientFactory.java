@@ -38,6 +38,25 @@ public class LeaveRestClientFactory {
             Duration connectTimeout,
             Duration readTimeout
     ) {
+        return create(baseUrl, serviceId, connectTimeout, readTimeout, true);
+    }
+
+    public RestClient createWithoutBearerRelay(
+            String baseUrl,
+            String serviceId,
+            Duration connectTimeout,
+            Duration readTimeout
+    ) {
+        return create(baseUrl, serviceId, connectTimeout, readTimeout, false);
+    }
+
+    private RestClient create(
+            String baseUrl,
+            String serviceId,
+            Duration connectTimeout,
+            Duration readTimeout,
+            boolean relayBearer
+    ) {
         // 명시한 URL은 Discovery를 거치지 않고, URL이 없을 때만 서비스 ID를 사용한다.
         boolean direct = baseUrl != null && !baseUrl.isBlank();
         URI target;
@@ -66,10 +85,11 @@ public class LeaveRestClientFactory {
             builder.requestInterceptors(interceptors -> interceptors.addFirst(
                     LeaveRestClientFactory::executeWithDiscoveryFailureMapping));
         }
-        return builder.baseUrl(target.toString())
-                .requestFactory(requests)
-                .requestInterceptor(bearerTokenRelay)
-                .build();
+        builder.baseUrl(target.toString()).requestFactory(requests);
+        if (relayBearer) {
+            builder.requestInterceptor(bearerTokenRelay);
+        }
+        return builder.build();
     }
 
     private static ClientHttpResponse executeWithDiscoveryFailureMapping(

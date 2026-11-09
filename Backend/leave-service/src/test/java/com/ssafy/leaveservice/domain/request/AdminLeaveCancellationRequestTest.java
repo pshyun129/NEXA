@@ -63,6 +63,7 @@ class AdminLeaveCancellationRequestTest {
         UUID originalTrace = request.getApprovalRequestId();
         request.startApprovalCall(now);
         request.linkCreatedApproval(9001L, now);
+        request.applyFinalApprovalDecision(LeaveRequestStatus.APPROVED, now);
         UUID cancellationTrace = UUID.randomUUID();
         request.startAdminCancellation(cancellationTrace, 10L, " 취소 사유 ", now);
         request.recordAdminCancellationUnknown(now.plusSeconds(1));

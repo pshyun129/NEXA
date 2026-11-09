@@ -33,6 +33,8 @@ class AdminLeaveCancellationUnavailablePostgresIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired ApprovalWithdrawalClient client;
     @Autowired ApprovalWithdrawalProperties properties;
+    @Autowired com.ssafy.leaveservice.client.attendance.AttendanceRevertClient attendanceClient;
+    @Autowired com.ssafy.leaveservice.client.attendance.AttendanceRevertProperties attendanceProperties;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.ssafy.leaveservice.client.hr.HrClient hrClient;
@@ -46,12 +48,15 @@ class AdminLeaveCancellationUnavailablePostgresIntegrationTest {
         org.mockito.Mockito.when(hrClient.findDuty(10L)).thenReturn(
                 new com.ssafy.leaveservice.client.hr.HrClient.DutyInfo(10L,"휴가관리자"));
         assertThat(properties.enabled()).isFalse();
+        assertThat(attendanceProperties.enabled()).isFalse();
+        assertThat(attendanceProperties.contractVerified()).isFalse();
+        assertThat(attendanceClient.isAvailable()).isFalse();
         assertThat(client).isInstanceOf(UnavailableApprovalWithdrawalClient.class);
         mvc.perform(post("/api/v1/leaves/admin/requests/999/cancel")
                         .with(jwt().jwt(j -> j.subject("10").claim("role", "ADMIN").claim("type", "access").claim("dutyId",10L))
                                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
                         .contentType("application/json").content("{\"reason\":\"관리자 취소\"}"))
-                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error.code").value("LEAVE_020"));
+                .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.error.code").value("LEAVE_025"));
         assertThat(jdbc.queryForObject("select count(*) from leave_request", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from leave_ledger", Integer.class)).isZero();
     }

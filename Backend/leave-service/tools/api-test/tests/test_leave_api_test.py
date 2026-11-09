@@ -50,6 +50,36 @@ class JourneyTests(unittest.TestCase):
         self.assertEqual((6690, 0), (self.state.balances()[0]["quantityMinutes"], self.state.balances()[0]["reservedMinutes"]))
         self.assertEqual(1, sum(r["eventType"] == "GRANT" for r in self.state.ledger))
 
+    def test_enabled_admin_cancel_restores_balance_and_preserves_approval_document(self):
+        self.settings["TEST_ADMIN_CANCEL_ENABLED"] = "true"
+        self.state.admin_cancel_enabled = True
+        self.assertEqual(0, self.run_tool())
+        self.assertEqual("PASS", self.report["apis"]["admin_cancel"]["outcome"])
+        scenario = self.report["integrations"][-1]
+        self.assertEqual(("admin_cancel", "PASS"), (scenario["scenario"], scenario["outcome"]))
+        self.assertEqual("CANCELLED", self.state.requests[scenario["requestId"]]["status"])
+        self.assertEqual("APPROVED", self.state.documents[scenario["approvalDocId"]]["status"])
+        restores = [entry for entry in self.state.ledger if entry["eventType"] == "RESTORE"]
+        self.assertEqual(1, len(restores))
+        self.assertEqual((480, 0), (restores[0]["quantityDelta"], restores[0]["reservedDelta"]))
+        self.assertEqual(7170, self.state.balances()[0]["quantityMinutes"])
+        self.assertEqual(2, sum(call["method"] == "POST" and call["path"].endswith(
+            f"/admin/requests/{scenario['requestId']}/cancel") for call in self.state.calls))
+
+    def test_enabled_admin_cancel_blocks_when_backend_feature_is_disabled(self):
+        self.settings["TEST_ADMIN_CANCEL_ENABLED"] = "true"
+        self.assertNotEqual(0, self.run_tool())
+        self.assertNotEqual("PASS", self.report["apis"]["admin_cancel"]["outcome"])
+        self.assertEqual(0, sum(entry["eventType"] == "RESTORE" for entry in self.state.ledger))
+
+    def test_enabled_admin_cancel_never_writes_without_dedicated_employee_confirmation(self):
+        self.settings["TEST_ADMIN_CANCEL_ENABLED"] = "true"
+        self.settings["DEDICATED_EMPLOYEE_CONFIRMED"] = "false"
+        self.state.admin_cancel_enabled = True
+        self.run_tool()
+        self.assertFalse(any(call["method"] == "POST" and "/admin/requests/" in call["path"]
+                             and call["path"].endswith("/cancel") for call in self.state.calls))
+
     def test_api_routes_match_real_controllers(self):
         source = Path(__file__).resolve().parents[3] / "src/main/java"
         actual = set()
@@ -59,7 +89,10 @@ class JourneyTests(unittest.TestCase):
             if base:
                 for method, suffix in re.findall(r'@(Get|Post|Patch|Put|Delete)Mapping(?:\("([^"]*)"\))?', text):
                     actual.add((method.upper(), base[1] + suffix))
-        self.assertEqual(actual, {(method, tool.PREFIX + path) for method, path in tool.API_ROUTES.values()})
+        covered = {(method, tool.PREFIX + path) for method, path in tool.API_ROUTES.values()}
+        # 수동 지급 POST는 별도 검증 대상이며 기존 여정에는 아직 포함하지 않는다.
+        self.assertEqual(set(), covered - actual)
+        self.assertEqual({("POST", "/api/v1/leaves/admin/employees/{employeeId}/grants")}, actual - covered)
         self.assertEqual(Counter(GET=24, POST=8, PATCH=3, PUT=3, DELETE=1), Counter(method for method, _ in tool.API_ROUTES.values()))
 
     def test_login_uses_email_pass_and_isolated_cookies(self):

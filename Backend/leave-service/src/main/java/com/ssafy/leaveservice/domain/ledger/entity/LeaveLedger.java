@@ -184,6 +184,27 @@ public class LeaveLedger {
         return ledger;
     }
 
+    public static LeaveLedger restoreForAdminCancellation(
+            LeaveLedger consume,
+            Long administratorId,
+            OffsetDateTime asOf
+    ) {
+        LeaveLedger restore = new LeaveLedger();
+        restore.account = consume.account;
+        restore.grantId = consume.grantId;
+        restore.leaveReqId = consume.leaveReqId;
+        restore.allocationId = consume.allocationId;
+        restore.reversesEntryId = consume.entryId;
+        restore.eventType = LedgerEventType.RESTORE;
+        restore.quantityDelta = Math.negateExact(consume.quantityDelta);
+        restore.reservedDelta = 0;
+        restore.actorEmpId = administratorId;
+        restore.reason = "관리자 승인 휴가 취소에 따른 복원 (신청 " + consume.leaveReqId + ")";
+        restore.createdAt = asOf;
+        restore.idempotencyKey = "leave:admin-restore:consume:" + consume.entryId;
+        return restore;
+    }
+
     public static LeaveLedger release(
             LeaveAccount account,
             LeaveRequestAllocation allocation,

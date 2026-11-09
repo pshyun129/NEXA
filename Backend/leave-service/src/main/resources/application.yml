@@ -27,6 +27,10 @@ leave:
     connect-timeout: ${LEAVE_APPROVAL_CONNECT_TIMEOUT:2s}
     read-timeout: ${LEAVE_APPROVAL_READ_TIMEOUT:3s}
   attendance:
+    revert:
+      enabled: ${LEAVE_ATTENDANCE_REVERT_ENABLED:false}
+      contract-verified: ${LEAVE_ATTENDANCE_REVERT_CONTRACT_VERIFIED:false}
+      idempotency-verified: ${LEAVE_ATTENDANCE_REVERT_IDEMPOTENCY_VERIFIED:false}
     base-url: ${LEAVE_ATTENDANCE_BASE_URL:}
     service-id: ${LEAVE_ATTENDANCE_SERVICE_ID:attendance-service}
     connect-timeout: ${LEAVE_ATTENDANCE_CONNECT_TIMEOUT:2s}

@@ -410,7 +410,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
                     .andExpect(jsonPath("$.data.status").value(result.status().name()))
                     .andExpect(jsonPath("$.data.approvalCreationStatus").doesNotExist());
         }
-        assertThat(jdbcTemplate.queryForObject("select count(*) from flyway_schema_history where success",Integer.class)).isEqualTo(7);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from flyway_schema_history where success",Integer.class)).isEqualTo(8);
         assertThat(jdbcTemplate.queryForObject("show server_version",String.class)).startsWith("17.");
     }
 
@@ -781,14 +781,17 @@ class LeaveApprovalResultPostgresIntegrationTest {
         approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
         approvalResultService.linkCreatedDocument(initial.requestId(), initial.approvalRequestId(), 501L);
         when(employeeAccess.isAdmin(1L)).thenReturn(true);
-        AdminCancellationAttempt attempt = cancellationTransactions.start(initial.requestId(), "관리자 취소");
-        cancellationTransactions.recordUnknown(attempt.command());
+        assertBusiness(() -> cancellationTransactions.start(initial.requestId(), "관리자 취소"),
+                ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
 
         assertThat(settlementService.settle(decision(initial, status, 1, 501L, initial.approvalRequestId())))
                 .isEqualTo(LeaveApprovalSettlementService.Outcome.APPLIED);
         Map<String, List<Map<String, Object>>> after = rows();
 
-        assertBusiness(() -> cancellationTransactions.complete(attempt.command()), ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
+        if (status.equals("REJECTED")) {
+            assertBusiness(() -> cancellationTransactions.start(initial.requestId(), "관리자 취소"),
+                    ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
+        }
         assertThat(rows()).isEqualTo(after);
     }
 
@@ -863,6 +866,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
         if (priorState.equals("APPROVED") || priorState.equals("REJECTED")) {
             settlementService.settle(decision(initial, priorState, 1, 501L, initial.approvalRequestId()));
         } else {
+            settlementService.settle(decision(initial, "APPROVED", 1, 501L, initial.approvalRequestId()));
             when(employeeAccess.isAdmin(1L)).thenReturn(true);
             AdminCancellationAttempt attempt = cancellationTransactions.start(initial.requestId(), "관리자 취소");
             if (priorState.equals("UNKNOWN")) {
