@@ -187,3 +187,13 @@ export function useBuilderWorkflows(ids: number[]) {
     })),
   });
 }
+
+/** 사원 실행 입력 폼 저장(PUT /workflows/{id}/input-form). 전체 목록 덮어쓰기. 배포와 별개로 바로 반영된다 */
+export function useSaveInputForm(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fields: FormField[]) => api.put<BuilderWorkflow>(`${BASE}/workflows/${id}/input-form`, { fields }),
+    onSuccess: (wf) => qc.setQueryData(builderKeys.detail(id), wf),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['workflows', id, 'input-form'] }),
+  });
+}

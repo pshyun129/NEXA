@@ -56,3 +56,8 @@
 .rowName { font-weight: 600; color: var(--nx-n-800); }
 .rowDesc { font-size: 13px; color: var(--nx-n-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .placement { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--nx-n-700); cursor: pointer; }
+.formEditor { display: flex; flex-direction: column; gap: 12px; }
+.formRow { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; padding: 8px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); }
+.formReq { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--nx-n-700); white-space: nowrap; }
+.formOptions { grid-column: 1 / -1; }
+.formKey { grid-column: 1 / -1; font-family: var(--nx-font-mono); font-size: 11px; color: var(--nx-n-500); }

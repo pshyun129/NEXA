@@ -23,6 +23,7 @@ import { formatTime, serverUtc } from '@/format';
 import { orderWarnings } from './nodeIO';
 import { DeployControls } from './DeployControls';
 import { PlacementToggle } from './PlacementToggle';
+import { InputFormEditor } from './InputFormEditor';
 import s from './builder.module.css';
 
 type BuilderNodeData = FlowNodeData & { nodeType: string; config: Record<string, unknown> };
@@ -121,7 +122,11 @@ function ConfigForm({ detail, config, onChange }:
   );
 }
 
-function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDetail[]; byType: Map<string, NodeDetail> }) {
+/**
+ * wf는 처음 받은 초안(캔버스 초기값), live는 최신 서버 값(배포 버전·노출 화면 등 헤더 표시용).
+ * 캔버스는 다시 받은 값으로 덮지 않고, 헤더는 배포·노출 변경이 바로 보이게 live를 쓴다.
+ */
+function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: BuilderWorkflow; catalog: NodeDetail[]; byType: Map<string, NodeDetail> }) {
   const notify = useNotify();
   const flow = useReactFlow<BNode, BEdge>();
   const categories = useNodeCategories();
@@ -132,6 +137,9 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
   const [nodes, setNodes] = useState<BNode[]>(() => wf.draftGraph.nodes.map((n) => toNode(n, byType)));
   const [edges, setEdges] = useState<BEdge[]>(() => wf.draftGraph.edges.map(toEdge));
   const [dirty, setDirty] = useState(false);
+  // 이 화면에서 배포한 뒤 아직 바꾼 게 없으면 같은 초안을 또 배포하지 않게 막는다(서버는 같은 그래프도 새 버전으로 쌓는다)
+  const [justDeployed, setJustDeployed] = useState(false);
+  useEffect(() => { if (dirty) setJustDeployed(false); }, [dirty]);
   const [savedAt, setSavedAt] = useState(wf.updatedAt);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
   const [q, setQ] = useState('');
@@ -139,7 +147,16 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
   const [testRunId, setTestRunId] = useState<number | null>(null);
 
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
-  const warnings = useMemo(() => orderWarnings(graph, catalog), [graph, catalog]);
+  const [formOpen, setFormOpen] = useState(false);
+  // 파일 업로드 노드가 있는데 사원 입력 폼에 파일 칸이 없으면 사원이 파일을 올릴 수 없다(서버 검사는 이걸 보지 않는다)
+  const fileNode = graph.nodes.find((n) => n.type === 'file_upload');
+  const fileMissing = !!fileNode && !live.inputForm.some((f) => f.type === 'file');
+  const warnings = useMemo(() => [
+    ...orderWarnings(graph, catalog),
+    ...(fileNode && fileMissing
+      ? [{ nodeId: fileNode.id, message: `'${byType.get('file_upload')?.name ?? '파일 업로드'}'가 있는데 사원 입력 폼에 파일 칸이 없습니다(사원이 파일을 올릴 수 없음)` }]
+      : []),
+  ], [graph, catalog, fileNode, fileMissing, byType]);
   const selectedNode = nodes.find((n) => n.selected);
   const selectedEdge = edges.find((e) => e.selected);
 
@@ -295,7 +312,7 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
       <header className={s.bar}>
         <Link to="/admin/builder" className={s.back}>← 자동화 빌더</Link>
         <h1 className={s.name}>{wf.name}</h1>
-        {wf.deployedVersion != null ? <Tag>v{wf.deployedVersion} 배포됨</Tag> : <Tag>배포 전</Tag>}
+        {live.deployedVersion != null ? <Tag>v{live.deployedVersion} 배포됨</Tag> : <Tag>배포 전</Tag>}
         <span className={dirty ? s.unsaved : s.muted}>
           {dirty ? '저장 안 됨' : `초안 저장 ${formatTime(serverUtc(savedAt))}`}
         </span>
@@ -303,12 +320,16 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
         <Button onClick={onSave} loading={save.isPending} disabled={!dirty}>저장 <Kbd>{modKey}+S</Kbd></Button>
         <Button onClick={onValidate} loading={validate.isPending}>검사 <Kbd>{modKey}+Shift+V</Kbd></Button>
         <Button type="primary" onClick={onTest}>테스트 실행</Button>
-        <PlacementToggle workflowId={wf.id} placements={wf.placements} deployed={wf.deployedVersion != null} />
+        <InputFormEditor workflowId={wf.id} fields={live.inputForm} open={formOpen} setOpen={setFormOpen} needsFile={!!fileNode} />
+        <PlacementToggle workflowId={wf.id} placements={live.placements} deployed={live.deployedVersion != null} />
         <DeployControls
           workflowId={wf.id}
           warningCount={warnings.length}
-          exposed={wf.placements.includes('HOME')}
+          exposed={live.placements.includes('HOME')}
+          fileMissing={fileMissing}
+          onDeployed={() => setJustDeployed(true)}
           blockedReason={dirty ? '저장한 뒤 검사를 통과해야 배포할 수 있습니다'
+            : justDeployed ? `마지막 배포(v${live.deployedVersion}) 이후 바뀐 내용이 없습니다`
             : issues === null ? '[검사]를 먼저 실행해 주세요'
             : issues.length > 0 ? `검사 이슈 ${issues.length}건을 먼저 해결해 주세요`
             : null}
@@ -401,6 +422,9 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
           <li key={`${w.nodeId}-${w.message}`} className={s.issue}>
             <Icon as={TriangleAlert} size={16} className={s.warnIcon} />{w.message}
             <Button size="small" type="link" onClick={() => focusNode(w.nodeId)}>노드로 이동</Button>
+            {fileMissing && w.nodeId === fileNode?.id && w.message.includes('입력 폼') && (
+              <Button size="small" type="link" onClick={() => setFormOpen(true)}>입력 폼 열기</Button>
+            )}
           </li>
         ))}
         </ul>
@@ -410,7 +434,7 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
               title={testRunId ? `테스트 실행 · run #${testRunId} (초안 그래프)` : '테스트 실행 (초안 그래프)'}>
         {testRunId ? <RunMonitor runId={testRunId} /> : (
           <div className={s.testForm}>
-            <SchemaForm fields={wf.inputForm} submitting={startTest.isPending} submitLabel="테스트 실행"
+            <SchemaForm fields={live.inputForm} submitting={startTest.isPending} submitLabel="테스트 실행"
                         onSubmit={(v) => startTest.mutate(v, {
                           onSuccess: (r) => setTestRunId(r.runId),
                           onError: (e) => notify.error(e, '테스트 실행을 시작하지 못했습니다'),
@@ -435,7 +459,7 @@ export function BuilderEditor({ id }: { id: number }) {
   if (!initial || !cat.nodes || !cat.byType) return <Skeleton active={false} paragraph={{ rows: 10 }} />;
   return (
     <ReactFlowProvider>
-      <Editor wf={initial} catalog={cat.nodes} byType={cat.byType} />
+      <Editor wf={initial} live={wf.data ?? initial} catalog={cat.nodes} byType={cat.byType} />
     </ReactFlowProvider>
   );
 }
