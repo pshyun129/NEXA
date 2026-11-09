@@ -1,6 +1,7 @@
 package com.ssafy.attendanceservice.domain.attendance.entity;
 
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkTimeResult;
+import com.ssafy.attendanceservice.global.util.DateTimeUtils;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -17,6 +18,7 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 @Entity
@@ -86,6 +88,9 @@ public class AttendanceDaily {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;       // 마지막 재계산 시각
 
+    /** 근무일 마감 시각 (출근한 날 다음날 이 시각) */
+    public static final LocalTime WORK_DAY_CUTOFF = LocalTime.of(6, 0);
+
     @Builder
     private AttendanceDaily(WorkGroup workGroup, Long empId, LocalDate workDate,
                             OffsetDateTime clockIn, Boolean isHoliday) {
@@ -122,6 +127,20 @@ public class AttendanceDaily {
     /** 퇴근 여부 */
     public boolean isClockedOut() {
         return clockOut != null;
+    }
+
+    /**
+     * 근무일 마감이 지났는가 (출근한 날 다음날 06:00).
+     * 자정을 넘긴 야근은 마감 전까지 퇴근할 수 있고, 마감이 지나면 퇴근 누락으로 보고 퇴근·상태 변경을 받지 않는다
+     */
+    public boolean isPastWorkDayCutoff(OffsetDateTime now) {
+        OffsetDateTime cutoff = workDate.plusDays(1).atTime(WORK_DAY_CUTOFF).atZone(DateTimeUtils.ZONE).toOffsetDateTime();
+        return !now.isBefore(cutoff);
+    }
+
+    /** 퇴근 없이 근무일 마감이 지났는가 (퇴근 누락) */
+    public boolean isUnclosedPastCutoff(OffsetDateTime now) {
+        return !isClockedOut() && isPastWorkDayCutoff(now);
     }
 
     /** 근로시간 계산 결과 반영 */

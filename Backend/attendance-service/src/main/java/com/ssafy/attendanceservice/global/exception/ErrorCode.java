@@ -36,6 +36,7 @@ public enum ErrorCode {
     LEAVE_DAY_CLOCK_IN(HttpStatus.CONFLICT, "ATTN_018", "휴가일에는 출근할 수 없습니다."),
     LEAVE_DAY_REQUEST(HttpStatus.CONFLICT, "ATTN_019", "휴가일에는 신청할 수 없습니다."),
     LEAVE_CALL_FAILED(HttpStatus.BAD_GATEWAY, "ATTN_020", "휴가 서비스 호출에 실패했습니다."),
+    WORK_DAY_CLOSED(HttpStatus.CONFLICT, "ATTN_021", "퇴근을 찍지 않은 근무가 마감되었습니다. 근무시간 수정 신청으로 퇴근 시각을 넣어 주세요."),
 
     // 공통 (user-service와 동일)
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "COMMON_001", "요청 값이 올바르지 않습니다."),

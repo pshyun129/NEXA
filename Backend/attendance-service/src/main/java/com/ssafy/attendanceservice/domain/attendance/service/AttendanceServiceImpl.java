@@ -124,10 +124,15 @@ public class AttendanceServiceImpl implements AttendanceService {
             throw new BusinessException(ErrorCode.ALREADY_CLOCKED_OUT);
         }
 
-        // 3. 퇴근 시각 기록 (변경 감지로 UPDATE)
+        // 3. 근무일 마감(다음날 06:00)이 지난 근무에는 퇴근을 붙이지 않는다 (퇴근 누락, 수정 신청으로 처리)
+        if (daily.isPastWorkDayCutoff(now)) {
+            throw new BusinessException(ErrorCode.WORK_DAY_CLOSED);
+        }
+
+        // 4. 퇴근 시각 기록 (변경 감지로 UPDATE)
         daily.clockOut(now);
 
-        // 4. 퇴근 로그
+        // 5. 퇴근 로그
         WorkStatusCode clockOutCode = processor.getStatusCode(WorkStatusCode.CLOCK_OUT);
         workStatusLogRepository.save(WorkStatusLog.builder()
                 .workStatusCode(clockOutCode)
@@ -138,7 +143,7 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .createdBy(empId)
                 .build());
 
-        // 5. 근로시간 집계 + 근태이상 판정
+        // 6. 근로시간 집계 + 근태이상 판정
         WorkTimeResult workTime = processor.recalculate(daily);
         processor.refreshClockOutAnomalies(daily, workTime);
 
@@ -161,6 +166,10 @@ public class AttendanceServiceImpl implements AttendanceService {
         // 2. 퇴근 후 2시간이 지나면 변경 불가 (이후는 근무시간 수정 신청으로 처리)
         if (daily.isClockedOut() && now.isAfter(daily.getClockOut().plus(CLOCK_OUT_CANCEL_LIMIT))) {
             throw new BusinessException(ErrorCode.INVALID_STATUS_CHANGE);
+        }
+        // 퇴근 없이 근무일 마감이 지난 근무는 상태를 바꿀 수 없음 (퇴근 누락, 수정 신청으로 처리)
+        if (daily.isUnclosedPastCutoff(now)) {
+            throw new BusinessException(ErrorCode.WORK_DAY_CLOSED);
         }
 
         // 3. 요청한 상태가 지금 바꿀 수 있는 상태인지
@@ -203,6 +212,12 @@ public class AttendanceServiceImpl implements AttendanceService {
         }
 
         AttendanceDaily daily = latest.get();
+
+        // 퇴근 없이 근무일 마감이 지난 근무: 퇴근 누락으로 두고 새 근무일 시작 전 (출근 가능)
+        if (daily.isUnclosedPastCutoff(now)) {
+            return AttendanceStatusResponse.beforeClockIn(today);
+        }
+
         WorkStatusCode current = workStatusLogRepository
                 .findTopByEmpIdAndWorkDateAndIsDeletedFalseOrderByStartAtDescLogIdDesc(empId, daily.getWorkDate())
                 .map(WorkStatusLog::getWorkStatusCode)
