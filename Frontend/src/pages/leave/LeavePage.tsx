@@ -5,6 +5,7 @@ import { BalanceList, useNoPolicy } from '@/leave/Balances';
 import { LeaveApply } from '@/leave/Apply';
 import { LeaveRequestList, LeaveRequestView } from '@/leave/Requests';
 import { LeaveLedger } from '@/leave/Ledger';
+import { PolicyCard } from '@/leave/PolicyCard';
 import { APPLY_PATH, LEAVE_PATH, leaveRequestHref } from '@/leave/links';
 
 /**
@@ -46,7 +47,10 @@ export function LeavePage() {
       />
       {tab === '' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card title="휴가 잔여"><BalanceList /></Card>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(300px, 1fr)', gap: 16, alignItems: 'start' }}>
+            <Card title="휴가 잔여"><BalanceList /></Card>
+            <PolicyCard />
+          </div>
           <Card title="내 휴가 신청" flush><LeaveRequestList onOpen={open} /></Card>
         </div>
       ) : (

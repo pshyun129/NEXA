@@ -126,6 +126,30 @@ export function useLeaveLedger() {
   return useQuery({ queryKey: leaveKeys.ledger, queryFn: () => api.get<LeaveLedgerEntry[]>(`${ME}/ledger`) });
 }
 
+/** 내 휴가 정책(배정 + 지금 적용되는 버전). 배정이 없으면 404 LEAVE_010 */
+export interface MyLeavePolicy {
+  policyName: string;
+  versionNo: number;
+  baseType: 'HIRE_DATE' | 'FISCAL_YEAR';
+  /** FISCAL_YEAR일 때 MM-DD */
+  fiscalStart: string | null;
+  unitMinutes: number;
+  carryOverAllowed: boolean;
+  carryOverLimitMinutes: number | null;
+  expiryRule: string;
+  assignmentEffectiveFrom: string;
+  assignmentEffectiveTo: string | null;
+}
+
+export function useMyLeavePolicy() {
+  return useQuery({
+    queryKey: ['leave', 'policy'] as const,
+    queryFn: () => api.get<MyLeavePolicy>(`${ME}/policy`),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** 신청할 수 있는 유형. 정책 배정이 없으면 404 LEAVE_010 */
 export function useLeaveTypes() {
   return useQuery({

@@ -11,6 +11,7 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage';
 import { AutomationPage } from '@/pages/automation/AutomationPage';
 import { MigrationPage } from '@/pages/admin/MigrationPage';
 import { HrPage } from '@/pages/admin/HrPage';
+import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { PayPage } from '@/pages/pay/PayPage';
 import { OrgPage } from '@/pages/org/OrgPage';
 import { LeavePage } from '@/pages/leave/LeavePage';
@@ -34,7 +35,7 @@ export function App() {
         <Route path="pay/*" element={<PayPage />} />
         <Route path="automation/*" element={<AutomationPage />} />
         <Route path="org/*" element={<OrgPage />} />
-        <Route path="admin" element={<RequireAdmin><Placeholder title="관리 홈" week="5주차" /></RequireAdmin>} />
+        <Route path="admin" element={<RequireAdmin><AdminHomePage /></RequireAdmin>} />
         <Route path="admin/hr/*" element={<RequireAdmin><HrPage /></RequireAdmin>} />
         <Route path="admin/migration" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         <Route path="admin/migration/:id" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />

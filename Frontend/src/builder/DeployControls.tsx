@@ -10,8 +10,10 @@ import s from './builder.module.css';
  * 배포·버전 조회(P1, 설계 9장 "빌더 배포·버전 조회"). 버전 활성화(되돌리기)는 P2라 두지 않는다.
  * 배포는 저장 + 서버 검사 통과(이슈 0) 뒤에만 연다. 서버도 배포 때 다시 검사한다(WF_INVALID_GRAPH).
  */
-export function DeployControls({ workflowId, blockedReason, warningCount }: {
+export function DeployControls({ workflowId, blockedReason, warningCount, exposed }: {
   workflowId: number;
+  /** 사원 업무 자동화 목록 노출(placements에 HOME) 여부. 꺼져 있으면 확인 창에 알린다 */
+  exposed: boolean;
   /** 배포를 막는 이유(저장 안 됨, 검사 안 함, 이슈 있음). null이면 배포 가능 */
   blockedReason: string | null;
   /** 클라이언트 순서 경고 수(배포는 막지 않고 확인 창에 적는다) */
@@ -42,6 +44,7 @@ export function DeployControls({ workflowId, blockedReason, warningCount }: {
       >
         <p>저장된 초안을 v{next}로 배포합니다. 이후 시작하는 실행부터 이 버전이 쓰이고, 이미 시작된 실행은 원래 버전으로 계속 진행됩니다.</p>
         {warningCount > 0 && <p className={s.muted}>순서 경고 {warningCount}건이 남아 있습니다(서버 검사는 통과).</p>}
+        {!exposed && <p className={s.muted}>[사원에게 노출]이 꺼져 있어 배포해도 사원 업무 자동화 목록에는 보이지 않습니다.</p>}
       </ConfirmAction>
       <Drawer open={open} onClose={() => setOpen(false)} width={420} title="배포 버전">
         <Table<WorkflowVersion>

@@ -55,3 +55,4 @@
 .rowMain { flex: 1; min-width: 0; }
 .rowName { font-weight: 600; color: var(--nx-n-800); }
 .rowDesc { font-size: 13px; color: var(--nx-n-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.placement { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--nx-n-700); cursor: pointer; }
