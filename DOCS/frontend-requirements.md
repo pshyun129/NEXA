@@ -262,7 +262,7 @@
 5. **실행 모니터**: `GET /runs/{runId}`와 `/runs/{runId}/steps`를 **함께** 폴링한다. QUEUED·RUNNING은 1.5초, WAITING은 10초, `SUCCEEDED/FAILED/CANCELED`이면 중단, resume 후 다시 1.5초(설계 7.3). 상태 `QUEUED → RUNNING → WAITING → SUCCEEDED / FAILED / CANCELED`.
    - 실행 취소 `POST /runs/{runId}/cancel` (QUEUED·WAITING에서 노출). CANCELED는 이것으로만 생긴다.
    - **사람 확인에서 반려해도 run은 `SUCCEEDED`로 끝난다**(`human_confirm`이 '반려' 분기로 나가고, 연결된 엣지가 없으면 END). 최종 표시는 `run.status` + 마지막 step의 `branch`로 계산한다(예: SUCCEEDED + '반려' → "반려로 종료").
-   - `RunDetail`에는 **실행된 그래프가 없다**(6장 #18). 캔버스는 `GET /workflows/{id}`의 초안 그래프로 그리므로, 시연 워크플로는 배포 후 초안을 수정하지 않는다.
+   - `RunDetail`에는 **실행된 그래프가 없다**(6장 #18). 실행 화면은 steps 타임라인으로 그리므로 그래프가 필요 없다(배포 후 수정 금지 규칙 폐기) (2026-11-09 갱신).
 6. **사람 확인**(`WAITING`): step의 `output.waiting_for`에서 `fields`(AI 추출값), `reasons`, `gms_fields`(교차 추출값)를 보여 주고 수정 폼 제공 → `POST /runs/{id}/resume` `{approved, comment, data}`. **요청자 본인만** 재개 가능.
    - 영수증 `fields`는 **`store`(가맹점), `total`(금액), `date`(날짜) 3개**뿐이다.
    - `reasons`는 자유 문자열이다: `"OCR 신뢰도 낮음: 0.71"`, `"GMS와 불일치: total"`, `"규칙 위반: store"`. 그대로 목록으로 보여 준다.
@@ -292,7 +292,7 @@
 사원 등록 필드: `email`, `password`(8~72자), `name`, `engName`, `empNo`, `deptId`, `positionId`, `gradeId`, `dutyId`, `jobFamilyId` → `jobKindId` → `jobRoleId`(계층), `empType`, `hireType`, `hireDate`, `recogHireDate`, `officePhone`, `mobile`, `nationality`, `gender`, `birthDate`, `address`, `leavePolicyId`, `workGroupId`, `role`.
 ⚠ 직위·직급·직책·직무코드 **목록 API가 없어** select 옵션을 채울 수 없다 (6장 #5). 사원 등록 화면은 P2이고, 만든다면 ID 직접 입력으로 단순화한다.
 
-부서장 변경은 이후 상신하는 결재 문서부터 적용된다. 부서에 유형·부서장이 비어 있으면 모든 상신이 `APPROVAL_022`로 막히므로, 부서 관리 화면에서 "결재선 구성 불가" 경고를 띄우면 좋다.
+부서장 변경은 이후 상신하는 결재 문서부터 적용된다. 부서장이 비었거나 재직이 아니면 상위 부서장으로 건너뛰고, 유형이 비면 TEAM으로 본다. 위로 끝까지 결재할 부서장이 없을 때(최상위 부서장 공석·재직 아님)만 `APPROVAL_022`로 막힌다. 부서 관리 화면은 이 경우만 danger로 표시한다 (2026-11-09 갱신).
 
 ### 4.2 근태 관리 (attendance) — P2
 
@@ -454,7 +454,7 @@ P2. 시연용 명세서는 시드 스크립트로 이 API를 호출해 만든다
 | 15 | 공통 | 🟡 페이지네이션·검색 없음 | 데이터가 늘면 목록 성능 | 클라이언트 페이징 | — |
 | 16 | approval | 🟡 잘못된 query/path 타입이 500으로 올 수 있음 | — | ID·enum 클라이언트 사전 검증 | — |
 | 17 | 공통 | 🟡 사원 이름·부서명이 응답에 없음 | — | `employees?ids=` 조합 + 캐시(`EmpName`) | — |
-| 18 | ai | 🟠 `RunDetail`에 실행된 그래프 없음(`Run.graph` 컬럼은 있음, 스키마에 `graph: dict` 한 줄 추가로 해결) | 배포 후 초안을 고치면 실행 모니터 캔버스와 steps의 `nodeId`가 어긋남 | 초안 그래프 사용 + "시연 워크플로는 배포 후 수정 금지" 운영 규칙 | 4주차 |
+| 18 | ai | 🟠 `RunDetail`에 실행된 그래프 없음(`Run.graph` 컬럼은 있음, 스키마에 `graph: dict` 한 줄 추가로 해결) | 배포 후 초안을 고치면 실행 모니터 캔버스와 steps의 `nodeId`가 어긋남 | 해당 없음(실행 화면을 steps 타임라인으로 구현, 2026-11-09) | — |
 | 19 | attendance | 🟡 근태 신청 목록에 `approvalDocId` 없음 | 목록에서 결재 문서로 바로 이동 불가 | 상세 1회 조회 후 캐시 | — |
 
 ---
@@ -475,7 +475,7 @@ P2. 시연용 명세서는 시드 스크립트로 이 API를 호출해 만든다
 
 | # | 항목 | 왜 필요한가 | 확인 |
 |---|---|---|---|
-| 1 | user1~user4가 속한 팀의 `deptType=TEAM`, 부서장 user2. 상위 본부(`DIVISION`)와 회사(`COMPANY`)에도 유형·부서장 | 없으면 모든 상신이 `APPROVAL_022` | `GET /employees/{user1}/org-chain`의 `chain[].headEmpId`가 모두 채워짐 |
+| 1 | 개발팀(user3·user4 사원, 부서장 user5) `deptType=TEAM`, 상위 기술본부(user8)·회사(user9)에 유형·부서장 (2026-11-09 갱신) | 최상위까지 결재할 부서장이 없으면 `APPROVAL_022` | `GET /employees/{user3}/org-chain`의 `chain[].headEmpId`가 채워짐 |
 | 2 | 시연 사원의 그 달 초과근무 누적 12시간 미만 | 넘으면 OVERTIME이 본부장 전결이 되어 팀장 승인만으로 문서가 끝나지 않는다 | `GET /documents/approval-line-preview?formType=OVERTIME...` 결재자 1명 |
 | 3 | 시연 사원의 **전날** 출퇴근 로그(08:52 출근 · 18:32 퇴근) | 낮 시연에서 당일 퇴근으로는 미승인 연장이 생기지 않고, 출근은 하루 1회라 리허설 반복이 안 된다 | `POST /attn/admin/logs`로 등록 후 `GET /attn/me/daily/{어제}`의 `unapprovedOtMin > 0` |
 | 4 | 리허설 계정 로테이션표(user1 → user3 → user4 …, 모두 #1의 팀 소속) | 한 계정은 같은 날 같은 신청을 반복할 수 없다 | 표를 대본에 붙임 |
