@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from './client';
 
 // payroll-service 본인 급여(PayslipController, /api/v1/pay/me, origin/develop def2081 기준).
@@ -55,6 +55,23 @@ export const payslipPdfUrl = (id: number) => `${BASE}/payslips/${id}/pdf`;
 /** PAY_002: 토큰에 직급이 없거나 직급 기본급 미등록 → 서버 메시지 그대로 */
 export function useContract() {
   return useQuery({ queryKey: ['pay', 'contract'], queryFn: () => api.get<Contract>(`${BASE}/contract`), retry: false });
+}
+
+/** 관리자 명세서 생성 결과(AdminPayslipController, ADMIN) */
+export interface PayslipGenerated {
+  payslipId: number; empId: number; payYear: number; payMonth: number; payDate: string;
+  totalPay: number; totalDeduction: number; netPay: number;
+}
+
+/**
+ * 사원 1명의 월 명세서 생성(month = YYYY-MM). 같은 달이 이미 있으면 409 PAY_003,
+ * 직급·기본급이 없으면 404 PAY_002, user-service·근태 호출 실패는 502 PAY_009·PAY_001
+ */
+export function useGeneratePayslip() {
+  return useMutation({
+    mutationFn: ({ empId, month }: { empId: number; month: string }) =>
+      api.post<PayslipGenerated>('/api/v1/pay/admin/payslips/generate', { empId, month }),
+  });
 }
 
 /** resignDate = 퇴직일(마지막 근무일 다음 날). 명세서가 없으면 404 PAY_007 */

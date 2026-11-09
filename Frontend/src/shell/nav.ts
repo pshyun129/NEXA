@@ -26,6 +26,7 @@ export const userNav: NavItem[] = [
 export const adminNav: NavItem[] = [
   { to: '/admin', label: '관리 홈', icon: House },
   { to: '/admin/hr', label: '인사', icon: Users },
+  { to: '/admin/pay', label: '급여', icon: Wallet },
   { to: '/admin/migration', label: '데이터 이관', icon: DatabaseZap },
   { to: '/admin/builder', label: '자동화 빌더', icon: Workflow },
 ];

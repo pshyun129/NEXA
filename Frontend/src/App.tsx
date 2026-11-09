@@ -11,6 +11,7 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage';
 import { AutomationPage } from '@/pages/automation/AutomationPage';
 import { MigrationPage } from '@/pages/admin/MigrationPage';
 import { HrPage } from '@/pages/admin/HrPage';
+import { PayAdminPage } from '@/pages/admin/PayAdminPage';
 import { AdminHomePage } from '@/pages/admin/AdminHomePage';
 import { PayPage } from '@/pages/pay/PayPage';
 import { OrgPage } from '@/pages/org/OrgPage';
@@ -37,6 +38,7 @@ export function App() {
         <Route path="org/*" element={<OrgPage />} />
         <Route path="admin" element={<RequireAdmin><AdminHomePage /></RequireAdmin>} />
         <Route path="admin/hr/*" element={<RequireAdmin><HrPage /></RequireAdmin>} />
+        <Route path="admin/pay" element={<RequireAdmin><PayAdminPage /></RequireAdmin>} />
         <Route path="admin/migration" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         <Route path="admin/migration/:id" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         <Route path="admin/builder/*" element={<RequireAdmin><Suspense fallback={null}><BuilderPage /></Suspense></RequireAdmin>} />
