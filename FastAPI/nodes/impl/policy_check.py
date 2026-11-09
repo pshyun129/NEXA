@@ -109,6 +109,7 @@ class PolicyCheckNode(BaseNode):
         {"key": "findings", "label": "조항별 판정", "type": "list"},
         {"key": "system_rules", "label": "시스템이 처리하는 규정", "type": "list"},
         {"key": "fields", "label": "검토한 추출 결과", "type": "object"},
+        {"key": "known_facts", "label": "검토에 쓴 사실 (품목·참석자·사유·1인당 금액 등)", "type": "object"},
         {"key": "doc_type", "label": "문서 종류", "type": "text"},
         {"key": "index_version", "label": "규정 색인 버전", "type": "text"},
         {"key": "judge_version", "label": "판정 모델 버전", "type": "text"},
