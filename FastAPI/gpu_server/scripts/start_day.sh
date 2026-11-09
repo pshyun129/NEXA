@@ -14,10 +14,8 @@ start() {   # 사용법: start <세션 이름> <스크립트 파일>
   fi
 }
 
-# Tailscale(ts)은 로그인 상태를 유지해야 해서 따로 관리 → 없으면 알려만 줌
-if ! tmux has-session -t ts 2>/dev/null; then
-  echo "[ts] Tailscale 세션이 없습니다. 먼저 켜야 PC·EC2에서 접근할 수 있어요"
-fi
+# Tailscale(ts): 없으면 같이 켬 (로그인 상태는 state 파일에 남아 있어 재로그인 불필요, 끌 때는 stop_day.sh도 안 끔)
+bash "$SCRIPT_DIR/start_ts.sh"
 
 start vllm serve.sh
 start ocr serve_ocr.sh

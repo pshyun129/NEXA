@@ -10,7 +10,7 @@ import runs.models
 import workflows.models  # noqa: F401  테이블 등록용
 from core.auth import get_current_user
 from core.config import settings
-from core.database import Base, engine
+from core.database import Base, SessionLocal, engine
 from engine.checkpointer import close_checkpointer, init_checkpointer
 from core.exceptions import register_exception_handlers
 from events import approval_consumer
@@ -20,6 +20,8 @@ from workflows.routers import router as workflows_router
 from ai.routers import router as ai_router
 from ai.rag.index import warm_up as warm_up_rag
 from runs import golden_sync
+from runs.service import fail_interrupted_runs
+
 
 # 우리 코드의 INFO 로그가 보이게 (httpx 요청 로그는 너무 많아서 경고 이상만)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
@@ -33,6 +35,11 @@ SERVICE_NAME = "ai-service"
 async def lifespan(app: FastAPI):
     # 서버 켤 때
     Base.metadata.create_all(engine)
+    # 재시작(배포) 전에 돌던 실행은 이어서 돌릴 수 없으므로 실패로 정리 (RUNNING으로 영원히 남지 않게)
+    with SessionLocal() as db:
+        interrupted = fail_interrupted_runs(db)
+    if interrupted:
+        logging.getLogger(__name__).warning("서버 재시작으로 중단된 실행 %d개를 실패 처리", interrupted)
     init_checkpointer()
     approval_consumer.start()          # 결재 결과 구독 시작 (KAFKA_BOOTSTRAP_SERVERS 없으면 건너뜀)
     # 규정 RAG 모델 미리 불러오기: 수 초~수십 초 걸려서 백그라운드로 (헬스체크·다른 요청을 막지 않게)

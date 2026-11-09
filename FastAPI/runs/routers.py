@@ -58,8 +58,8 @@ def upload_file(
 
 
 @router.get("/runs/files/{file_id}", response_model=ApiResult[RunFileResponse])
-def get_file(file_id: int, db: Session = Depends(get_db)):
-    run_file = service.get_file(db, file_id)
+def get_file(file_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+    run_file = service.get_file(db, file_id, user_id)
     return ok(RunFileResponse.model_validate(run_file))
 
 
@@ -72,8 +72,8 @@ def download_file(file_id: int, db: Session = Depends(get_db), user_id: str = De
 
 
 @router.delete("/runs/files/{file_id}", response_model=ApiResult[None])
-def delete_file(file_id: int, db: Session = Depends(get_db)):
-    service.delete_file(db, file_id)
+def delete_file(file_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
+    service.delete_file(db, file_id, user_id)
     return ok()
 
 
@@ -96,21 +96,22 @@ def list_my_pending(
     return ok([RunSummary.model_validate(r) for r in runs])
 
 
+# 실행 조회·취소: 요청자 본인 또는 관리자만 (2026-11-06 실서버 E2E에서 다른 사원도 조회되는 것 발견)
 @router.get("/runs/{run_id}", response_model=ApiResult[RunDetail])
-def get_run(run_id: int, db: Session = Depends(get_db)):
-    run = service.get_run(db, run_id)
+def get_run(run_id: int, db: Session = Depends(get_db), user: AuthUser = Depends(get_current_user)):
+    run = service.get_run(db, run_id, str(user.employee_id), user.is_admin)
     return ok(RunDetail.model_validate(run))
 
 
 @router.get("/runs/{run_id}/steps", response_model=ApiResult[list[RunStepResponse]])
-def list_steps(run_id: int, db: Session = Depends(get_db)):
-    steps = service.list_steps(db, run_id)
+def list_steps(run_id: int, db: Session = Depends(get_db), user: AuthUser = Depends(get_current_user)):
+    steps = service.list_steps(db, run_id, str(user.employee_id), user.is_admin)
     return ok([RunStepResponse.model_validate(s) for s in steps])
 
 
 @router.post("/runs/{run_id}/cancel", response_model=ApiResult[RunDetail])
-def cancel_run(run_id: int, db: Session = Depends(get_db)):
-    run = service.cancel_run(db, run_id)
+def cancel_run(run_id: int, db: Session = Depends(get_db), user: AuthUser = Depends(get_current_user)):
+    run = service.cancel_run(db, run_id, str(user.employee_id), user.is_admin)
     return ok(RunDetail.model_validate(run))
 
 

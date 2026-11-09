@@ -23,7 +23,7 @@ fi
 
 CUDA_VISIBLE_DEVICES="$GPU_ID" vllm serve "$MODEL_PATH" \
   --served-model-name "$SERVED_MODEL_NAME" \
-  --host 0.0.0.0 \
+  --host "${VLLM_HOST:-127.0.0.1}" \
   --port "$PORT" \
   --gpu-memory-utilization "$GPU_MEM_UTIL" \
   --max-model-len "$MAX_MODEL_LEN" \

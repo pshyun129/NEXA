@@ -1,3 +1,4 @@
 # MLOps scripts only (not needed by the service image)
 pillow
 mlflow
+optuna==5.0.0

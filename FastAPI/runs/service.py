@@ -114,12 +114,20 @@ def create_test_run(db: Session, workflow_id: int, req: RunCreateRequest, user_i
     return run
 
 
-def get_run(db: Session, run_id: int) -> Run:
-    return _get(db, run_id)
+def check_run_access(run: Run, user_id: str, is_admin: bool = False) -> Run:
+    """실행을 보거나 취소할 수 있는 사람: 요청자 본인, 또는 관리자(운영 확인용)
+    (재개는 따로: 재개한 사람의 토큰으로 결재가 상신되므로 관리자도 불가 → routers.resume)"""
+    if run.requested_by != user_id and not is_admin:
+        raise BusinessException(ErrorCode.RUN_FORBIDDEN)
+    return run
 
 
-def list_steps(db: Session, run_id: int) -> list[RunStep]:
-    return _get(db, run_id).steps
+def get_run(db: Session, run_id: int, user_id: str, is_admin: bool = False) -> Run:
+    return check_run_access(_get(db, run_id), user_id, is_admin)
+
+
+def list_steps(db: Session, run_id: int, user_id: str, is_admin: bool = False) -> list[RunStep]:
+    return get_run(db, run_id, user_id, is_admin).steps
 
 
 def list_my_runs(db: Session, user_id: str | None, status: str | None) -> list[Run]:
@@ -129,8 +137,8 @@ def list_my_runs(db: Session, user_id: str | None, status: str | None) -> list[R
     return list(db.scalars(stmt).all())
 
 
-def cancel_run(db: Session, run_id: int) -> Run:
-    run = _get(db, run_id)
+def cancel_run(db: Session, run_id: int, user_id: str, is_admin: bool = False) -> Run:
+    run = get_run(db, run_id, user_id, is_admin)
     if run.status in FINISHED_STATUSES:
         raise BusinessException(ErrorCode.RUN_ALREADY_FINISHED)
     run.status = RunStatus.CANCELED
@@ -184,14 +192,28 @@ def upload_file(db: Session, file: UploadFile, user_id: str | None) -> RunFile:
     return run_file
 
 
-# 첨부 파일 조회
-def get_file(db: Session, file_id: int) -> RunFile:
-    return _get_file(db, file_id)
+def _check_file_access(db: Session, run_file: RunFile, user_id: str) -> None:
+    """파일을 볼 수 있는 사람: 올린 사람, 또는 그 파일이 쓰인 실행의 요청자 (엑셀 결과 파일은 ai-service가 올림)"""
+    if run_file.uploaded_by == user_id:
+        return
+    if run_file.run_id is not None:
+        run = db.get(Run, run_file.run_id)
+        if run is not None and run.requested_by == user_id:
+            return
+    raise BusinessException(ErrorCode.RUN_FORBIDDEN)
 
 
-# 파일 첨부 취소
-def delete_file(db: Session, file_id: int) -> None:
+def get_file(db: Session, file_id: int, user_id: str) -> RunFile:
     run_file = _get_file(db, file_id)
+    _check_file_access(db, run_file, user_id)
+    return run_file
+
+
+# 파일 첨부 취소: 올린 사람만 (실행에 쓰이기 전 파일만)
+def delete_file(db: Session, file_id: int, user_id: str) -> None:
+    run_file = _get_file(db, file_id)
+    if run_file.uploaded_by != user_id:
+        raise BusinessException(ErrorCode.RUN_FORBIDDEN)
     if run_file.run_id is not None:
         raise BusinessException(ErrorCode.FILE_ALREADY_USED)
     files.delete_stored(run_file.stored_name)
@@ -214,14 +236,29 @@ def cleanup_unused_files(db: Session) -> None:
 
 # 실행 결과 파일 다운로드: 올린 사람 본인 또는 그 파일이 쓰인 실행의 요청자만
 def download_file(db: Session, file_id: int, user_id: str):
-    run_file = _get_file(db, file_id)
-    allowed = run_file.uploaded_by == user_id
-    if not allowed and run_file.run_id is not None:
-        run = db.get(Run, run_file.run_id)
-        allowed = run is not None and run.requested_by == user_id
-    if not allowed:
-        raise BusinessException(ErrorCode.RUN_FORBIDDEN)
+    run_file = get_file(db, file_id, user_id)
     path = files.file_path(run_file.stored_name)
     if not path.exists():
         raise BusinessException(ErrorCode.FILE_NOT_FOUND)
     return run_file, path
+
+
+INTERRUPTED = "서버 재시작(배포)으로 중단된 실행입니다. 다시 실행해 주세요."
+
+
+def fail_interrupted_runs(db: Session) -> int:
+    """서버가 켜질 때: 실행 중(QUEUED·RUNNING)으로 남은 실행 = 이전 프로세스에서 끊긴 것 → 실패 처리.
+    전제: ai-service 컨테이너 1개 (여러 개로 늘리면 다른 인스턴스의 실행까지 실패시키므로 이 방식은 못 씀).
+    WAITING은 사람 확인·Kafka 결과로 재개되므로 그대로 둠."""
+    runs = db.scalars(select(Run).where(Run.status.in_([RunStatus.QUEUED, RunStatus.RUNNING]))).all()
+    for run in runs:
+        run.status = RunStatus.FAILED
+        run.error = INTERRUPTED
+        run.finished_at = func.now()
+        for step in run.steps:
+            if step.status == RunStatus.RUNNING:
+                step.status = RunStatus.FAILED
+                step.error = INTERRUPTED
+                step.finished_at = func.now()
+    db.commit()
+    return len(runs)
