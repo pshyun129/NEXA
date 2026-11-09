@@ -4,8 +4,7 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/auth/authApi';
 import { useSession } from '@/auth/session';
 import { isApiError } from '@/api/ApiError';
-import { Icon } from '@/ui/Icon';
-import { Hexagon } from '@/ui/icons';
+import { BrandMark } from '@/ui/BrandMark';
 import s from './login.module.css';
 
 export const EXPIRED_FLAG = 'nx.sessionExpired';
@@ -84,11 +83,17 @@ export function LoginPage() {
 
   return (
     <div className={s.page}>
-      <div className={s.box}>
-        <div className={s.brand}>
-          <Icon as={Hexagon} size={24} className={s.mark} />
-          <span>NEXA</span>
+      <aside className={s.side} aria-hidden>
+        <div className={s.sideBrand}><BrandMark size={34} /><span>nexa</span></div>
+        <div className={s.sideCopy}>
+          <span className={s.sideStar}>✧</span>
+          <strong>반복은 흐름에 맡기고,<br />중요한 일에 집중하세요.</strong>
+          <p>근태 · 휴가 · 전자결재 · 급여 · 업무 자동화</p>
         </div>
+        <div className={s.sideFoot}>© 2026 NEXA · SSAFY 15기 자율 프로젝트 D107</div>
+      </aside>
+      <div className={s.box}>
+        <div className={s.eyebrow}>NEXA ERP WORKSPACE</div>
         <h1 className={s.title}>로그인</h1>
         <p className={s.desc}>회사 이메일로 로그인합니다.</p>
 

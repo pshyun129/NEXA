@@ -11,33 +11,54 @@
 .wfList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .wfList li { border-bottom: 1px solid var(--nx-divider); }
 .wfList li:last-child { border-bottom: 0; }
-.wfItem { display: flex; align-items: center; gap: 12px; padding: 12px 4px; color: var(--nx-n-800); }
-.wfItem:hover { background: var(--nx-bg-subtle); }
+.wfItem { display: flex; align-items: center; gap: 12px; padding: 12px 6px; color: var(--nx-n-800); border-radius: 6px; transition: background var(--nx-dur-base); }
+.wfItem:hover { background: var(--nx-bg-subtle); color: var(--nx-n-800); }
 .wfText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+
+/* 실행할 수 있는 자동화: 파스텔 카드(Workflow Studio 라이브러리) */
+.wfGrid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.wfCard { --accent: var(--nx-cat-input); --tint: var(--nx-cat-input-bg);
+          position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; height: 100%; box-sizing: border-box;
+          padding: 16px; border-radius: 10px; background: var(--tint); border: 1px solid color-mix(in srgb, var(--accent) 20%, white);
+          color: var(--nx-n-800); animation: nx-rise .45s var(--nx-ease) both; transition: transform .25s var(--nx-ease), box-shadow .25s; }
+.wfCard:hover { transform: translateY(-2px); box-shadow: var(--nx-sh-hover); color: var(--nx-n-800); }
+.wfCard b { font-size: 15px; font-weight: 600; letter-spacing: -.3px; color: #3a4049; }
+.wfArt { width: 44px; height: 44px; border-radius: 12px; background: #fff; color: var(--accent); display: grid; place-items: center; margin-bottom: 8px;
+         box-shadow: 0 2px 6px rgba(39,57,91,.06); }
+.wfGo { position: absolute; top: 14px; right: 14px; color: var(--accent); }
+.t-input  { --accent: var(--nx-cat-input);  --tint: var(--nx-cat-input-bg); }
+.t-ai     { --accent: var(--nx-cat-ai);     --tint: var(--nx-cat-ai-bg); }
+.t-rule   { --accent: var(--nx-cat-rule);   --tint: var(--nx-cat-rule-bg); }
+.t-human  { --accent: var(--nx-cat-human);  --tint: var(--nx-cat-human-bg); }
+.t-output { --accent: var(--nx-cat-output); --tint: var(--nx-cat-output-bg); }
 
 /* ---------- 입력 폼 ---------- */
 .drop { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
 .formFoot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* ---------- 실행 화면 ---------- */
-.monitor { display: flex; flex-direction: column; gap: 16px; }
+.monitor { display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
 .monHead { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
-.title { margin: 0; font-size: var(--nx-fs-h2); line-height: 26px; font-weight: 700; color: var(--nx-n-800); }
+.title { margin: 0; font-size: 21px; line-height: 28px; font-weight: 600; letter-spacing: -1px; color: var(--nx-n-800); }
 .monGrid { display: grid; grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
 @media (max-width: 1151px) { .monGrid { grid-template-columns: 1fr; } }
-.panel { background: var(--nx-bg-card); border: 1px solid var(--nx-border); border-radius: var(--nx-r-md); padding: 16px 20px;
-         display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* 빌더 테스트 실행 패널처럼 좁은 곳에서는 한 줄로 */
+@container (max-width: 760px) { .monGrid { grid-template-columns: 1fr; } }
+.panel { background: var(--nx-bg-card); border: 1px solid var(--nx-border); border-radius: 10px; padding: 18px 22px;
+         display: flex; flex-direction: column; gap: 12px; min-width: 0; box-shadow: var(--nx-sh-card); animation: nx-rise .5s var(--nx-ease) both; }
 
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.step { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+.step { position: relative; display: flex; gap: 12px; padding-bottom: 16px; animation: nx-rise .4s var(--nx-ease) both; }
 /* 단계 사이 세로선 */
-.step:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--nx-n-200); }
+.step:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 26px; bottom: 2px; width: 0; border-left: 1.5px dashed #dfe4eb; }
+.st-SUCCEEDED:not(:last-child)::before { border-left-style: solid; border-left-color: #b9dccd; }
 .stepDot { flex: 0 0 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
            border: 1.5px solid var(--nx-n-300); background: var(--nx-n-0); color: var(--nx-n-500); }
-.st-SUCCEEDED .stepDot { border-color: var(--nx-success-fg); background: var(--nx-success-bg); color: var(--nx-success-fg); }
+.st-SUCCEEDED .stepDot { border-color: #67ac97; background: #67ac97; color: var(--nx-n-0); }
 .st-FAILED .stepDot { border-color: var(--nx-danger-fg); background: var(--nx-danger-bg); color: var(--nx-danger-fg); }
-.st-RUNNING .stepDot { border-color: var(--nx-ai-500); color: var(--nx-ai-700); }
-.st-WAITING .stepDot { border-color: var(--nx-warning-fg); background: var(--nx-warning-fg); color: var(--nx-n-0); }
+.st-RUNNING .stepDot { border-color: #7d93d0; color: #5873b6; box-shadow: 0 0 0 4px rgba(125,147,208,.14); }
+.st-WAITING .stepDot { border-color: #db8d74; background: #db8d74; color: var(--nx-n-0); animation: waitPulse 1.4s infinite; }
+@keyframes waitPulse { 50% { box-shadow: 0 0 0 5px rgba(219,141,116,.18); } }
 .stepNext .stepDot { border-style: dashed; }
 .stepBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 2px; }
 .stepHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--nx-n-800); }
@@ -46,11 +67,11 @@
 .err { color: var(--nx-danger-fg); overflow-wrap: anywhere; }
 .here { font-size: 12px; font-weight: 600; color: var(--nx-warning-fg); }
 
-.docCard { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md);
-           background: var(--nx-success-bg); color: var(--nx-n-800); }
-.waitApproval { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md);
-                background: var(--nx-info-bg); }
-.noPreview { padding: 24px; text-align: center; font-size: 13px; color: var(--nx-n-500); border: 1px dashed var(--nx-n-300); border-radius: var(--nx-r-md); }
+.docCard { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-radius: 8px;
+           background: var(--nx-success-bg); border: 1px solid var(--nx-success-bd); color: var(--nx-n-800); animation: nx-rise .4s var(--nx-ease) both; }
+.waitApproval { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; border-radius: 8px;
+                background: var(--nx-cat-output-bg); border: 1px solid color-mix(in srgb, var(--nx-cat-output) 25%, white); }
+.noPreview { padding: 28px; text-align: center; font-size: 13px; color: var(--nx-n-500); border: 1px dashed #e1e5ec; border-radius: 8px; background: #fcfdfe; }
 .previewList { display: flex; flex-direction: column; gap: 8px; }
 .previewImg { max-width: 100%; max-height: 420px; border-radius: var(--nx-r-md); border: 1px solid var(--nx-border); }
 
@@ -70,3 +91,5 @@
 .stBad { display: inline-flex; align-items: center; gap: 4px; color: var(--nx-warning-fg); font-weight: 600; white-space: nowrap; }
 .stOk { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .stEdited { display: inline-flex; align-items: center; gap: 4px; color: var(--nx-brand-700); font-weight: 600; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .wfCard, .panel, .step, .docCard, .st-WAITING .stepDot { animation: none; } }

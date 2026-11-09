@@ -34,3 +34,21 @@ h1,h2,h3,.nx-balance { text-wrap:balance; }
 @keyframes nx-spin { to { transform:rotate(360deg); } }
 .nx-spin { animation:nx-spin 1s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .nx-spin { animation:none; } }
+
+/* ---------- v2 모션 (React Bits 계열: BlurText · AnimatedContent · AnimatedList) ---------- */
+@keyframes nx-blur-in { from { filter:blur(10px); opacity:0; transform:translateY(-8px) } to { filter:blur(0); opacity:1; transform:none } }
+@keyframes nx-rise { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
+@keyframes nx-fade { from { opacity:0 } to { opacity:1 } }
+.nx-blur-word { display:inline-block; animation:nx-blur-in .8s var(--nx-ease) both; }
+.nx-rise { animation:nx-rise .6s var(--nx-ease) both; }
+@media (prefers-reduced-motion: reduce) { .nx-blur-word, .nx-rise { animation:none; } }
+
+/* 표 행이 위에서부터 차례로 나타난다(AnimatedList). 처음 그릴 때만 */
+.ant-table-tbody > tr.ant-table-row { animation:nx-rise .45s var(--nx-ease) both; }
+.ant-table-tbody > tr.ant-table-row:nth-child(2) { animation-delay:40ms } .ant-table-tbody > tr.ant-table-row:nth-child(3) { animation-delay:80ms }
+.ant-table-tbody > tr.ant-table-row:nth-child(4) { animation-delay:120ms } .ant-table-tbody > tr.ant-table-row:nth-child(5) { animation-delay:160ms }
+.ant-table-tbody > tr.ant-table-row:nth-child(n+6) { animation-delay:200ms }
+@media (prefers-reduced-motion: reduce) { .ant-table-tbody > tr.ant-table-row { animation:none; } }
+
+/* 제목 글자 간격(DM Sans 계열 느낌) */
+h1, h2 { letter-spacing:-0.02em; }

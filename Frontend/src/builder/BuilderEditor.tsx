@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Button, Drawer, Input, InputNumber, Select, Skeleton, Tag } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Drawer, Input, InputNumber, Modal, Select, Skeleton } from 'antd';
 import { Link } from 'react-router-dom';
 import {
-  Background, Controls, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
+  Background, BackgroundVariant, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -10,16 +10,23 @@ import {
   useBuilderWorkflow, useNodeCategories, useNodeDetails, useSaveGraph, useStartTestRun, useValidateGraph,
   type BuilderWorkflow, type Graph, type NodeDetail, type ValidationIssue,
 } from '@/api/builder';
-import { nodeTypes, type FlowNodeData, type NodeCategory } from '@/flow/FlowNode';
+import { isFinal, useMyRuns, useRun, useRunSteps, type RunStep, type RunStatus } from '@/api/ai';
+import { TONE_COLOR, lookOf, nodeTypes, type FlowNodeData, type NodeCategory, type NodeRunState } from '@/flow/FlowNode';
+import { edgeTypes, type EdgeRunStatus, type FlowEdgeData } from '@/flow/FlowEdge';
+import { Illustration } from '@/flow/Illustration';
 import { RunMonitor } from '@/automation/RunMonitor';
 import { SchemaForm } from '@/automation/SchemaForm';
 import { ErrorPanel } from '@/ui/ErrorPanel';
+import { StatusBadge } from '@/ui/StatusBadge';
 import { Icon } from '@/ui/Icon';
-import { CircleAlert, TriangleAlert } from '@/ui/icons';
-import { Kbd, modKey } from '@/ui/primitives';
+import {
+  ArrowLeft, Check, ChevronRight, CircleAlert, GitBranch, Grip, History, Minus, Play, Plus, RotateCcw, Search, Sparkles,
+  SquareArrowOutUpRight, TriangleAlert, Workflow, X, Expand, Link2, SlidersHorizontal, Receipt, FileText,
+} from '@/ui/icons';
+import { BlurTitle, Kbd, modKey } from '@/ui/primitives';
 import { useNotify } from '@/ui/useNotify';
 import { useHotkeys } from '@/common/useHotkeys';
-import { formatTime, serverUtc } from '@/format';
+import { formatDateTime, formatElapsed, formatTime, serverUtc } from '@/format';
 import { orderWarnings } from './nodeIO';
 import { DeployControls } from './DeployControls';
 import { PlacementToggle } from './PlacementToggle';
@@ -28,19 +35,14 @@ import s from './builder.module.css';
 
 type BuilderNodeData = FlowNodeData & { nodeType: string; config: Record<string, unknown> };
 type BNode = Node<BuilderNodeData, 'nexa'>;
-type BEdge = Edge<{ branch: string | null }>;
+type BEdge = Edge<FlowEdgeData, 'flow'>;
 
-const DND_TYPE = 'application/x-nexa-node';
 const PALETTE_SEARCH_ID = 'nx-builder-node-search';
-const EDGE_STYLE = { stroke: 'var(--nx-n-450)', strokeWidth: 1.5 };
-const EDGE_ERROR_STYLE = { stroke: 'var(--nx-danger-fg)', strokeWidth: 2 };
-/** 엣지 라벨 칩(style-guide 8.13): n-0, 1px n-200, radius 4, 12/500 n-700. 분기 이름에 색을 매핑하지 않는다 */
-const EDGE_LABEL = {
-  labelStyle: { fontSize: 12, fontWeight: 500, fill: 'var(--nx-n-700)' },
-  labelBgStyle: { fill: 'var(--nx-n-0)', stroke: 'var(--nx-n-200)' },
-  labelBgPadding: [6, 3] as [number, number],
-  labelBgBorderRadius: 4,
-};
+/**
+ * 화면 좌표 = 저장 좌표 × (1, Y_SCALE). 노드 카드(214 × 200)가 시드 배치(행 간격 160)보다 커서 세로만 넓혀 그린다.
+ * 저장할 때는 다시 나눠 서버 그래프 좌표는 그대로 둔다.
+ */
+const Y_SCALE = 1.45;
 
 /**
  * 노드 부제(AI 노드는 FlowNode가 "AI · "를 붙인다).
@@ -59,7 +61,7 @@ function subtitleOf(detail: NodeDetail | undefined, config: Record<string, unkno
 function toNode(n: Graph['nodes'][number], byType: Map<string, NodeDetail>): BNode {
   const d = byType.get(n.type);
   return {
-    id: n.id, type: 'nexa', position: n.position,
+    id: n.id, type: 'nexa', position: { x: n.position.x, y: n.position.y * Y_SCALE },
     data: {
       nodeType: n.type, config: n.config ?? {},
       title: d?.name ?? n.type,
@@ -71,17 +73,14 @@ function toNode(n: Graph['nodes'][number], byType: Map<string, NodeDetail>): BNo
 }
 
 function toEdge(e: Graph['edges'][number]): BEdge {
-  return {
-    id: e.id, source: e.source, target: e.target, sourceHandle: e.branch ?? undefined,
-    type: 'smoothstep', label: e.branch ?? undefined, data: { branch: e.branch }, style: EDGE_STYLE, ...EDGE_LABEL,
-  };
+  return { id: e.id, source: e.source, target: e.target, sourceHandle: e.branch ?? undefined, type: 'flow', data: { branch: e.branch } };
 }
 
 function toGraph(nodes: BNode[], edges: BEdge[]): Graph {
   return {
     nodes: nodes.map((n) => ({
       id: n.id, type: n.data.nodeType,
-      position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
+      position: { x: Math.round(n.position.x), y: Math.round(n.position.y / Y_SCALE) },
       config: n.data.config,
     })),
     edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, branch: e.data?.branch ?? null })),
@@ -90,6 +89,19 @@ function toGraph(nodes: BNode[], edges: BEdge[]): Graph {
 
 const nextId = (prefix: string, ids: string[]) =>
   `${prefix}${Math.max(0, ...ids.map((id) => Number(id.replace(/^\D+/, '')) || 0)) + 1}`;
+
+/** 단계 출력 한 줄 요약(로그·설정 패널). 값이 긴 것은 자른다 */
+function summarize(st: RunStep): string {
+  if (st.error) return st.error;
+  const waiting = (st.output as { waiting_for?: { message?: string } } | null)?.waiting_for;
+  if (st.status === 'WAITING') return waiting?.message ?? '확인을 기다리고 있어요';
+  if (st.status === 'RUNNING') return '작업을 처리하고 있어요…';
+  const parts = Object.entries(st.output ?? {})
+    .filter(([k, v]) => k !== 'waiting_for' && v != null && typeof v !== 'object')
+    .slice(0, 3).map(([k, v]) => `${k} ${String(v)}`);
+  const text = [st.branch ? `→ ${st.branch}` : '', ...parts].filter(Boolean).join(' · ');
+  return text.length > 120 ? `${text.slice(0, 120)}…` : text || '완료';
+}
 
 /** 설정 패널: 서버 configFields로 칸을 만든다(요구사항 4.6). ref는 {{n3.fields}} 같은 참조 문자열이다 */
 function ConfigForm({ detail, config, onChange }:
@@ -104,13 +116,12 @@ function ConfigForm({ detail, config, onChange }:
           <label key={f.key} className={s.field}>
             <span className={s.fieldLabel}>{f.label}{f.required && <span className={s.req}> *</span>}</span>
             {f.type === 'select' ? (
-              <Select size="small" allowClear value={empty ? undefined : String(v)} status={f.required && empty ? 'warning' : undefined}
+              <Select allowClear value={empty ? undefined : String(v)} status={f.required && empty ? 'warning' : undefined}
                       options={f.options.map((o) => ({ value: o, label: o }))} onChange={(x) => onChange(f.key, x ?? '')} />
             ) : f.type === 'number' ? (
-              <InputNumber size="small" style={{ width: '100%' }} value={empty ? null : Number(v)}
-                           onChange={(x) => onChange(f.key, x ?? '')} />
+              <InputNumber style={{ width: '100%' }} value={empty ? null : Number(v)} onChange={(x) => onChange(f.key, x ?? '')} />
             ) : (
-              <Input size="small" value={empty ? '' : String(v)} status={f.required && empty ? 'warning' : undefined}
+              <Input value={empty ? '' : String(v)} status={f.required && empty ? 'warning' : undefined}
                      className={f.type === 'ref' ? 'nx-mono' : undefined}
                      placeholder={f.type === 'ref' ? '비우면 앞 노드의 같은 값' : undefined}
                      onChange={(e) => onChange(f.key, e.target.value)} />
@@ -121,6 +132,16 @@ function ConfigForm({ detail, config, onChange }:
     </div>
   );
 }
+
+const SUMMARY: Record<RunStatus | 'none', [string, string?]> = {
+  none: ['실행할 준비가 됐어요.', '[테스트 실행]을 누르면 단계별 진행 상황이 여기에 표시되고, 캔버스에도 겹쳐 그려져요.'],
+  QUEUED: ['실행을 준비하고 있어요.'],
+  RUNNING: ['연결된 흐름을 따라 실행하고 있어요.'],
+  WAITING: ['확인이 필요한 단계가 있어요.'],
+  SUCCEEDED: ['모든 단계가 끝났어요.'],
+  FAILED: ['실패한 단계가 있어요. 로그를 확인해 주세요.'],
+  CANCELED: ['실행을 취소했어요.'],
+};
 
 /**
  * wf는 처음 받은 초안(캔버스 초기값), live는 최신 서버 값(배포 버전·노출 화면 등 헤더 표시용).
@@ -143,7 +164,11 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   const [savedAt, setSavedAt] = useState(wf.updatedAt);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
   const [q, setQ] = useState('');
-  const [testOpen, setTestOpen] = useState(false);
+  const [libOpen, setLibOpen] = useState(false);
+  const [view, setView] = useState<'editor' | 'history'>('editor');
+  const [execTab, setExecTab] = useState<'logs' | 'issues'>('logs');
+  /** 테스트 실행 창: form = 입력 폼, monitor = 실행 화면(사람 확인 포함) */
+  const [drawer, setDrawer] = useState<'form' | 'monitor' | null>(null);
   const [testRunId, setTestRunId] = useState<number | null>(null);
 
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
@@ -165,15 +190,47 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   // 바뀌면 서버 검사 결과는 지난 그래프 기준이 되므로 지운다(클라이언트 경고는 늘 현재 그래프 기준)
   const touch = () => { setDirty(true); setIssues(null); };
 
-  // 검사 표시를 노드·엣지에 반영
+  // 테스트 실행 상태를 캔버스에 겹쳐 그린다(같은 쿼리 키라 실행 화면과 폴링을 같이 쓴다)
+  const testRun = useRun(testRunId ?? 0, false, testRunId != null);
+  const testSteps = useRunSteps(testRunId ?? 0, testRun.data?.status, false, testRunId != null);
+  const steps = testRunId != null ? testSteps.data ?? [] : [];
+  const overlay = useMemo(() => {
+    if (testRunId == null || !testSteps.data) return null;
+    const m = new Map<string, { state: NodeRunState; elapsed?: string; branch: string | null; step: RunStep }>();
+    for (const st of testSteps.data) {
+      const ms = st.finishedAt ? Date.parse(serverUtc(st.finishedAt)) - Date.parse(serverUtc(st.startedAt)) : null;
+      m.set(st.nodeId, { state: st.status, elapsed: ms != null ? formatElapsed(ms) : undefined, branch: st.branch, step: st });
+    }
+    return { steps: m, final: isFinal(testRun.data?.status) };
+  }, [testRunId, testSteps.data, testRun.data?.status]);
+
+  // 내 실행 기록(이 워크플로만). 서버는 최근 50건을 준다
+  const myRuns = useMyRuns(null);
+  const history = (myRuns.data ?? []).filter((r) => r.workflowId === wf.id);
+
+  // 검사 표시와 실행 상태를 노드·선에 반영
   const errNodes = new Set(issues?.flatMap((i) => (i.nodeId ? [i.nodeId] : [])));
   const errEdges = new Set(issues?.flatMap((i) => (i.edgeId ? [i.edgeId] : [])));
   const warnNodes = new Set(warnings.map((w) => w.nodeId));
   const viewNodes = nodes.map((n) => {
     const issue = errNodes.has(n.id) ? 'error' as const : warnNodes.has(n.id) ? 'warning' as const : undefined;
-    return n.data.issue === issue ? n : { ...n, data: { ...n.data, issue } };
+    const run = overlay?.steps.get(n.id);
+    const state: NodeRunState | undefined = run ? run.state : overlay?.final ? 'SKIPPED' : undefined;
+    if (n.data.issue === issue && n.data.state === state && n.data.elapsed === run?.elapsed) return n;
+    return { ...n, data: { ...n.data, issue, state, elapsed: run?.elapsed } };
   });
-  const viewEdges = edges.map((e) => (errEdges.has(e.id) ? { ...e, style: EDGE_ERROR_STYLE } : e));
+  const viewEdges = edges.map((e) => {
+    let status: EdgeRunStatus = 'idle';
+    if (errEdges.has(e.id)) status = 'error';
+    else if (overlay) {
+      const a = overlay.steps.get(e.source);
+      const b = overlay.steps.get(e.target);
+      // 분기 노드는 실제로 나간 분기의 선만 칠한다
+      const taken = a?.state === 'SUCCEEDED' && (e.data?.branch == null || a.branch == null || e.data.branch === a.branch);
+      if (taken && b) status = b.state === 'RUNNING' || b.state === 'WAITING' ? 'running' : 'success';
+    }
+    return e.data?.status === status ? e : { ...e, data: { branch: e.data?.branch ?? null, status } };
+  });
 
   const onNodesChange = useCallback((changes: NodeChange<BNode>[]) => {
     if (changes.some((c) => c.type === 'position' || c.type === 'remove' || c.type === 'add')) touch();
@@ -190,7 +247,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
     setEdges((es) => {
       if (es.some((e) => e.source === c.source && e.target === c.target && (e.data?.branch ?? null) === branch)) return es;
       const id = nextId('e', es.map((e) => e.id));
-      return addEdge({ ...c, id, type: 'smoothstep', label: branch ?? undefined, data: { branch }, style: EDGE_STYLE, ...EDGE_LABEL }, es);
+      return addEdge<BEdge>({ ...c, id, type: 'flow', data: { branch } }, es);
     });
     touch();
   }, []);
@@ -198,17 +255,12 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   const addNode = (type: string, position?: { x: number; y: number }) => {
     const d = byType.get(type);
     if (!d) return;
-    const pos = position ?? flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const pos = position ?? flow.screenToFlowPosition({ x: window.innerWidth / 2 - 107, y: window.innerHeight / 2 - 100 });
     setNodes((ns) => [
       ...ns.map((n) => ({ ...n, selected: false })),
-      { ...toNode({ id: nextId('n', ns.map((n) => n.id)), type, position: pos, config: {} }, byType), selected: true },
+      { ...toNode({ id: nextId('n', ns.map((n) => n.id)), type, position: { x: pos.x, y: pos.y / Y_SCALE }, config: {} }, byType), selected: true },
     ]);
     touch();
-  };
-  const onDrop = (e: DragEvent) => {
-    e.preventDefault();
-    const type = e.dataTransfer.getData(DND_TYPE);
-    if (type) addNode(type, flow.screenToFlowPosition({ x: e.clientX - 120, y: e.clientY - 32 }));
   };
 
   const setConfig = (id: string, key: string, v: unknown) => {
@@ -221,7 +273,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
     touch();
   };
   const setEdgeBranch = (id: string, branch: string) => {
-    setEdges((es) => es.map((e) => (e.id === id ? { ...e, sourceHandle: branch, label: branch, data: { branch } } : e)));
+    setEdges((es) => es.map((e) => (e.id === id ? { ...e, sourceHandle: branch, data: { ...e.data, branch } } : e)));
     touch();
   };
 
@@ -238,19 +290,19 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
       if (dirty) await doSave();
       const r = await validate.mutateAsync();
       setIssues(r.issues);
+      if (r.issues.length || warnings.length) setExecTab('issues');
       if (r.valid && warnings.length === 0) notify.success('검사를 통과했습니다');
     } catch (e) { notify.error(e, '검사하지 못했습니다'); }
   };
   const onTest = async () => {
     try {
       if (dirty) await doSave();
-      setTestRunId(null);
-      setTestOpen(true);
+      setDrawer('form');
     } catch (e) { notify.error(e, '저장하지 못해 테스트 실행을 열 수 없습니다'); }
   };
 
-  // '/' 노드 검색(설계 6.6 팔레트). 입력 중·모달 안에서는 useHotkeys가 무시한다
-  useHotkeys({ '/': () => document.getElementById(PALETTE_SEARCH_ID)?.focus() });
+  // '/' 노드 검색(설계 6.6). 단계 추가 창을 열고 검색 칸에 맞춘다. 입력 중·모달 안에서는 useHotkeys가 무시한다
+  useHotkeys({ '/': () => setLibOpen(true) });
 
   // Ctrl+S 저장, Ctrl+Shift+V 검사(설계 6.6). 입력 중에도 동작해야 하므로 useHotkeys(단일 키 전용)를 쓰지 않는다
   const keysRef = useRef({ onSave, onValidate });
@@ -280,17 +332,23 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
     return () => { window.removeEventListener('beforeunload', onUnload); document.removeEventListener('click', onClick, true); };
   }, [dirty]);
 
+  const fit = () => flow.fitView({ padding: 0.14, maxZoom: 1, duration: 300 });
   const focusNode = (id: string) => {
+    setView('editor');
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })));
     setEdges((es) => es.map((e) => ({ ...e, selected: false })));
-    flow.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1.2 });
+    flow.fitView({ nodes: [{ id }], duration: 300, maxZoom: 1 });
   };
   const focusEdge = (id: string) => {
     const e = edges.find((x) => x.id === id);
     if (!e) return;
     setEdges((es) => es.map((x) => ({ ...x, selected: x.id === id })));
     setNodes((ns) => ns.map((n) => ({ ...n, selected: false })));
-    flow.fitView({ nodes: [{ id: e.source }, { id: e.target }], duration: 300, maxZoom: 1.2 });
+    flow.fitView({ nodes: [{ id: e.source }, { id: e.target }], duration: 300, maxZoom: 1 });
+  };
+  const clearSelection = () => {
+    setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
+    setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)));
   };
   const nodeName = (id: string | null) => {
     const n = nodes.find((x) => x.id === id);
@@ -306,139 +364,370 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
 
   const issueCount = (issues?.length ?? 0) + warnings.length;
   const selDetail = selectedNode ? byType.get(selectedNode.data.nodeType) : undefined;
+  const selLook = selectedNode ? lookOf(selectedNode.data.nodeType, selectedNode.data.category) : undefined;
+  const selRun = selectedNode ? overlay?.steps.get(selectedNode.id) : undefined;
   const selEdgeSource = selectedEdge ? nodes.find((n) => n.id === selectedEdge.source) : undefined;
   const selEdgeBranches = selEdgeSource?.data.branches ?? [];
 
+  // 실행 모니터 요약
+  const run = testRunId != null ? testRun.data : undefined;
+  const done = steps.filter((x) => x.status === 'SUCCEEDED').length;
+  const runStart = run ? Date.parse(serverUtc(run.startedAt ?? run.createdAt)) : 0;
+  const lastEnd = steps.reduce((t, x) => Math.max(t, x.finishedAt ? Date.parse(serverUtc(x.finishedAt)) : 0), 0);
+  const secs = run && lastEnd ? Math.max(0, (lastEnd - runStart) / 1000) : 0;
+  const pct = run ? (run.status === 'SUCCEEDED' ? 100 : Math.round((done / Math.max(1, nodes.length)) * 100)) : 0;
+  const [sumTitle, sumSub] = SUMMARY[run?.status ?? 'none'];
+  const indCls = !run ? '' : run.status === 'SUCCEEDED' ? s.indOk : run.status === 'FAILED' ? s.indErr
+    : run.status === 'WAITING' ? s.indWait : run.status === 'CANCELED' ? '' : s.indRun;
+
   return (
     <div className={s.editor}>
-      <header className={s.bar}>
-        <Link to="/admin/builder" className={s.back}>← 자동화 빌더</Link>
-        <h1 className={s.name}>{wf.name}</h1>
-        {live.deployedVersion != null ? <Tag>v{live.deployedVersion} 배포됨</Tag> : <Tag>배포 전</Tag>}
-        <span className={dirty ? s.unsaved : s.muted}>
-          {dirty ? '저장 안 됨' : `초안 저장 ${formatTime(serverUtc(savedAt))}`}
-        </span>
-        <span className={s.spacer} />
-        <Button onClick={onSave} loading={save.isPending} disabled={!dirty}>저장 <Kbd>{modKey}+S</Kbd></Button>
-        <Button onClick={onValidate} loading={validate.isPending}>검사 <Kbd>{modKey}+Shift+V</Kbd></Button>
-        <Button type="primary" onClick={onTest}>테스트 실행</Button>
-        <InputFormEditor workflowId={wf.id} fields={live.inputForm} open={formOpen} setOpen={setFormOpen} needsFile={!!fileNode} />
-        <PlacementToggle workflowId={wf.id} placements={live.placements} deployed={live.deployedVersion != null} />
-        <DeployControls
-          workflowId={wf.id}
-          warningCount={warnings.length}
-          exposed={live.placements.includes('HOME')}
-          fileMissing={fileMissing}
-          onDeployed={() => setJustDeployed(true)}
-          blockedReason={dirty ? '저장한 뒤 검사를 통과해야 배포할 수 있습니다'
-            : justDeployed ? `마지막 배포(v${live.deployedVersion}) 이후 바뀐 내용이 없습니다`
-            : issues === null ? '[검사]를 먼저 실행해 주세요'
-            : issues.length > 0 ? `검사 이슈 ${issues.length}건을 먼저 해결해 주세요`
-            : null}
-        />
-      </header>
-
-      <div className={s.body}>
-        <aside className={s.palette} aria-label="노드 목록">
-          <Input.Search id={PALETTE_SEARCH_ID} size="small" allowClear placeholder="노드 검색 /" aria-label="노드 검색" value={q}
-                        onChange={(e) => setQ(e.target.value)} />
-          {palette.map((g) => (
-            <section key={g.code}>
-              <h2 className={s.group}>{g.name}</h2>
-              {g.items.map((n) => (
-                <button key={n.nodeType} type="button" className={`${s.item} ${s[`cat-${n.category}`] ?? ''}`} draggable
-                        title={`${n.description}\n(끌어다 놓거나 눌러서 추가)`}
-                        onDragStart={(e) => { e.dataTransfer.setData(DND_TYPE, n.nodeType); e.dataTransfer.effectAllowed = 'move'; }}
-                        onClick={() => addNode(n.nodeType)}>
-                  {n.name}
-                </button>
-              ))}
-            </section>
-          ))}
-        </aside>
-
-        <div className={s.canvas} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} onDrop={onDrop}>
-          <ReactFlow<BNode, BEdge>
-            nodes={viewNodes} edges={viewEdges} nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
-            deleteKeyCode={['Delete', 'Backspace']} fitView proOptions={{ hideAttribution: true }}
-            defaultEdgeOptions={{ type: 'smoothstep', style: EDGE_STYLE }}
-          >
-            <Background gap={16} size={1} color="var(--nx-n-200)" />
-            <Controls showInteractive={false} />
-          </ReactFlow>
+      {/* ---------- 제목줄 ---------- */}
+      <section className={s.titlebar}>
+        <div className={s.titleGroup}>
+          <Link to="/admin/builder" className={s.back} aria-label="자동화 빌더 목록으로"><Icon as={ArrowLeft} size={16} /></Link>
+          <div className={s.titleText}>
+            <div className={s.eyebrow}>AUTOMATION STUDIO</div>
+            <div className={s.headingLine}>
+              <BlurTitle key={wf.name} text={wf.name} className={s.name} />
+              <span className={live.deployedVersion != null ? s.badgeOn : s.badge}>
+                {live.deployedVersion != null ? `v${live.deployedVersion} 배포됨` : '배포 전'}
+              </span>
+            </div>
+            <p className={s.desc}>{live.description || '노드를 연결해 흐름을 만들고, 검사한 뒤 테스트 실행합니다.'}</p>
+          </div>
         </div>
-
-        <aside className={s.panel} aria-label="설정">
-          {selectedNode && selDetail ? (
-            <>
-              <h2 className={s.panelTitle}>설정: {selDetail.name}</h2>
-              <p className={s.muted}>{selDetail.description} <span className="nx-mono">({selectedNode.id})</span></p>
-              <ConfigForm detail={selDetail} config={selectedNode.data.config}
-                          onChange={(k, v) => setConfig(selectedNode.id, k, v)} />
-              {selDetail.outputs.length > 0 && (
-                <div className={s.keys}>출력 키: {selDetail.outputs.map((o) => <code key={o.key} title={o.label}>{o.key}</code>)}</div>
-              )}
-              {selDetail.branches.length > 0 && <div className={s.keys}>분기: {selDetail.branches.join(' · ')}</div>}
-              {warnings.filter((w) => w.nodeId === selectedNode.id).map((w) => (
-                <p key={w.message} className={s.warnText}><Icon as={TriangleAlert} size={16} /> {w.message}</p>
-              ))}
-              <Button danger size="small" onClick={() => flow.deleteElements({ nodes: [{ id: selectedNode.id }] })}>노드 삭제</Button>
-            </>
-          ) : selectedEdge ? (
-            <>
-              <h2 className={s.panelTitle}>연결선</h2>
-              <p className={s.muted}>{nodeName(selectedEdge.source)} → {nodeName(selectedEdge.target)}</p>
-              {selEdgeBranches.length > 0 && (
-                <label className={s.field}>
-                  <span className={s.fieldLabel}>분기 결과<span className={s.req}> *</span></span>
-                  <Select size="small" value={selectedEdge.data?.branch ?? undefined}
-                          status={selectedEdge.data?.branch && selEdgeBranches.includes(selectedEdge.data.branch) ? undefined : 'error'}
-                          options={selEdgeBranches.map((b) => ({ value: b, label: b }))}
-                          onChange={(b) => setEdgeBranch(selectedEdge.id, b)} />
-                </label>
-              )}
-              <Button danger size="small" onClick={() => flow.deleteElements({ edges: [{ id: selectedEdge.id }] })}>선 삭제</Button>
-            </>
-          ) : (
-            <p className={s.muted}>노드나 연결선을 고르면 설정이 여기에 표시됩니다. 노드는 왼쪽 목록에서 끌어다 놓습니다. 선택 후 <Kbd>Delete</Kbd>로 지웁니다.</p>
-          )}
-        </aside>
-      </div>
-
-      <section className={s.issues} aria-label="검사 결과">
-        <div className={s.issuesHead}>
-          <span className={s.issuesTitle}>검사 결과 <span className="nx-num">{issueCount}</span></span>
-          {issues === null && <span className={s.muted}>{dirty ? '변경 후 아직 서버 검사를 하지 않았습니다' : '[검사]로 서버 검사를 실행합니다'}</span>}
+        <div className={s.titleActions}>
+          <span className={dirty ? s.unsaved : s.saved}><i />{dirty ? '저장 안 됨' : `초안 저장 ${formatTime(serverUtc(savedAt))}`}</span>
+          <Button icon={<Icon as={Check} size={16} />} onClick={onSave} loading={save.isPending} disabled={!dirty}>저장</Button>
+          <Button onClick={onValidate} loading={validate.isPending}>검사</Button>
+          <Button type="primary" className={s.runBtn} icon={<Icon as={Play} size={12} />} onClick={onTest}>테스트 실행</Button>
         </div>
-        <ul className={s.issueList}>
-        {issues?.map((i) => (
-          <li key={`${i.nodeId}-${i.edgeId}-${i.message}`} className={s.issue}>
-            <Icon as={CircleAlert} size={16} className={s.errIcon} />
-            {i.nodeId ? `${nodeName(i.nodeId)}: ` : i.edgeId ? '연결선: ' : '그래프 전체: '}{i.message}
-            {i.nodeId && <Button size="small" type="link" onClick={() => focusNode(i.nodeId!)}>노드로 이동</Button>}
-            {!i.nodeId && i.edgeId && <Button size="small" type="link" onClick={() => focusEdge(i.edgeId!)}>선으로 이동</Button>}
-          </li>
-        ))}
-        {warnings.map((w) => (
-          <li key={`${w.nodeId}-${w.message}`} className={s.issue}>
-            <Icon as={TriangleAlert} size={16} className={s.warnIcon} />{w.message}
-            <Button size="small" type="link" onClick={() => focusNode(w.nodeId)}>노드로 이동</Button>
-            {fileMissing && w.nodeId === fileNode?.id && w.message.includes('입력 폼') && (
-              <Button size="small" type="link" onClick={() => setFormOpen(true)}>입력 폼 열기</Button>
-            )}
-          </li>
-        ))}
-        </ul>
       </section>
 
-      <Drawer open={testOpen} onClose={() => setTestOpen(false)} placement="bottom" height="75%" destroyOnHidden
-              title={testRunId ? `테스트 실행 · run #${testRunId} (초안 그래프)` : '테스트 실행 (초안 그래프)'}>
-        {testRunId ? <RunMonitor runId={testRunId} /> : (
+      {/* ---------- 툴바: 보기 탭 + 배포 도구 ---------- */}
+      <div className={s.toolbar}>
+        <div className={s.tabs} role="tablist" aria-label="빌더 보기">
+          <button type="button" role="tab" aria-selected={view === 'editor'} className={view === 'editor' ? s.tabOn : ''} onClick={() => setView('editor')}>
+            <Icon as={Workflow} size={16} />에디터
+          </button>
+          <button type="button" role="tab" aria-selected={view === 'history'} className={view === 'history' ? s.tabOn : ''} onClick={() => setView('history')}>
+            <Icon as={History} size={16} />실행 기록<span>{myRuns.data ? history.length : '–'}</span>
+          </button>
+        </div>
+        <div className={s.toolEnd}>
+          <span className={s.hintKeys}><Kbd>{modKey}+S</Kbd> 저장 · <Kbd>{modKey}+Shift+V</Kbd> 검사</span>
+          <InputFormEditor workflowId={wf.id} fields={live.inputForm} open={formOpen} setOpen={setFormOpen} needsFile={!!fileNode} />
+          <PlacementToggle workflowId={wf.id} placements={live.placements} deployed={live.deployedVersion != null} />
+          <DeployControls
+            workflowId={wf.id}
+            warningCount={warnings.length}
+            exposed={live.placements.includes('HOME')}
+            fileMissing={fileMissing}
+            onDeployed={() => setJustDeployed(true)}
+            blockedReason={dirty ? '저장한 뒤 검사를 통과해야 배포할 수 있습니다'
+              : justDeployed ? `마지막 배포(v${live.deployedVersion}) 이후 바뀐 내용이 없습니다`
+              : issues === null ? '[검사]를 먼저 실행해 주세요'
+              : issues.length > 0 ? `검사 이슈 ${issues.length}건을 먼저 해결해 주세요`
+              : null}
+          />
+        </div>
+      </div>
+
+      <div className={s.studioBody}>
+        <section className={s.canvasColumn}>
+          {view === 'editor' ? (
+            <div className={s.canvas}>
+              <div className={s.canvasHead}>
+                <div className={s.canvasLabel}>
+                  <span className={s.symbol}><Icon as={GitBranch} size={16} /></span>
+                  <div>
+                    <strong>WORKFLOW</strong>
+                    <span>{nodes.length}개의 단계 <i /> 연결선 {edges.length}개</span>
+                  </div>
+                </div>
+                <button type="button" className={s.addBtn} onClick={() => setLibOpen(true)}><Icon as={Plus} size={16} />단계 추가</button>
+              </div>
+              <ReactFlow<BNode, BEdge>
+                nodes={viewNodes} edges={viewEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+                onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
+                deleteKeyCode={['Delete', 'Backspace']} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1 }} minZoom={0.2} maxZoom={1.6}
+                proOptions={{ hideAttribution: true }} defaultEdgeOptions={{ type: 'flow' }}
+                connectionLineStyle={{ stroke: '#8398cc', strokeWidth: 2 }}
+              >
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d9dce2" />
+                <MiniMap pannable zoomable className={s.minimap} maskColor="rgba(249,250,251,.85)"
+                         nodeColor={(n) => TONE_COLOR[lookOf((n.data as BuilderNodeData).nodeType, (n.data as BuilderNodeData).category).tone]} />
+              </ReactFlow>
+              <div className={s.canvasBottom}>
+                <div className={s.zoom}>
+                  <button type="button" aria-label="확대" onClick={() => flow.zoomIn({ duration: 200 })}><Icon as={Plus} size={16} /></button>
+                  <button type="button" aria-label="축소" onClick={() => flow.zoomOut({ duration: 200 })}><Icon as={Minus} size={16} /></button>
+                  <span />
+                  <button type="button" aria-label="전체 화면에 맞추기" onClick={fit}><Icon as={Expand} size={16} /></button>
+                </div>
+                <span className={s.canvasHint}><Icon as={Grip} size={12} />드래그로 이동 · 스크롤로 확대 · 노드 클릭으로 설정 · 선택 후 <Kbd>Delete</Kbd> 삭제</span>
+              </div>
+              {!overlay && <div className={s.caption}><span />한 번 이어 두면, 매번 같은 흐름으로.</div>}
+            </div>
+          ) : (
+            <div className={s.historyView}>
+              <div className={s.eyebrow}>EXECUTION HISTORY</div>
+              <h2>흐름이 남긴 기록</h2>
+              <p>내가 이 워크플로를 실행한 기록입니다(테스트 실행 포함, 최근 50건 중). 누르면 캔버스에 겹쳐 봅니다.</p>
+              {myRuns.isError ? <ErrorPanel error={myRuns.error} onRetry={() => myRuns.refetch()} />
+                : !myRuns.data ? <Skeleton active={false} paragraph={{ rows: 3 }} />
+                : history.length === 0 ? (
+                  <div className={s.emptyHistory}>
+                    <Icon as={History} size={24} />
+                    <strong>아직 실행 기록이 없어요</strong>
+                    <p>테스트 실행으로 첫 번째 흐름을 확인해 보세요.</p>
+                    <Button type="primary" icon={<Icon as={Play} size={12} />} onClick={onTest}>첫 테스트 실행</Button>
+                  </div>
+                ) : history.map((r) => (
+                  <button key={r.id} type="button" className={s.historyRow} onClick={() => { setTestRunId(r.id); setView('editor'); setExecTab('logs'); }}>
+                    <span className={s.historyNo}>{r.id}</span>
+                    <span className={s.historyMain}>
+                      <strong>{r.isTest ? '테스트 실행' : '실행'} · run #{r.id}{r.version != null && ` · v${r.version}`}</strong>
+                      <small>{formatDateTime(serverUtc(r.createdAt), true)}
+                        {r.startedAt && r.finishedAt && ` · ${formatElapsed(Date.parse(serverUtc(r.finishedAt)) - Date.parse(serverUtc(r.startedAt)))}`}</small>
+                    </span>
+                    <StatusBadge domain="RunStatus" value={r.status} />
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {/* ---------- 실행 모니터 / 검사 결과 ---------- */}
+          <section className={s.exec} aria-label="실행 모니터">
+            <div className={s.execHead}>
+              <div className={s.execTitle}>
+                <span className={`${s.ind} ${indCls}`} />
+                <div className={s.execTabs} role="tablist" aria-label="아래 패널">
+                  <button type="button" role="tab" aria-selected={execTab === 'logs'} className={execTab === 'logs' ? s.execTabOn : ''} onClick={() => setExecTab('logs')}>실행 모니터</button>
+                  <button type="button" role="tab" aria-selected={execTab === 'issues'} className={execTab === 'issues' ? s.execTabOn : ''} onClick={() => setExecTab('issues')}>
+                    검사 결과<span className={issueCount ? s.countWarn : s.count}>{issueCount}</span>
+                  </button>
+                </div>
+                <span className={s.runId}>{testRunId != null ? `RUN #${String(testRunId).padStart(3, '0')}${run?.isTest ? ' · 초안 테스트' : ''}` : 'LIVE PREVIEW'}</span>
+              </div>
+              <div className={s.execActions}>
+                {testRunId != null && (
+                  <>
+                    <Button size="small" type={run?.status === 'WAITING' ? 'primary' : 'default'} icon={<Icon as={SquareArrowOutUpRight} size={12} />}
+                            onClick={() => setDrawer('monitor')}>{run?.status === 'WAITING' ? '확인하러 가기' : '실행 화면'}</Button>
+                    <button type="button" className={s.iconBtn} aria-label="실행 표시 지우기" onClick={() => setTestRunId(null)}><Icon as={RotateCcw} size={16} /></button>
+                  </>
+                )}
+              </div>
+            </div>
+            {execTab === 'logs' ? (
+              <>
+                <div className={s.execSummary}>
+                  <div>
+                    <strong>{sumTitle}</strong>
+                    <span>{run ? `${done}/${nodes.length} 단계 완료 · ${secs.toFixed(1)}초` : sumSub}</span>
+                  </div>
+                  <div className={s.progress} role="progressbar" aria-label="실행 진행도" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                    <span style={{ width: `${pct}%` }} className={run?.status === 'FAILED' ? s.progressFail : ''} />
+                  </div>
+                  <span className={s.pct}>{pct}%</span>
+                </div>
+                <div className={s.logList} aria-live="polite">
+                  {testRun.isError ? <ErrorPanel error={testRun.error} onRetry={() => testRun.refetch()} />
+                    : steps.length === 0 ? (
+                      <div className={s.logEmpty}>
+                        <span className={s.terminal}>›_</span>
+                        <span>{testRunId != null ? '첫 단계를 준비하고 있어요…' : '반복되는 일은 흐름에 맡기고, 중요한 일에 집중하세요.'}</span>
+                        <span className={s.waitingPill}>{testRunId != null ? '준비 중' : '대기 중'}</span>
+                      </div>
+                    ) : steps.map((st) => (
+                      <button key={st.id} type="button" className={`${s.logLine} ${s[`log-${st.status}`] ?? ''}`} onClick={() => focusNode(st.nodeId)}>
+                        <span className={s.logTime}>+{runStart ? Math.max(0, (Date.parse(serverUtc(st.startedAt)) - runStart) / 1000).toFixed(1) : '0.0'}s</span>
+                        <span className={s.logIcon}>
+                          {st.status === 'RUNNING' ? <i className={s.spin} />
+                            : st.status === 'FAILED' || st.status === 'WAITING' ? <Icon as={CircleAlert} size={16} />
+                            : <Icon as={Check} size={16} />}
+                        </span>
+                        <strong>{byType.get(st.nodeType)?.name ?? st.nodeType}</strong>
+                        <span className={s.logOut}>{summarize(st)}</span>
+                        <Icon as={ChevronRight} size={12} />
+                      </button>
+                    ))}
+                </div>
+              </>
+            ) : (
+              <div className={s.logList}>
+                {issues === null && warnings.length === 0 && (
+                  <div className={s.logEmpty}><span className={s.terminal}>✓</span>
+                    <span>{dirty ? '변경 후 아직 서버 검사를 하지 않았습니다.' : '[검사]로 서버 검사를 실행합니다.'}</span></div>
+                )}
+                {issues !== null && issueCount === 0 && (
+                  <div className={s.logEmpty}><span className={s.terminal}>✓</span><span>문제없이 이어져 있어요.</span><span className={s.waitingPill}>통과</span></div>
+                )}
+                {issues?.map((i) => (
+                  <div key={`${i.nodeId}-${i.edgeId}-${i.message}`} className={s.issue}>
+                    <Icon as={CircleAlert} size={16} className={s.errIcon} />
+                    <span className={s.issueText}>{i.nodeId ? `${nodeName(i.nodeId)}: ` : i.edgeId ? '연결선: ' : '그래프 전체: '}{i.message}</span>
+                    {i.nodeId && <Button size="small" type="link" onClick={() => focusNode(i.nodeId!)}>노드로 이동</Button>}
+                    {!i.nodeId && i.edgeId && <Button size="small" type="link" onClick={() => focusEdge(i.edgeId!)}>선으로 이동</Button>}
+                  </div>
+                ))}
+                {warnings.map((w) => (
+                  <div key={`${w.nodeId}-${w.message}`} className={s.issue}>
+                    <Icon as={TriangleAlert} size={16} className={s.warnIcon} />
+                    <span className={s.issueText}>{w.message}</span>
+                    <Button size="small" type="link" onClick={() => focusNode(w.nodeId)}>노드로 이동</Button>
+                    {fileMissing && w.nodeId === fileNode?.id && w.message.includes('입력 폼') && (
+                      <Button size="small" type="link" onClick={() => setFormOpen(true)}>입력 폼 열기</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </section>
+
+        {/* ---------- 인스펙터 ---------- */}
+        <aside className={s.inspector} aria-label="설정">
+          <div className={s.inspectorHead}>
+            <span>{selectedNode ? '단계 설정' : selectedEdge ? '연결선' : '워크플로 안내'}</span>
+            {selectedNode || selectedEdge
+              ? <button type="button" className={s.iconBtn} aria-label="선택 해제" onClick={clearSelection}><Icon as={X} size={16} /></button>
+              : <Icon as={SlidersHorizontal} size={16} />}
+          </div>
+          <div className={s.inspectorBody}>
+            {selectedNode && selDetail && selLook ? (
+              <>
+                <div className={s.insArt} style={{ color: TONE_COLOR[selLook.tone], background: `color-mix(in srgb, ${TONE_COLOR[selLook.tone]} 9%, white)` }}>
+                  <Illustration kind={selLook.art} className={s.insIll} />
+                  <span>{selDetail.category.toUpperCase()}</span>
+                </div>
+                <div className={s.insIntro}>
+                  <h2>{selDetail.name}</h2>
+                  <p>{selDetail.description}</p>
+                </div>
+                <div className={s.insSection}>
+                  <div className={s.fld}>노드 타입<div><code>{selDetail.nodeType}</code> <span className={s.muted}>({selectedNode.id})</span></div></div>
+                  <ConfigForm detail={selDetail} config={selectedNode.data.config} onChange={(k, v) => setConfig(selectedNode.id, k, v)} />
+                  {selDetail.outputs.length > 0 && (
+                    <div className={s.keys}>출력 키 {selDetail.outputs.map((o) => <code key={o.key} title={o.label}>{o.key}</code>)}</div>
+                  )}
+                  {selDetail.branches.length > 0 && <div className={s.keys}>분기 {selDetail.branches.map((b) => <code key={b}>{b}</code>)}</div>}
+                  {warnings.filter((w) => w.nodeId === selectedNode.id).map((w) => (
+                    <p key={w.message} className={s.warnText}><Icon as={TriangleAlert} size={16} /> {w.message}</p>
+                  ))}
+                </div>
+                <div className={s.insSection}>
+                  <h3>실행 상태 <span className={`${s.statusLabel} ${selRun ? s[`sl-${selRun.state}`] ?? '' : ''}`}>
+                    {selRun ? ({ RUNNING: '실행 중', WAITING: '확인 대기', SUCCEEDED: '완료', FAILED: '실행 실패' } as Record<string, string>)[selRun.state] ?? selRun.state
+                      : overlay?.final ? '실행 안 됨' : '실행 대기'}
+                  </span></h3>
+                  <div className={s.outputBox}>
+                    <span>OUTPUT</span>
+                    <p>{selRun ? summarize(selRun.step) : '테스트 실행에서 이 단계가 돌면 결과가 여기에 표시돼요.'}</p>
+                  </div>
+                </div>
+                <div className={s.insSection}>
+                  <button type="button" className={s.deleteBtn} onClick={() => flow.deleteElements({ nodes: [{ id: selectedNode.id }] })}>이 단계 삭제</button>
+                </div>
+              </>
+            ) : selectedEdge ? (
+              <div className={s.insSection}>
+                <p className={s.muted}>{nodeName(selectedEdge.source)} → {nodeName(selectedEdge.target)}</p>
+                {selEdgeBranches.length > 0 && (
+                  <label className={s.field}>
+                    <span className={s.fieldLabel}>분기 결과<span className={s.req}> *</span></span>
+                    <Select value={selectedEdge.data?.branch ?? undefined}
+                            status={selectedEdge.data?.branch && selEdgeBranches.includes(selectedEdge.data.branch) ? undefined : 'error'}
+                            options={selEdgeBranches.map((b) => ({ value: b, label: b }))}
+                            onChange={(b) => setEdgeBranch(selectedEdge.id, b)} />
+                  </label>
+                )}
+                <button type="button" className={s.deleteBtn} onClick={() => flow.deleteElements({ edges: [{ id: selectedEdge.id }] })}>이 선 삭제</button>
+              </div>
+            ) : (
+              <>
+                <div className={s.introArt} aria-hidden>
+                  <div className={s.orbitOne} /><div className={s.orbitTwo} />
+                  <div className={`${s.tile} ${s.tileOne}`}><Icon as={Receipt} size={24} /></div>
+                  <div className={`${s.tile} ${s.tileTwo}`}><Icon as={FileText} size={24} /></div>
+                  <div className={`${s.tile} ${s.tileThree}`}><Icon as={Check} size={24} /></div>
+                  <span className={s.spark}><Icon as={Sparkles} size={20} /></span>
+                </div>
+                <div className={s.insIntro}>
+                  <div className={s.eyebrow}>THOUGHTFULLY CONNECTED</div>
+                  <h2>작은 연결이 만드는<br />반복 없는 하루.</h2>
+                  <p>노드를 끌어 잇고 검사한 뒤, 테스트 실행으로 흐름을 확인하세요.</p>
+                </div>
+                <div className={`${s.insSection} ${s.facts}`}>
+                  <div><span>단계</span><strong className="nx-num">{nodes.length}개</strong></div>
+                  <div><span>배포 버전</span><strong>{live.deployedVersion != null ? `v${live.deployedVersion}` : '없음'}</strong></div>
+                  <div><span>노출 화면</span><strong>{live.placements.length ? live.placements.join(' · ') : '없음'}</strong></div>
+                  <div><span>사원 입력 폼</span><strong className="nx-num">{live.inputForm.length}칸</strong></div>
+                </div>
+                <div className={s.insSection}>
+                  <h3>이렇게 이어집니다</h3>
+                  <div className={s.journey}>
+                    <div><span>01</span><p><strong>단계를 놓고 잇고</strong><small>[단계 추가]로 노드를 놓고 연결점을 끌어 이어요.</small></p></div>
+                    <div><span>02</span><p><strong>검사하고</strong><small>[검사]로 빠진 값과 끊긴 연결을 찾아요.</small></p></div>
+                    <div><span>03</span><p><strong>테스트 실행</strong><small>실행 상태가 캔버스 위에 그대로 그려져요.</small></p></div>
+                  </div>
+                </div>
+                <div className={s.tip}><Icon as={Sparkles} size={16} /><p>노드를 클릭해 보세요.<span>세부 설정과 실행 결과를 볼 수 있어요.</span></p></div>
+              </>
+            )}
+          </div>
+          <div className={s.inspectorFoot}><Icon as={Link2} size={12} /><span>저장한 초안 기준 · 테스트 실행은 초안 그래프로 돌아요</span></div>
+        </aside>
+      </div>
+      <footer className={s.bottomBar}><span><i />NEXA Workflow Studio</span><span>React Flow 캔버스{live.deployedVersion != null && ` · 배포 v${live.deployedVersion}`}</span></footer>
+
+      {/* ---------- 단계 추가(라이브러리) ---------- */}
+      <Modal open={libOpen} onCancel={() => setLibOpen(false)} footer={null} width={640} destroyOnHidden className={s.libModal}
+             afterOpenChange={(o) => { if (o) document.getElementById(PALETTE_SEARCH_ID)?.focus(); }}>
+        <div className={s.libHead}>
+          <div className={s.eyebrow}>BUILD YOUR FLOW</div>
+          <h2>다음 연결을 선택하세요.</h2>
+        </div>
+        <Input id={PALETTE_SEARCH_ID} size="large" allowClear prefix={<Icon as={Search} size={16} />} placeholder="기능 검색"
+               aria-label="노드 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className={s.libBody}>
+          {palette.length === 0 && <p className={s.muted}>찾는 노드가 없습니다.</p>}
+          {palette.map((g) => (
+            <section key={g.code}>
+              <h3 className={s.libGroup}>{g.name}</h3>
+              <div className={s.libGrid}>
+                {g.items.map((n) => {
+                  const look = lookOf(n.nodeType, n.category as NodeCategory);
+                  const color = TONE_COLOR[look.tone];
+                  return (
+                    <button key={n.nodeType} type="button" className={s.libCard}
+                            style={{ color, background: `color-mix(in srgb, ${color} 7%, white)`, borderColor: `color-mix(in srgb, ${color} 20%, white)` }}
+                            onClick={() => { addNode(n.nodeType); setLibOpen(false); }}>
+                      <Illustration kind={look.art} className={s.libIll} />
+                      <strong>{n.name}</strong>
+                      <span>{n.description}</span>
+                      <Icon as={Plus} size={16} className={s.libPlus} />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+        <p className={s.libNote}>추가한 노드의 연결점을 드래그해 워크플로에 연결하세요.</p>
+      </Modal>
+
+      {/* ---------- 테스트 실행: 입력 폼 / 실행 화면. 오른쪽 패널이라 캔버스(겹쳐 그린 상태)를 가리지 않는다 ---------- */}
+      <Drawer open={drawer !== null} onClose={() => setDrawer(null)} placement="right" width={drawer === 'monitor' ? 620 : 480} mask={false} destroyOnHidden
+              title={drawer === 'monitor' && testRunId ? `테스트 실행 · run #${testRunId}` : '테스트 실행 (초안 그래프)'}>
+        {drawer === 'monitor' && testRunId ? <RunMonitor runId={testRunId} /> : (
           <div className={s.testForm}>
+            <p className={s.muted} style={{ marginTop: 0 }}>저장한 초안 그래프로 실행합니다. 시작하면 진행 상황이 캔버스와 아래 실행 모니터에 그려져요.</p>
             <SchemaForm fields={live.inputForm} submitting={startTest.isPending} submitLabel="테스트 실행"
                         onSubmit={(v) => startTest.mutate(v, {
-                          onSuccess: (r) => setTestRunId(r.runId),
+                          onSuccess: (r) => { setTestRunId(r.runId); setDrawer(null); setExecTab('logs'); setView('editor'); },
                           onError: (e) => notify.error(e, '테스트 실행을 시작하지 못했습니다'),
                         })} />
           </div>
@@ -448,7 +737,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   );
 }
 
-/** 자동화 빌더 캔버스(설계 6.6, 요구사항 4.6 P0): 시드 워크플로 열기·노드 추가·연결·설정·검사·저장·테스트 실행 */
+/** 자동화 빌더 캔버스(설계 6.6, 요구사항 4.6 P0): 워크플로 열기·노드 추가·연결·설정·검사·저장·테스트 실행 */
 export function BuilderEditor({ id }: { id: number }) {
   const wf = useBuilderWorkflow(id);
   const cat = useNodeDetails();

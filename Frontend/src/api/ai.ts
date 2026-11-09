@@ -233,10 +233,12 @@ function pollMs(status: RunStatus | undefined, boost = false) {
   return status === 'WAITING' && !boost ? 10_000 : 1_500;
 }
 
-export function useRun(id: number, boost = false) {
+/** enabled=false면 부르지 않는다(빌더 캔버스가 테스트 실행이 있을 때만 상태를 겹쳐 그린다) */
+export function useRun(id: number, boost = false, enabled = true) {
   return useQuery({
     queryKey: runKeys.run(id),
     queryFn: () => api.get<RunDetail>(`${BASE}/runs/${id}`),
+    enabled,
     placeholderData: undefined,
     refetchInterval: (q) => (q.state.data ? pollMs(q.state.data.status, boost) : false),
     refetchIntervalInBackground: false,
@@ -244,10 +246,11 @@ export function useRun(id: number, boost = false) {
 }
 
 /** steps는 실행과 같은 주기로 함께 부른다(요구사항 3.7). 실행 상태를 받아 주기를 맞춘다 */
-export function useRunSteps(id: number, status: RunStatus | undefined, boost = false) {
+export function useRunSteps(id: number, status: RunStatus | undefined, boost = false, enabled = true) {
   return useQuery({
     queryKey: runKeys.steps(id),
     queryFn: () => api.get<RunStep[]>(`${BASE}/runs/${id}/steps`),
+    enabled,
     placeholderData: undefined,
     refetchInterval: () => pollMs(status, boost),
     refetchIntervalInBackground: false,

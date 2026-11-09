@@ -34,6 +34,7 @@ export const antdTheme = (reducedMotion: boolean): ThemeConfig => ({
     lineWidthFocus:2,
     fontFamily:font.sans, fontFamilyCode:font.mono, fontSize:14, fontSizeSM:13, fontSizeLG:16,
     lineHeight:22/14, fontWeightStrong:600,
+    // v2: 셸과 같은 검정 버튼·흰 카드. 그림자는 카드보다 팝업에서만 쓴다
     fontSizeHeading1:22, fontSizeHeading2:18, fontSizeHeading3:16, fontSizeHeading4:14, fontSizeHeading5:14,
     borderRadius:radius.md, borderRadiusSM:radius.sm, borderRadiusLG:radius.lg, borderRadiusXS:radius.sm,
     controlHeight:size.control, controlHeightSM:size.controlSM, controlHeightLG:size.controlLG,
@@ -63,11 +64,11 @@ export const antdTheme = (reducedMotion: boolean): ThemeConfig => ({
                  labelRequiredMarkColor:s.danger.fg },
     Table:     { lineHeight:21/14, // 9 + 21 + 9 + 구분선 1 = 40
                  cellPaddingBlock:9, cellPaddingInline:12, cellFontSize:14,
-                 headerBg:n[50], headerColor:n[600], headerSplitColor:'transparent', headerBorderRadius:0,
+                 headerBg:'#FAFAFB', headerColor:n[500], headerSplitColor:'transparent', headerBorderRadius:0,
                  borderColor:n[100], rowHoverBg:n[50], rowSelectedBg:b[50], rowSelectedHoverBg:b[100],
                  bodySortBg:'transparent', headerSortActiveBg:n[50], headerSortHoverBg:n[100], footerBg:n[0] },
-    Card:      { headerHeight:size.cardHeader, headerFontSize:16, bodyPadding:16, headerPadding:16 },
-    Modal:     { titleFontSize:16, titleLineHeight:24/16, headerBg:n[0], footerBg:n[0] },
+    Card:      { headerHeight:size.cardHeader, headerFontSize:14, bodyPadding:20, headerPadding:20 },
+    Modal:     { titleFontSize:18, titleLineHeight:26/18, headerBg:n[0], footerBg:n[0] },
     Notification: { width:360 },
     Tooltip:   { paddingSM:8, paddingXS:6 },
     Tag:       { defaultBg:n[50], defaultColor:n[700] },

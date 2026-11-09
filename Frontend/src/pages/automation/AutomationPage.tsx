@@ -12,7 +12,7 @@ import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { useNotify } from '@/ui/useNotify';
 import { Icon } from '@/ui/Icon';
-import { Workflow } from '@/ui/icons';
+import { ArrowUpRight, Workflow } from '@/ui/icons';
 import { formatDateTime, formatElapsed, formatRelative, serverUtc } from '@/format';
 import { SchemaForm } from '@/automation/SchemaForm';
 import { RunMonitor } from '@/automation/RunMonitor';
@@ -20,6 +20,8 @@ import s from '@/automation/automation.module.css';
 
 /** 사원 업무 자동화 메뉴의 진입 화면 코드(요구사항 3.7: 시연은 HOME만 쓴다) */
 const SCREEN: ScreenCode = 'HOME';
+/** 카드 색: 워크플로마다 파스텔 하나(실행 창과 같은 규칙) */
+const TINTS = ['output', 'input', 'rule', 'ai', 'human'] as const;
 
 const HISTORY_FILTERS: { label: string; value: RunStatus | 'ALL' }[] = [
   { label: '전체', value: 'ALL' },
@@ -77,13 +79,15 @@ function Entry() {
           : !wfs.data ? <Skeleton active={false} paragraph={{ rows: 3 }} />
           : wfs.data.length === 0 ? <EmptyState icon={Workflow} title="실행할 수 있는 자동화가 없습니다" description="관리자가 배포한 자동화가 여기에 표시됩니다" />
           : (
-            <ul className={s.wfList}>
-              {wfs.data.map((w) => (
+            <ul className={s.wfGrid}>
+              {wfs.data.map((w, i) => (
                 <li key={w.id}>
-                  <Link to={`/automation/workflows/${w.id}`} className={s.wfItem}>
-                    <Icon as={Workflow} />
-                    <span className={s.wfText}><b>{w.name}</b>{w.description && <span className={s.muted}>{w.description}</span>}</span>
-                    <span className={s.muted}>실행 →</span>
+                  <Link to={`/automation/workflows/${w.id}`} className={`${s.wfCard} ${s[`t-${TINTS[w.id % TINTS.length]}`]}`}
+                        style={{ animationDelay: `${i * 50}ms` }}>
+                    <span className={s.wfArt} aria-hidden><Icon as={Workflow} size={20} /></span>
+                    <b>{w.name}</b>
+                    {w.description && <span className={s.muted}>{w.description}</span>}
+                    <span className={s.wfGo} aria-hidden><Icon as={ArrowUpRight} /></span>
                   </Link>
                 </li>
               ))}
@@ -143,7 +147,7 @@ export function AutomationPage() {
   const run = pathname.match(/^\/automation\/runs\/(\d+)/);
   return (
     <>
-      <PageHeader title="업무 자동화" actions={run || wf ? <Link to="/automation"><Button>자동화 목록</Button></Link> : undefined} />
+      <PageHeader eyebrow="AUTOMATION" title="업무 자동화" description="반복되는 일은 흐름에 맡기고, 확인이 필요한 것만 직접 봅니다." actions={run || wf ? <Link to="/automation"><Button>자동화 목록</Button></Link> : undefined} />
       {run ? <RunMonitor key={run[1]} runId={Number(run[1])} />
         : wf ? <StartRun key={wf[1]} id={Number(wf[1])} />
         : <Entry />}
