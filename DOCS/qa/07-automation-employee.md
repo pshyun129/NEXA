@@ -3,7 +3,7 @@
 - 대상 URL: `/automation`(진입), `/automation/workflows/:id`(실행 폼), `/automation/runs/:id`(실행 화면)
 - 필요한 계정: user3(실행자), user4(남의 실행 보기), user5(자동화 결재 문서 결재), admin(노출 설정 변경 — 12-admin-builder)
 - 사전 조건: D4(#1 "영수증 경비 정산" 배포 + 노출 + 입력 폼 "영수증" 파일 칸), D5(GPU 서버 — 없으면 OCR 단계에서 실패하므로 **B·C 일부만** 가능), 테스트용 영수증 이미지(jpg/png, 20MB 이하. 데모용 A: 사람 확인 경로, B: 자동 확정 경로), 20MB 넘는 아무 파일 1개, PDF 1개
-- **로컬에서 GPU 서버에 닿지 않으면**: 실행은 "OCR 글자 인식" 단계에서 "timed out"으로 FAILED가 정상. HITL(D절)·결재 상신(E절)은 GPU 접근 가능한 환경(Tailscale 연결 PC 또는 배포 서버)에서만
+- **(로컬 PC에서만 해당) GPU 서버에 닿지 않으면**: 실행은 "OCR 글자 인식" 단계에서 "timed out"으로 FAILED가 정상. HITL(D절)·결재 상신(E절)은 GPU 접근 가능한 환경(Tailscale 연결 PC 또는 배포 서버)에서만
 
 ---
 
@@ -105,5 +105,5 @@
 - 수동 재개 불가 단계(결재 대기)는 Kafka 결과로만 진행된다.
 - HITL 필드 라벨은 금액·가맹점·날짜 3개만 한국어, 그 밖의 키는 키 이름 그대로.
 - HITL에서 Tab으로 "다음 ⚠ 행" 이동은 없다(기본 Tab 순서, 설계 6.5와 다름).
-- GPU 서버(OCR·vLLM)에 닿지 않는 PC에서는 OCR 단계 "timed out" 실패가 정상.
+- 배포 서버는 GPU에 닿는다(11-06 서버 E2E 성공). 로컬 PC가 GPU 서버(OCR·vLLM)에 닿지 않을 때만 OCR 단계 "timed out" 실패가 정상.
 - 실행 취소는 실행 중(RUNNING)에도 보인다(설계 6.5는 QUEUED·WAITING만 — 서버가 RUNNING 취소를 허용해서 코드가 따름).
