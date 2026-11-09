@@ -13,7 +13,9 @@ import { formatDateTime, formatDuration, formatMoney } from '@/format';
 import { approvalLevelLabel, formTypeLabel } from '@/status/labels';
 import { useHotkeys } from '@/common/useHotkeys';
 import { requestHref } from '@/attendance/requests/links';
+import { APPLY_PATH, leaveRequestHref } from '@/leave/links';
 import { ApprovalLine } from './ApprovalLine';
+import { ReferrerEditor, ResubmitButton } from './DraftTools';
 import { documentPermissions, type DocumentPermissions } from './permissions';
 import s from './approval.module.css';
 
@@ -164,12 +166,15 @@ function ActionBar({ doc, p, onProcessed }: { doc: DocumentDetail; p: DocumentPe
         {p.sourceRejected && <>{SOURCE_TEXT[doc.sourceType] ?? '원본'} 문서는 반려가 최종입니다.{' '}
           {doc.sourceType === 'ATTENDANCE' && doc.sourceId != null
             ? <Link to={requestHref(doc.sourceId)}>원래 화면에서 새로 신청 →</Link>
-            : '원래 화면에서 새로 신청해 주세요.'}</>}
-        {p.directRejected && <>재기안은 준비 중입니다.</>}
+            : doc.sourceType === 'LEAVE'
+              ? <Link to={APPLY_PATH}>원래 화면에서 새로 신청 →</Link>
+              : '원래 화면에서 새로 신청해 주세요.'}</>}
+        {p.directRejected && <>반려된 문서입니다. 제목을 고쳐 다시 올릴 수 있습니다.</>}
         {doc.status === 'APPROVED' && <>결재가 끝난 문서입니다.</>}
         {doc.status === 'CANCEL' && <>회수된 문서입니다.</>}
       </span>
       <span className={s.spacer} />
+      {p.directRejected && <ResubmitButton doc={doc} />}
       {p.canCancel && (
         <ConfirmAction
           title={`${shortNo(doc.docNo)} 문서를 회수합니다`}
@@ -220,9 +225,10 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
           <div className={s.source}>
             <StatusBadge domain="SourceType" value={doc.sourceType} />
             <span>{doc.sourceLabel ?? SOURCE_TEXT[doc.sourceType]} <span className="nx-num">#{doc.sourceId}</span>에서 생성된 문서입니다</span>
-            {/* 근태 신청 상세는 본인 API(/me/requests)뿐이라 기안자에게만 연결한다(frontend-backend-gaps.md C) */}
-            {doc.sourceType === 'ATTENDANCE' && doc.sourceId != null && doc.drafterId === meId && (
-              <Link to={requestHref(doc.sourceId)} style={{ marginLeft: 'auto' }}>원본 신청 보기 →</Link>
+            {/* 근태·휴가 신청 상세는 본인 API(/me/requests)뿐이라 기안자에게만 연결한다(frontend-backend-gaps.md C) */}
+            {doc.sourceId != null && doc.drafterId === meId && (
+              <Link to={doc.sourceType === 'ATTENDANCE' ? requestHref(doc.sourceId) : leaveRequestHref(doc.sourceId)}
+                    style={{ marginLeft: 'auto' }}>원본 신청 보기 →</Link>
             )}
           </div>
         )}
@@ -231,6 +237,12 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
           <h3 className={s.h3}>결재선</h3>
           <ApprovalLine doc={doc} meId={meId} />
         </section>
+        {p.canEditReferrers && (
+          <section className={s.section}>
+            <h3 className={s.h3}>참조자</h3>
+            <ReferrerEditor doc={doc} />
+          </section>
+        )}
         <Attributes doc={doc} />
         <section className={s.section}>
           <h3 className={s.h3}>이력</h3>

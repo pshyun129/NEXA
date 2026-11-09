@@ -1,0 +1,74 @@
+/* 휴가(P1, 설계 6.3): 잔여, 신청(캘린더 + 날짜별 preview), 내역 */
+
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.spacer { flex: 1; }
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+/* ---------- 잔여 ---------- */
+.balances { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.balance { display: flex; flex-direction: column; gap: 8px; }
+.balanceName { font-size: 13px; font-weight: 600; color: var(--nx-n-700); }
+.kpi { font-size: 28px; font-weight: 700; color: var(--nx-n-900); line-height: 1.2; }
+.kpiUnit { font-size: 14px; font-weight: 500; color: var(--nx-n-600); margin-left: 4px; }
+.balanceMeta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--nx-n-600); }
+.balanceMeta b { color: var(--nx-n-800); }
+
+/* ---------- 신청 ---------- */
+.applyGrid { display: grid; grid-template-columns: minmax(340px, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+@media (max-width: 1151px) { .applyGrid { grid-template-columns: 1fr; } }
+.field { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.label { min-width: 56px; font-size: 13px; font-weight: 600; color: var(--nx-n-700); }
+
+.monthHead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.monthLabel { font-weight: 600; color: var(--nx-n-800); }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calWeekday { font-size: 12px; color: var(--nx-n-500); text-align: center; padding: 2px 0; }
+.day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+       height: 48px; border: 1px solid var(--nx-border); border-radius: var(--nx-r-md); background: var(--nx-bg-card);
+       cursor: pointer; font: inherit; color: var(--nx-n-800); padding: 0; }
+.day:hover:not(:disabled) { border-color: var(--nx-brand-600); }
+.day:focus-visible { outline: 2px solid var(--nx-brand-600); outline-offset: 1px; }
+.day:disabled { cursor: not-allowed; color: var(--nx-n-400); background: var(--nx-n-50); }
+.dayNum { font-size: 13px; font-weight: 600; }
+.dayOff .dayNum { color: var(--nx-danger-fg); }
+.dayOff { background: var(--nx-n-50); }
+.dayToday { box-shadow: inset 0 0 0 1px var(--nx-brand-600); }
+.daySelected { background: var(--nx-brand-600); border-color: var(--nx-brand-600); color: #fff; }
+.daySelected .dayNum { color: #fff; }
+.dayHint { font-size: 10px; line-height: 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.dayBooked { position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--nx-info-fg); }
+.dayError { position: absolute; top: 1px; left: 5px; font-size: 12px; font-weight: 700; color: var(--nx-danger-fg); }
+.daySelected .dayError { color: #fff; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--nx-n-500); }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.rows { display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 110px auto 1fr auto; align-items: center; gap: 8px; padding: 8px 0;
+       border-bottom: 1px solid var(--nx-divider); }
+.rowDate { font-size: 13px; font-weight: 600; color: var(--nx-n-800); }
+.rowDeduct { font-size: 13px; color: var(--nx-n-700); text-align: right; }
+.rowReason { grid-column: 1 / -1; font-size: 12px; color: var(--nx-danger-fg); padding-left: 4px; }
+.total { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 12px 0; font-size: 14px; color: var(--nx-n-700); }
+.total b { color: var(--nx-n-900); font-size: 16px; }
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.ok { font-size: 13px; font-weight: 600; color: var(--nx-success-fg); }
+
+/* ---------- 결과 / 상세 ---------- */
+.detail { display: flex; flex-direction: column; gap: 16px; }
+.head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kv { display: grid; grid-template-columns: 96px 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--nx-n-500); }
+.kv dd { margin: 0; color: var(--nx-n-800); }
+.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+.items th, .items td { padding: 6px 8px; border-bottom: 1px solid var(--nx-divider); text-align: left; }
+.items th { color: var(--nx-n-500); font-weight: 500; }
+.foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--nx-border); }
+.dates { color: var(--nx-n-700); }
+.delta { font-weight: 600; }
+.plus { color: var(--nx-success-fg); }
+.minus { color: var(--nx-n-800); }
+
+/* ---------- 홈 카드 ---------- */
+.home { display: flex; flex-direction: column; gap: 8px; }

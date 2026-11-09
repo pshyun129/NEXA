@@ -1,0 +1,19 @@
+/* 급여(P1, 요구사항 3.6) */
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1023px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.kpi { font-size: var(--nx-fs-kpi); font-weight: 700; color: var(--nx-n-800); line-height: 36px; }
+.amount { font-weight: 700; color: var(--nx-n-800); }
+.props { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 8px 0; font-size: 13px; }
+.props dt { color: var(--nx-n-500); }
+.props dd { margin: 0; }
+.netRow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.itemsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+.items th, .items td { padding: 6px 8px; border-bottom: 1px solid var(--nx-divider); text-align: left; }
+.items td:last-child, .items th:last-child { text-align: right; }
+.items thead th { color: var(--nx-n-500); font-weight: 500; }
+.items tfoot th { color: var(--nx-n-800); font-weight: 700; border-bottom: none; }
+.zero td { color: var(--nx-n-400); }

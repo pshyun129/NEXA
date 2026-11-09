@@ -8,6 +8,8 @@ import { ChevronLeft, ChevronRight } from '@/ui/icons';
 import { ClockPanel } from '@/attendance/Clock';
 import { DailyDetail } from '@/attendance/DailyDetail';
 import { WeeklyView, mondayOf } from '@/attendance/Weekly';
+import { MonthlyView } from '@/attendance/Monthly';
+import { HistoryView } from '@/attendance/History';
 import { RequestForm } from '@/attendance/requests/RequestForm';
 import { RequestList } from '@/attendance/requests/RequestList';
 import { RequestDetail } from '@/attendance/requests/RequestDetail';
@@ -18,8 +20,13 @@ import s from '@/attendance/attendance.module.css';
 const TABS = [
   { key: '', label: '일간' },
   { key: 'weekly', label: '주간' },
+  { key: 'monthly', label: '월간' },
+  { key: 'history', label: '상태 이력' },
   { key: 'requests', label: '근태 신청' },
 ];
+
+/** 이력 조회 최대 기간(서버 제한 31일, 양 끝 포함) */
+const HISTORY_MAX_DAYS = 31;
 
 /** 날짜 이동 툴바: ◀ 라벨 ▶ [오늘/이번 주] */
 function Stepper({ label, onPrev, onNext, onReset, resetLabel, nextDisabled, picker }:
@@ -82,6 +89,53 @@ function WeeklyTab() {
   );
 }
 
+function MonthlyTab() {
+  const [params, setParams] = useSearchParams();
+  const thisMonth = nowKst().format('YYYY-MM');
+  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : thisMonth;
+  const go = (m: string) => setParams(m === thisMonth ? {} : { month: m }, { replace: true });
+  const shift = (n: number) => go(kst(`${month}-01`).add(n, 'month').format('YYYY-MM'));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Stepper
+        label={kst(`${month}-01`).format('YYYY년 M월')}
+        onPrev={() => shift(-1)}
+        onNext={() => shift(1)}
+        onReset={() => go(thisMonth)}
+        resetLabel="이번 달"
+        picker={
+          <DatePicker picker="month" value={dayjs(`${month}-01`)} allowClear={false} aria-label="월 선택"
+                      onChange={(v) => v && go(v.format('YYYY-MM'))} />
+        }
+      />
+      <Card><MonthlyView month={month} /></Card>
+    </div>
+  );
+}
+
+function HistoryTab() {
+  const [params, setParams] = useSearchParams();
+  const today = nowKst().format('YYYY-MM-DD');
+  const to = params.get('to') ?? today;
+  const from = params.get('from') ?? kst(to).subtract(6, 'day').format('YYYY-MM-DD');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className={s.toolbar}>
+        <DatePicker.RangePicker
+          value={[dayjs(from), dayjs(to)]}
+          allowClear={false}
+          aria-label="조회 기간"
+          // 서버가 31일까지만 받는다 → 한쪽을 고른 뒤 그보다 먼 날은 막는다
+          disabledDate={(d, { from: start }) => !!start && Math.abs(d.diff(start, 'day')) >= HISTORY_MAX_DAYS}
+          onChange={(v) => v?.[0] && v[1] && setParams({ from: v[0].format('YYYY-MM-DD'), to: v[1].format('YYYY-MM-DD') }, { replace: true })}
+        />
+        <span className={s.muted}>최대 {HISTORY_MAX_DAYS}일 · 삭제된 기록 포함</span>
+      </div>
+      <Card><HistoryView from={from} to={to} /></Card>
+    </div>
+  );
+}
+
 /** 근태 신청: /attendance/requests 목록(+ /:id 상세 Drawer), /attendance/requests/new 신청 */
 function RequestsTab() {
   const location = useLocation();
@@ -117,6 +171,8 @@ export function AttendancePage() {
       />
       {active === '' && <DailyTab />}
       {active === 'weekly' && <WeeklyTab />}
+      {active === 'monthly' && <MonthlyTab />}
+      {active === 'history' && <HistoryTab />}
       {active === 'requests' && <RequestsTab />}
     </>
   );

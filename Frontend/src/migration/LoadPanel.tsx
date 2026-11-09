@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Alert, Button, Input, Modal, Tooltip } from 'antd';
 import {
-  useLoad, useMigrationFile, usePreviewLoad, useReferencePlan,
-  type BatchView, type LoadPreview, type MigrationDetail, type MigrationEntity, type MigrationFileSummary,
+  useLoad, useMigrationFile, usePreviewLoad, useReferencePlan, useRollbackBatch,
+  type BatchEntity, type BatchView, type LoadPreview, type MigrationDetail, type MigrationEntity, type MigrationFileSummary,
   type ReferencePlanItem, type ReferenceType,
 } from '@/api/migration';
 import { StatusBadge } from '@/ui/StatusBadge';
+import { ConfirmAction } from '@/ui/ConfirmAction';
 import { useNotify } from '@/ui/useNotify';
 import { formatDateTime, formatNumber, serverUtc } from '@/format';
-import { ENTITY_LABEL, ENTITY_ORDER, ENTITY_SCHEMAS, batchEntityLabel } from './schemas';
+import { BATCH_ORDER, ENTITY_LABEL, ENTITY_ORDER, ENTITY_SCHEMAS, batchEntityLabel } from './schemas';
 import s from './migration.module.css';
 
 /** 미리보기 예시 표: 대상 필드 라벨로 열을 만든다(필드 순서는 EntitySchemas 순서) */
@@ -37,7 +38,41 @@ function SampleTable({ entity, sample }: { entity: MigrationEntity; sample: Reco
   );
 }
 
-function BatchRow({ b }: { b: BatchView }) {
+/**
+ * 되돌리기 칸(P1, 설계 6.7·7.2). 지금 되돌릴 수 있는 묶음(적재됨 + 뒤 순서 묶음이 적재돼 있지 않음)에만 버튼을 둔다.
+ * 막힌 적재됨 묶음에는 무엇을 먼저 되돌려야 하는지 적는다. 순서 판단은 서버(LOAD_006)가 최종이다.
+ */
+function RollbackCell({ d, b }: { d: MigrationDetail; b: BatchView }) {
+  const notify = useNotify();
+  const rollback = useRollbackBatch(d.migrationId);
+  if (b.status !== 'LOADED' || d.status === 'COMPLETED') return null;
+  const order = (e: string) => BATCH_ORDER.indexOf(e as BatchEntity);
+  const later = [...new Set(d.batches
+    .filter((x) => x.status === 'LOADED' && order(x.entity) > order(b.entity))
+    .sort((x, y) => order(y.entity) - order(x.entity))
+    .map((x) => batchEntityLabel(x.entity)))];
+  if (later.length) return <span className={s.muted}>{later.join(' → ')} 먼저 되돌려야 합니다</span>;
+
+  const label = batchEntityLabel(b.entity);
+  return (
+    <ConfirmAction
+      title={`${label} 적재를 되돌립니다`}
+      confirmLabel="되돌리기"
+      danger
+      typeToConfirm={d.name}
+      onConfirm={() => rollback.mutateAsync(b.batchId).then(
+        () => notify.success(`${label} 적재를 되돌렸습니다`),
+        (e) => notify.error(e, '되돌리지 못했습니다'),
+      )}
+      trigger={(open) => <Button size="small" onClick={open}>되돌리기</Button>}
+    >
+      <p>이 묶음으로 들어간 <b>{label} {formatNumber(b.sourceRows)}행</b>(생성 {formatNumber(b.created)} · 수정 {formatNumber(b.updated)})을 대상 서비스에서 되돌립니다.</p>
+      <p className={s.muted}>되돌린 뒤에는 이 파일을 다시 고치거나 적재할 수 있습니다.</p>
+    </ConfirmAction>
+  );
+}
+
+function BatchRow({ d, b }: { d: MigrationDetail; b: BatchView }) {
   return (
     <tr>
       <td>{batchEntityLabel(b.entity)}</td>
@@ -46,6 +81,7 @@ function BatchRow({ b }: { b: BatchView }) {
       <td className="nx-num">생성 {formatNumber(b.created)} · 수정 {formatNumber(b.updated)}</td>
       <td className="nx-num">{formatDateTime(serverUtc(b.finishedAt ?? b.startedAt), true)}</td>
       <td className={s.value}>{b.error ?? ''}</td>
+      <td><RollbackCell d={d} b={b} /></td>
     </tr>
   );
 }
@@ -194,8 +230,8 @@ export function LoadPanel({ d, entity, file, onPreview }: {
         <div className={s.section}>
           <h4 className={s.h4}>적재 기록</h4>
           <table className={s.table}>
-            <thead><tr><th>종류</th><th>상태</th><th>원본</th><th>결과</th><th>시각</th><th>오류</th></tr></thead>
-            <tbody>{batches.map((b) => <BatchRow key={b.batchId} b={b} />)}</tbody>
+            <thead><tr><th>종류</th><th>상태</th><th>원본</th><th>결과</th><th>시각</th><th>오류</th><th /></tr></thead>
+            <tbody>{batches.map((b) => <BatchRow key={b.batchId} d={d} b={b} />)}</tbody>
           </table>
         </div>
       )}

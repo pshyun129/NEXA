@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Skeleton } from 'antd';
 import { Link } from 'react-router-dom';
 import {
-  isFinal, useCancelRun, useNodeCatalog, useRun, useRunSteps, useWorkflow,
-  type ApprovalWaiting, type HitlWaiting, type RunDetail, type RunStep, type Waiting,
+  isFinal, runFileDownloadUrl, runInputFiles, useCancelRun, useNodeCatalog, useRun, useRunSteps, useWorkflow,
+  type ApprovalWaiting, type HitlWaiting, type RunDetail, type RunInputFile, type RunStep, type Waiting,
 } from '@/api/ai';
 import { useMyId } from '@/auth/session';
 import { StatusBadge } from '@/ui/StatusBadge';
@@ -75,16 +75,29 @@ function DocCard({ steps }: { steps: RunStep[] }) {
   );
 }
 
-function Preview({ runId }: { runId: number }) {
-  const list = usePreviewStore((st) => st.byRun[runId]);
-  if (!list || list.length === 0) return <div className={s.noPreview}>원본은 업로드한 브라우저에서만 표시됩니다</div>;
-  return (
-    <div className={s.previewList}>
-      {list.map((p) => p.type.startsWith('image/')
-        ? <a key={p.url} href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.name} className={s.previewImg} /></a>
-        : <div key={p.url} className={s.muted}>{p.name}</div>)}
-    </div>
-  );
+/** 원본 파일 하나. 이미지는 바로 보여 주고, 그 밖의 형식은 내려받기 링크 */
+function PreviewItem({ f }: { f: RunInputFile }) {
+  const local = usePreviewStore((st) => st.byFile[f.file_id]);
+  const [failed, setFailed] = useState(false);
+  const url = local?.url ?? runFileDownloadUrl(f.file_id);
+  const type = f.content_type ?? local?.type ?? '';
+  if (failed) return <div className={s.muted}>{f.name} · 원본을 불러오지 못했습니다</div>;
+  if (type.startsWith('image/')) {
+    return (
+      <a href={url} target="_blank" rel="noreferrer">
+        <img src={url} alt={f.name} className={s.previewImg} onError={() => setFailed(true)} />
+      </a>
+    );
+  }
+  return <a href={url} download={f.name} className={s.muted}>{f.name} 내려받기</a>;
+}
+
+/** 원본(설계 6.5). 서버는 업로더·요청자에게만 내려준다 → 다른 사람(관리자 조회 등)에게는 안내만 */
+function Preview({ run, isRequester }: { run: RunDetail; isRequester: boolean }) {
+  const files = runInputFiles(run);
+  if (files.length === 0) return <div className={s.noPreview}>첨부한 원본이 없습니다</div>;
+  if (!isRequester) return <div className={s.noPreview}>원본은 실행한 사람만 볼 수 있습니다</div>;
+  return <div className={s.previewList}>{files.map((f) => <PreviewItem key={f.file_id} f={f} />)}</div>;
 }
 
 /** 실행 화면(설계 6.5 Run Theater, 요구사항 3.7). 사원 실행과 관리자 테스트 실행이 같이 쓴다 */
@@ -163,7 +176,7 @@ export function RunMonitor({ runId }: { runId: number }) {
           ) : (
             <>
               <h3 className={s.h3}>원본</h3>
-              <Preview runId={r.id} />
+              <Preview run={r} isRequester={isRequester} />
             </>
           )}
         </section>

@@ -162,3 +162,60 @@ export function useDocumentAction(id: number) {
     },
   });
 }
+
+/* ---------- 기안·재기안·참조자(P1, 요구사항 3.4) ---------- */
+
+/** 화면에서 직접 기안할 수 있는 양식은 이 둘뿐(나머지는 휴가·근태·자동화가 만든다) */
+export type DraftFormType = 'GENERAL' | 'BUSINESS_TRIP';
+
+/** 기본 결재선 미리보기(저장 안 함). selfApproval이면 결재자 없이 상신 즉시 승인(대표이사 기안) */
+export interface ApprovalLinePreview {
+  formType: FormType;
+  approvalLevel: 'TEAM' | 'DIVISION' | 'COMPANY';
+  selfApproval: boolean;
+  approvalLines: { empId: number; step: number; role: 'APPROVER' | 'AGREEMENT' }[];
+}
+
+/**
+ * 결재선 미리보기(GET /documents/approval-line-preview). 전결 기준 금액은 프론트가 하드코딩하지 않고
+ * 이 응답의 결재선만 보여 준다. attributes는 쿼리로 보낸다(값이 없으면 키를 빼서 "조건 미충족"으로 둔다)
+ */
+export function useApprovalLinePreview(formType: DraftFormType, attributes: ApprovalAttributes) {
+  const params = Object.fromEntries(Object.entries({ formType, ...attributes }).filter(([, v]) => v != null));
+  return useQuery({
+    queryKey: ['documents', 'line-preview', params],
+    queryFn: () => api.get<ApprovalLinePreview>(`${BASE}/approval-line-preview`, { params }),
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** 직접 기안 + 상신(POST /documents). 결재선은 서버가 규정·조직도로 만든다. 참조자는 상신 후 따로 넣는다 */
+export function useCreateDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { title: string; formType: DraftFormType; attributes: ApprovalAttributes }) =>
+      api.post<{ documentId: number; docNo: string }>(BASE, body),
+    onSettled: () => qc.invalidateQueries({ queryKey: docKeys.lists }),
+  });
+}
+
+/** 재기안(반려된 직접 기안만, 차수 +1, 결재선은 재기안 시점 조직도로 다시 만든다) */
+export function useResubmit(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (title: string) => api.post<null>(`${BASE}/${id}/resubmit`, { title }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: docKeys.detail(id) });
+      qc.invalidateQueries({ queryKey: docKeys.lists });
+    },
+  });
+}
+
+/** 참조자 추가·제거(기안자, 진행 중). 규칙 위반은 서버가 APPROVAL_0xx로 알려 준다 → 메시지 그대로 */
+export function useReferrer(id: number) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: docKeys.detail(id) });
+  const add = useMutation({ mutationFn: (empId: number) => api.post<null>(`${BASE}/${id}/referrers`, { empId }), onSettled: refresh });
+  const remove = useMutation({ mutationFn: (empId: number) => api.delete<null>(`${BASE}/${id}/referrers/${empId}`), onSettled: refresh });
+  return { add, remove };
+}

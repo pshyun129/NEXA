@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
 
 // FastAPI ai-service (origin/develop f4725fd 기준). 바깥 필드는 camelCase, inputs·outputs·step output 안쪽은 snake_case.
@@ -50,6 +50,20 @@ export interface RunSummary {
   startedAt: string | null;
   finishedAt: string | null;
 }
+
+/** 실행에 붙은 파일. 서버가 inputs.files에 넣는다(runs/service.py `_file_info`, snake_case). path는 서버 경로라 쓰지 않는다 */
+export interface RunInputFile { file_id: number; name: string; content_type: string | null; size: number }
+
+export function runInputFiles(run: RunDetail): RunInputFile[] {
+  const files = run.inputs?.files;
+  return Array.isArray(files) ? (files as RunInputFile[]) : [];
+}
+
+/**
+ * 원본 내려받기(GET /runs/files/{id}/download, origin/develop e712f8e). 쿠키 인증이라 <img src>·링크로 바로 쓴다.
+ * 업로드한 사람·실행 요청자만 받을 수 있다(그 외 RUN_FORBIDDEN) → 결재자는 볼 수 없다.
+ */
+export const runFileDownloadUrl = (fileId: number) => `${BASE}/runs/files/${fileId}/download`;
 
 export interface RunDetail extends RunSummary {
   inputs: Record<string, unknown>;
@@ -123,6 +137,35 @@ export function useMyPendingRuns(enabled = true) {
     refetchIntervalInBackground: false,
     retry: false,
   });
+}
+
+/**
+ * 내 실행 이력(P1, 요구사항 3.7 #7). 서버가 최근 50건만 준다(id 내림차순, runs/service.py list_my_runs).
+ * status는 값 하나로만 거른다. 진행 중 실행이 있으면 10초마다 다시 불러온다.
+ */
+export function useMyRuns(status: RunStatus | null) {
+  return useQuery({
+    queryKey: ['runs', 'me', status ?? 'ALL'] as const,
+    queryFn: () => api.get<RunSummary[]>(`${BASE}/runs/me`, { params: status ? { status } : undefined }),
+    placeholderData: keepPreviousData,
+    refetchInterval: (q) => (!document.hidden && q.state.data?.some((r) => !isFinal(r.status)) ? 10_000 : false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** 여러 워크플로 이름. useWorkflow와 같은 키라 캐시를 같이 쓴다. 지워진 워크플로는 이름 없이 둔다 */
+export function useWorkflowNames(ids: number[]) {
+  const results = useQueries({
+    queries: [...new Set(ids)].map((id) => ({
+      queryKey: ['workflows', id] as const,
+      queryFn: () => api.get<WorkflowDetail>(`${BASE}/workflows/${id}`),
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+  });
+  const names: Record<number, string> = {};
+  for (const r of results) if (r.data) names[r.data.id] = r.data.name;
+  return names;
 }
 
 export function useAvailableWorkflows(screen: ScreenCode) {

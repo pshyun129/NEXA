@@ -39,8 +39,10 @@ export function documentPermissions(doc: DocumentDetail, meId: number | null) {
     canCancel: isDrafter && doc.status === 'INPROGRESS' && approvers.every((l) => l.action === 'PENDING'),
     // 출처 문서(휴가·근태·자동화)는 반려가 최종 → 원래 화면에서 새로 신청
     sourceRejected: isDrafter && doc.status === 'REJECTED' && doc.sourceType !== 'DIRECT',
-    // 직접 기안 재기안은 P1(설계 9장)
+    // 재기안: 기안자 && 반려 && 직접 기안(출처 문서는 서버가 SOURCE_DOCUMENT_NOT_RESUBMITTABLE)
     directRejected: isDrafter && doc.status === 'REJECTED' && doc.sourceType === 'DIRECT',
+    // 참조자 추가·제거: 기안자 && 진행중(서버 getEditableDocument와 같은 조건, P1은 참조자만)
+    canEditReferrers: isDrafter && doc.status === 'INPROGRESS',
   };
 }
 

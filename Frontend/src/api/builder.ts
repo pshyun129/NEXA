@@ -130,3 +130,31 @@ export function useStartTestRun(id: number) {
       api.post<{ runId: number; status: string }>(`${BASE}/workflows/${id}/test-runs`, body),
   });
 }
+
+/* ---------- 배포·버전 조회(P1) ---------- */
+
+/** 버전 목록(GET /workflows/{id}/versions). active = 지금 사원 실행에 쓰이는 버전. created_at은 오프셋 없는 UTC */
+export interface WorkflowVersion { version: number; createdAt: string; active: boolean }
+
+export function useWorkflowVersions(id: number) {
+  return useQuery({
+    queryKey: [...builderKeys.detail(id), 'versions'] as const,
+    queryFn: () => api.get<WorkflowVersion[]>(`${BASE}/workflows/${id}/versions`),
+  });
+}
+
+/**
+ * 배포(POST /workflows/{id}/deploy): 저장된 초안을 새 버전으로 복사하고 활성 버전으로 바꾼다.
+ * 서버도 검사해서 이슈가 있으면 WF_INVALID_GRAPH(첫 이슈 메시지). 이미 시작된 실행은 자기 버전 그래프로 계속 간다
+ */
+export function useDeployWorkflow(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<{ version: number }>(`${BASE}/workflows/${id}/deploy`),
+    onSettled: () => Promise.all([
+      qc.invalidateQueries({ queryKey: builderKeys.detail(id) }),
+      qc.invalidateQueries({ queryKey: builderKeys.list }),
+      qc.invalidateQueries({ queryKey: ['workflows', 'available'] }),
+    ]),
+  });
+}

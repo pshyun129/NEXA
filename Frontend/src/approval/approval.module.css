@@ -85,3 +85,20 @@
 
 /* ---------- 단축키 힌트 (설계 7.2: 힌트는 상시 표시) ---------- */
 .hint { margin-top: 8px; font-size: 12px; color: var(--nx-n-500); display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+
+/* ---------- 기안·재기안·참조자(P1) ---------- */
+.compose { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--nx-n-700); }
+.composeFoot { display: flex; justify-content: flex-end; gap: 8px; }
+.preview { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); font-size: 13px; }
+.preview[aria-busy="true"] { opacity: 0.6; }
+.previewHead { display: flex; align-items: baseline; gap: 8px; }
+.previewLine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.previewLine li { display: flex; gap: 8px; }
+.refEditor { display: flex; flex-direction: column; gap: 8px; }
+.refChips { display: flex; flex-wrap: wrap; gap: 6px; }
+.refChip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 8px; font-size: 13px;
+  border: 1px solid var(--nx-border); border-radius: var(--nx-r-sm); background: var(--nx-bg-card); }
+.refChip button { border: none; background: none; padding: 0 4px; cursor: pointer; color: var(--nx-n-500); font-size: 14px; line-height: 1; }
+.refChip button:hover { color: var(--nx-danger-fg); }
+.refAdd { display: flex; gap: 8px; align-items: center; }

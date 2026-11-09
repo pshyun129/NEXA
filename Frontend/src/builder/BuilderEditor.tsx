@@ -13,7 +13,6 @@ import {
 import { nodeTypes, type FlowNodeData, type NodeCategory } from '@/flow/FlowNode';
 import { RunMonitor } from '@/automation/RunMonitor';
 import { SchemaForm } from '@/automation/SchemaForm';
-import { usePreviewStore } from '@/automation/previewStore';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { Icon } from '@/ui/Icon';
 import { CircleAlert, TriangleAlert } from '@/ui/icons';
@@ -22,6 +21,7 @@ import { useNotify } from '@/ui/useNotify';
 import { useHotkeys } from '@/common/useHotkeys';
 import { formatTime, serverUtc } from '@/format';
 import { orderWarnings } from './nodeIO';
+import { DeployControls } from './DeployControls';
 import s from './builder.module.css';
 
 type BuilderNodeData = FlowNodeData & { nodeType: string; config: Record<string, unknown> };
@@ -127,7 +127,6 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
   const save = useSaveGraph(wf.id);
   const validate = useValidateGraph(wf.id);
   const startTest = useStartTestRun(wf.id);
-  const attach = usePreviewStore((st) => st.attachToRun);
 
   const [nodes, setNodes] = useState<BNode[]>(() => wf.draftGraph.nodes.map((n) => toNode(n, byType)));
   const [edges, setEdges] = useState<BEdge[]>(() => wf.draftGraph.edges.map(toEdge));
@@ -303,6 +302,14 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
         <Button onClick={onSave} loading={save.isPending} disabled={!dirty}>저장 <Kbd>{modKey}+S</Kbd></Button>
         <Button onClick={onValidate} loading={validate.isPending}>검사 <Kbd>{modKey}+Shift+V</Kbd></Button>
         <Button type="primary" onClick={onTest}>테스트 실행</Button>
+        <DeployControls
+          workflowId={wf.id}
+          warningCount={warnings.length}
+          blockedReason={dirty ? '저장한 뒤 검사를 통과해야 배포할 수 있습니다'
+            : issues === null ? '[검사]를 먼저 실행해 주세요'
+            : issues.length > 0 ? `검사 이슈 ${issues.length}건을 먼저 해결해 주세요`
+            : null}
+        />
       </header>
 
       <div className={s.body}>
@@ -402,7 +409,7 @@ function Editor({ wf, catalog, byType }: { wf: BuilderWorkflow; catalog: NodeDet
           <div className={s.testForm}>
             <SchemaForm fields={wf.inputForm} submitting={startTest.isPending} submitLabel="테스트 실행"
                         onSubmit={(v) => startTest.mutate(v, {
-                          onSuccess: (r) => { attach(r.runId, v.fileIds); setTestRunId(r.runId); },
+                          onSuccess: (r) => setTestRunId(r.runId),
                           onError: (e) => notify.error(e, '테스트 실행을 시작하지 못했습니다'),
                         })} />
           </div>

@@ -1,23 +1,71 @@
-import { Button, Skeleton } from 'antd';
+import { useState } from 'react';
+import { Button, Segmented, Skeleton } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  useAvailableWorkflows, useInputForm, useMyPendingRuns, useStartRun, useWorkflow,
-  type ScreenCode,
+  useAvailableWorkflows, useInputForm, useMyPendingRuns, useMyRuns, useStartRun, useWorkflow, useWorkflowNames,
+  type RunStatus, type RunSummary, type ScreenCode,
 } from '@/api/ai';
+import { DataTable } from '@/ui/DataTable';
 import { Card, EmptyState, PageHeader } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { useNotify } from '@/ui/useNotify';
 import { Icon } from '@/ui/Icon';
 import { Workflow } from '@/ui/icons';
-import { formatRelative, serverUtc } from '@/format';
+import { formatDateTime, formatElapsed, formatRelative, serverUtc } from '@/format';
 import { SchemaForm } from '@/automation/SchemaForm';
 import { RunMonitor } from '@/automation/RunMonitor';
-import { usePreviewStore } from '@/automation/previewStore';
 import s from '@/automation/automation.module.css';
 
 /** 사원 업무 자동화 메뉴의 진입 화면 코드(요구사항 3.7: 시연은 HOME만 쓴다) */
 const SCREEN: ScreenCode = 'HOME';
+
+const HISTORY_FILTERS: { label: string; value: RunStatus | 'ALL' }[] = [
+  { label: '전체', value: 'ALL' },
+  { label: '확인 대기', value: 'WAITING' },
+  { label: '실행 중', value: 'RUNNING' },
+  { label: '완료', value: 'SUCCEEDED' },
+  { label: '실패', value: 'FAILED' },
+  { label: '취소', value: 'CANCELED' },
+];
+
+/** 내 실행 이력(P1). 서버가 최근 50건만 준다. 행을 누르면 실행 화면 */
+function History() {
+  const [filter, setFilter] = useState<RunStatus | 'ALL'>('ALL');
+  const runs = useMyRuns(filter === 'ALL' ? null : filter);
+  const names = useWorkflowNames((runs.data ?? []).map((r) => r.workflowId));
+  const navigate = useNavigate();
+  const columns: ColumnsType<RunSummary> = [
+    { title: '실행', dataIndex: 'id', width: 90, render: (id: number) => <span className="nx-mono">run #{id}</span> },
+    {
+      title: '자동화', dataIndex: 'workflowId',
+      render: (id: number, r) => <>{names[id] ?? `워크플로 #${id}`}{r.isTest && <span className={s.tag} style={{ marginLeft: 8 }}>테스트</span>}</>,
+    },
+    { title: '상태', dataIndex: 'status', width: 120, render: (v: RunStatus) => <StatusBadge domain="RunStatus" value={v} /> },
+    { title: '시작', dataIndex: 'createdAt', width: 130, render: (v: string) => <span className="nx-num">{formatDateTime(serverUtc(v), true)}</span> },
+    {
+      title: '소요', key: 'elapsed', width: 90, align: 'right',
+      render: (_, r) => <span className="nx-num">{r.startedAt && r.finishedAt
+        ? formatElapsed(Date.parse(serverUtc(r.finishedAt)) - Date.parse(serverUtc(r.startedAt))) : '—'}</span>,
+    },
+  ];
+  return (
+    <Card title="내 실행 이력" meta={<span className={s.muted}>최근 50건</span>}>
+      <Segmented<RunStatus | 'ALL'> options={HISTORY_FILTERS} value={filter} onChange={setFilter} style={{ marginBottom: 12 }} />
+      {runs.isError ? <ErrorPanel error={runs.error} onRetry={() => runs.refetch()} /> : (
+        <DataTable<RunSummary>
+          data={runs.data}
+          loading={runs.isPending}
+          rowKey="id"
+          columns={columns}
+          emptyTitle={filter === 'ALL' ? '아직 실행한 자동화가 없습니다' : '이 상태의 실행이 없습니다'}
+          onRow={(r) => ({ onClick: () => navigate(`/automation/runs/${r.id}`), style: { cursor: 'pointer' } })}
+        />
+      )}
+    </Card>
+  );
+}
 
 function Entry() {
   const wfs = useAvailableWorkflows(SCREEN);
@@ -59,6 +107,7 @@ function Entry() {
           </ul>
         </Card>
       )}
+      <History />
     </div>
   );
 }
@@ -69,7 +118,6 @@ function StartRun({ id }: { id: number }) {
   const start = useStartRun(id);
   const navigate = useNavigate();
   const notify = useNotify();
-  const attach = usePreviewStore((st) => st.attachToRun);
   if (form.isError) return <ErrorPanel error={form.error} onRetry={() => form.refetch()} />;
   if (!form.data) return <Skeleton active={false} paragraph={{ rows: 5 }} />;
   return (
@@ -80,10 +128,7 @@ function StartRun({ id }: { id: number }) {
         submitting={start.isPending}
         submitLabel="실행"
         onSubmit={(v) => start.mutate(v, {
-          onSuccess: (res) => {
-            attach(res.runId, v.fileIds);
-            navigate(`/automation/runs/${res.runId}`);
-          },
+          onSuccess: (res) => navigate(`/automation/runs/${res.runId}`),
           onError: (e) => notify.error(e, '실행하지 못했습니다'),
         })}
       />

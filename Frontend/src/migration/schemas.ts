@@ -51,3 +51,8 @@ export const BATCH_ENTITY_LABEL: Record<BatchEntity, string> = { HR_CODE: '기�
 export const batchEntityLabel = (e: string) => BATCH_ENTITY_LABEL[e as BatchEntity] ?? e;
 /** 적재 순서(서버 MigrationEntity 선언 순서): 조직 → 사원 */
 export const ENTITY_ORDER: MigrationEntity[] = ['HR_ORG', 'HR_EMPLOYEE'];
+/**
+ * 묶음 순서(서버 MigrationEntity 선언 순서: HR_CODE → HR_ORG → HR_EMPLOYEE). 되돌리기는 뒤 순서부터다:
+ * 나중 순서 묶음이 하나라도 적재돼 있으면 409 LOAD_006(LoadService.rollback)
+ */
+export const BATCH_ORDER: BatchEntity[] = ['HR_CODE', 'HR_ORG', 'HR_EMPLOYEE'];

@@ -184,6 +184,18 @@ export function useLoad(id: number) {
 }
 
 /**
+ * 적재 묶음 되돌리기(P1). 적재됨(LOADED) 묶음만 되고(409 LOAD_005), 나중 순서 묶음이 적재돼 있으면 409 LOAD_006.
+ * 적재된 묶음이 하나도 안 남으면 작업 상태가 DRAFT로 돌아간다. 응답은 적재와 같은 모양(작업 전체 묶음)
+ */
+export function useRollbackBatch(id: number) {
+  const refresh = useRefresh(id);
+  return useMutation({
+    mutationFn: (batchId: string) => api.delete<LoadResult>(`${BASE}/${id}/batches/${encodeURIComponent(batchId)}`, LONG),
+    onSettled: refresh,
+  });
+}
+
+/**
  * 기준정보 계획: 사원 파일에서 뽑은 직위·직급·직책·직무를 대상과 비교한다. 기준정보가 아직 적재되지 않은 사원 파일만 나온다.
  * AMBIGUOUS가 하나라도 있으면 적재가 409 LOAD_009로 막힌다. GRADE의 value는 'G3 2호봉'처럼 호봉까지 붙는다.
  */

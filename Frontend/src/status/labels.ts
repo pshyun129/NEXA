@@ -15,6 +15,14 @@ export const approvalLevelLabel = label({ TEAM: '팀장 전결', DIVISION: '본�
 
 export const leavePortionLabel = label({ FULL: '종일', AM_HALF: '오전 반차', PM_HALF: '오후 반차' });
 
+/** 휴가 원장 이벤트(leave LedgerEventType) */
+export const leaveLedgerLabel = label({
+  GRANT: '발생', ADJUST: '조정', RESERVE: '신청 예약', RELEASE: '예약 해제', CONSUME: '사용', RESTORE: '복원',
+  EXPIRE: '소멸', REVOKE: '발생 취소', CARRY_OUT: '이월(보냄)', CARRY_IN: '이월(받음)',
+});
+
+export const leaveGrantKindLabel = label({ AUTO: '정책 발생', MANUAL: '수동 지급', CARRY_OVER: '이월', COMP: '보상휴가' });
+
 /** 근무 상태 점 색(설계 5장 ClockChip). 모르는 코드는 neutral. */
 export function workStatusTone(code: string | null | undefined): Tone {
   switch (code) {

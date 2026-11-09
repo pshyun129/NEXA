@@ -1,5 +1,5 @@
-import { useRef, type MutableRefObject } from 'react';
-import { Drawer, Select, Tabs } from 'antd';
+import { useRef, useState, type MutableRefObject } from 'react';
+import { Button, Drawer, Select, Tabs } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useDocuments, type DocumentFilter, type DocumentStatus, type DocumentSummary, type FormType } from '@/api/approval';
@@ -11,6 +11,7 @@ import { formTypeLabel } from '@/status/labels';
 import { useViewport } from '@/shell/useViewport';
 import { useTodoCounts } from '@/shell/useTodoCounts';
 import { DocumentView } from '@/approval/DocumentView';
+import { ComposeDrawer } from '@/approval/Compose';
 import { docColumns } from '@/approval/columns';
 import s from '@/approval/approval.module.css';
 
@@ -94,6 +95,7 @@ export function ApprovalsPage() {
   const raw = params.get('tab');
   const tab: Tab = raw === 'drafted' || raw === 'all' ? raw : 'pending';
   const selected = docId && /^\d+$/.test(docId) ? Number(docId) : null;
+  const [composing, setComposing] = useState(false);
 
   // 탭·필터 쿼리를 유지한 채 문서만 바꾼다
   const keep = (p: URLSearchParams) => (p.toString() ? `?${p.toString()}` : '');
@@ -126,7 +128,13 @@ export function ApprovalsPage() {
 
   return (
     <>
-      <PageHeader title="전자결재" />
+      <PageHeader title="전자결재" actions={<Button type="primary" onClick={() => setComposing(true)}>기안하기</Button>} />
+      <ComposeDrawer
+        open={composing}
+        onClose={() => setComposing(false)}
+        // 상신하면 기안함 탭에서 새 문서를 연다
+        onCreated={(id) => { setComposing(false); navigate(`/approvals/${id}?tab=drafted`); }}
+      />
       <Tabs
         activeKey={tab}
         onChange={switchTab}

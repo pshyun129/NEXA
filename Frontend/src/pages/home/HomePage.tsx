@@ -8,7 +8,7 @@ import { docColumns } from '@/approval/columns';
 import { PageHeader, Card, Counter, EmptyState } from '@/ui/primitives';
 import { Icon } from '@/ui/Icon';
 import { Sparkles } from '@/ui/icons';
-import { FeatureGate } from '@/ui/FeatureGate';
+import { LeaveHomeCard } from '@/leave/Balances';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { ClockPanel } from '@/attendance/Clock';
 import { WeeklyGauge, WeeklySummary, mondayOf } from '@/attendance/Weekly';
@@ -160,7 +160,7 @@ export function HomePage() {
         <div className={s.grid3}>
           <Card title="오늘 근무"><ClockPanel /><YesterdayOtNotice /></Card>
           <WeekCard />
-          <Card title="휴가 잔여"><FeatureGate flag="leaveBalance">{null}</FeatureGate></Card>
+          <Card title="휴가 잔여"><LeaveHomeCard /></Card>
         </div>
         <div className={s.grid2}>
           <PendingCard />

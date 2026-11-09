@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
+import type { WorkStatusLog } from './attendanceRequests';
 
 // attendance-service DTO (domain/attendance/dto, 2026-11-05 develop 기준)
 
@@ -88,6 +89,27 @@ export interface WeeklyAttendance {
   days: AttendanceDaySummary[];
 }
 
+/** 월간(1일~말일). days는 주간과 같은 모양 */
+export interface MonthlyAttendance {
+  month: string;
+  startDate: string;
+  endDate: string;
+  workGroupName: string;
+  summary: {
+    totalMin: number;
+    approvedOtMin: number;
+    unapprovedOtMin: number;
+    stdMin: number;
+    remainStdMin: number;
+    workDays: number;
+    remainWorkDays: number;
+  };
+  days: AttendanceDaySummary[];
+}
+
+/** 휴가를 쓸 수 없는 날(공휴일 + 내 대체휴일). type: LEGAL 법정, COMPANY 회사 지정, SUBSTITUTE 대체휴일 */
+export interface Holiday { holidayDate: string; name: string; type: 'LEGAL' | 'COMPANY' | 'SUBSTITUTE' }
+
 const BASE = '/api/v1/attn';
 
 export const attnKeys = {
@@ -119,6 +141,30 @@ export function useWeekly(date: string) {
   return useQuery({
     queryKey: attnKeys.weekly(date),
     queryFn: () => api.get<WeeklyAttendance>(`${BASE}/me/weekly`, { params: { date } }),
+  });
+}
+
+/** 월간(P1, 요구사항 3.2). month = YYYY-MM */
+export function useMonthly(month: string) {
+  return useQuery({
+    queryKey: [...attnKeys.all, 'monthly', month] as const,
+    queryFn: () => api.get<MonthlyAttendance>(`${BASE}/me/monthly`, { params: { month } }),
+  });
+}
+
+export function useHolidays(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: [...attnKeys.all, 'holidays', startDate, endDate] as const,
+    queryFn: () => api.get<Holiday[]>(`${BASE}/holidays`, { params: { startDate, endDate } }),
+    staleTime: 60 * 60_000,
+  });
+}
+
+/** 상태 변경 이력(P1). 최대 31일, 삭제된 기록 포함(isDeleted) */
+export function useStatusHistory(from: string, to: string) {
+  return useQuery({
+    queryKey: [...attnKeys.all, 'history', 'range', from, to] as const,
+    queryFn: () => api.get<WorkStatusLog[]>(`${BASE}/me/history`, { params: { from, to } }),
   });
 }
 
