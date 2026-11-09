@@ -16,6 +16,13 @@ step() { echo "[$(date '+%F %T')] $*"; }
 step "야간 작업 시작: 어댑터 $NAME / 데이터 $DATA"
 [[ -f "$DATA" ]] || { step "학습 데이터가 없습니다: $DATA"; exit 1; }
 
+# 0) 같은 데이터로 이미 학습한 어댑터가 있으면 건너뜀 (매일 예약돼도 새 데이터가 있을 때만 학습, vLLM도 안 내림)
+SHA=$(sha256sum "$DATA" | cut -c1-12)
+DONE=$(grep -lx "$SHA" "$HOME"/ai/adapters/*/data.sha 2>/dev/null | head -1 || true)
+if [[ -n "$DONE" && "${FORCE:-0}" != 1 ]]; then
+  step "이미 학습한 데이터 (sha $SHA → $(dirname "$DONE")) → 건너뜀 (다시 하려면 FORCE=1)"; exit 0
+fi
+
 # 1) vLLM만 내리기 (OCR·MLflow는 그대로: OCR은 메모리가 충분하고, MLflow는 학습 기록용)
 tmux kill-session -t vllm 2>/dev/null && step "[vllm] 종료"
 sleep 30
@@ -30,6 +37,7 @@ step "학습 종료 (코드 $STATUS)"
 
 # 3) vLLM 다시 올리기: 학습 성공이면 어댑터를 붙여서, 실패면 원래대로
 if [[ $STATUS -eq 0 && -f "$ADAPTER/adapter_config.json" ]]; then
+  echo "$SHA" > "$ADAPTER/data.sha"                 # 이 데이터로 학습했다는 기록 (다음 예약 때 건너뛰는 기준)
   tmux new-session -d -s vllm "LORA_PATH=$ADAPTER LORA_NAME=receipt-lora bash $SCRIPT_DIR/serve.sh"
   step "[vllm] 시작 (기본 모델 + 어댑터 receipt-lora)"
 else

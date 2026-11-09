@@ -17,6 +17,7 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from pathlib import Path
 from typing import Literal
 
 import dspy
@@ -179,8 +180,22 @@ class PolicyJudge(dspy.Module):
         return self.judge(clause=clause, known_facts=known_facts, unknown_facts=unknown_facts)
 
 
-_judge = PolicyJudge()
-JUDGE_VERSION = "policy@base"
+PROGRAM_DIR = Path(__file__).resolve().parent.parent / "programs"
+
+
+def _load_judge() -> tuple[PolicyJudge, str]:
+    """챔피언 파일(ai/programs/policy.json)이 있으면 불러오고, 없으면 기본(base) — 문서 분류와 같은 방식"""
+    judge = PolicyJudge()
+    path = PROGRAM_DIR / "policy.json"
+    if not path.exists():
+        return judge, "policy@base"
+    judge.load(str(path))
+    meta_path = PROGRAM_DIR / "policy.meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    return judge, meta.get("label", "policy@champion")
+
+
+_judge, JUDGE_VERSION = _load_judge()
 
 
 # ---------------------------------------------------------------- 코드 검증
@@ -263,8 +278,10 @@ def _collect(known: dict, doc_codes: list[str], k: int) -> tuple[dict[str, Claus
     return found, traces
 
 
-def check_receipt(fields: dict, extra: dict | None = None, today: date | None = None, k: int = 3) -> dict:
-    """영수증 규정 검토. 반환값은 노드 출력에 그대로 들어감 (추적 정보 포함)"""
+def check_receipt(fields: dict, extra: dict | None = None, today: date | None = None, k: int = 3,
+                  judge: PolicyJudge | None = None) -> dict:
+    """영수증 규정 검토. 반환값은 노드 출력에 그대로 들어감 (추적 정보 포함)
+    judge: 최적화 중인 후보 판정 모듈 (없으면 운영 챔피언 _judge)"""
     today = today or date.today()
     known, unknown = receipt_facts(fields, extra or {}, today)
     purpose = known.get("사용 목적")
@@ -294,11 +311,12 @@ def check_receipt(fields: dict, extra: dict | None = None, today: date | None = 
                 "reason": "판정할 수 있는 규정을 찾지 못했습니다", **base}
 
     unknown_json = json.dumps(unknown, ensure_ascii=False)
+    active = judge if judge is not None else _judge          # 후보 판정 모듈이 들어오면 그것으로 판정
 
     def judge_one(c: Clause) -> dict:
         checks, num_missing = numeric_checks(c, known)
         facts = {**known, "코드 계산 결과": [x["text"] for x in checks]} if checks else known
-        j: Judgment = run_with_fallback(_judge, clause=_clause_text(c),
+        j: Judgment = run_with_fallback(active, clause=_clause_text(c),
                                         known_facts=json.dumps(facts, ensure_ascii=False, default=str),
                                         unknown_facts=unknown_json).judgment
         verdict, notes, missing = decide(c, j, checks, num_missing)
