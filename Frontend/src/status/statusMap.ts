@@ -93,8 +93,9 @@ export const statusMap = {
     WARN: { label: '확인 필요', tone: 'warning', icon: I.TriangleAlert },
     FIX: { label: '자동 정리', tone: 'info', icon: I.Wand },
   }),
+  /** 이관 매핑 추천 출처. LLM은 화면에서 AiMark(+추천 이유 툴팁)로 그린다(설계 6.7 AI 표식) */
   SuggestedBy: m({
-    SYNONYM: { label: '동의어', tone: 'neutral' },
+    SYNONYM: { label: '이름 일치', tone: 'neutral' },
     LLM: { label: 'AI 추천', tone: 'ai', icon: I.Sparkles },
     USER: { label: '직접 지정', tone: 'brand', icon: I.User },
   }),

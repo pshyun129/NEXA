@@ -72,7 +72,7 @@
 | 캔버스 | @xyflow/react 12 | 엣지는 `smoothstep` 하나만 쓴다. undo/redo, 복붙, 그룹, 드래그 폼 빌더는 만들지 않는다 |
 | 차트 | **없음** | 휴가 게이지·대사 막대·이관 스택 막대·근태 주간 막대 모두 div 막대 컴포넌트 하나(`BarSegments`)로 그린다 |
 | 마크다운 | (P2) | 이관 LLM 규칙 요약이 P2라 넣지 않는다 |
-| 단축키 | react-hotkeys-hook 4 | 입력 필드에 포커스가 있으면 단일 키 단축키를 끈다 |
+| 단축키 | 자체 훅 `src/common/useHotkeys.ts` (3주차에 react-hotkeys-hook 대신, 의존성 제거) | 입력 필드에 포커스가 있거나 확인 모달이 떠 있으면 단일 키 단축키를 끈다 |
 | 목업 | **없음** | MSW 핸들러를 만들지 않는다. 백엔드 갭은 실제 API + `FeatureGate` 안내 문구로 정직하게 보여 준다 |
 | 폰트 | `pretendard` 1.3.9 (npm self-host), `@fontsource/jetbrains-mono` 5 | CDN에 의존하지 않는다(시연장 네트워크 대비) |
 | 인쇄 | `@media print` 전용 명세서 레이아웃 | PDF API가 없다(요구사항 3.6) |

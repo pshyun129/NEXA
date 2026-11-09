@@ -118,8 +118,32 @@ function UploadBox({ migrationId, entity, current }: { migrationId: number; enti
   );
 }
 
-/* ---------- entity 탭 하나: 업로드 → 매핑 → 검증 ---------- */
-function EntityPanel({ d, entity }: { d: MigrationDetail; entity: MigrationEntity }) {
+const STEPS = ['업로드', '매핑', '검증', '미리보기', '적재', '대사'];
+
+/**
+ * 단계 표시: 지금 보고 있는 entity 탭의 진행으로 계산한다(조직·사원을 차례로 하므로 탭마다 다르다).
+ * 파일 없음 ① → 매핑 미확정 ② → 적재 불가·자동 정리 남음 ③ → 미리보기 전 ④ → 미리보기 통과 ⑤ → 적재됨 ⑥ 대사
+ */
+function Stepper({ d, entity, previewed }: { d: MigrationDetail; entity: MigrationEntity; previewed: boolean }) {
+  const file = latestFile(d, entity);
+  const detail = useMigrationFile(d.migrationId, file?.fileId ?? null);
+  const t = detail.data?.issueTotals;
+  const mappedOk = !!detail.data && detail.data.missingRequired.length === 0 && detail.data.columnMappings.every((m) => m.confirmed);
+  const loaded = !!file && d.batches.some((b) => b.fileId === file.fileId && b.entity === entity && b.status === 'LOADED');
+  const cur = !file ? 0 : loaded ? 5 : !mappedOk ? 1 : !t || t.BLOCK + t.FIX > 0 ? 2 : previewed ? 4 : 3;
+  return (
+    <ol className={s.stepper} aria-label={`${ENTITY_LABEL[entity]} 이관 단계`}>
+      {STEPS.map((label, i) => (
+        <li key={label} className={i < cur ? s.sDone : i === cur ? s.sCur : undefined} aria-current={i === cur ? 'step' : undefined}>
+          {'①②③④⑤⑥'[i]} {label}{i < cur && ' ✓'}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/* ---------- entity 탭 하나: 업로드 → 매핑 → 검증 → 미리보기·적재 ---------- */
+function EntityPanel({ d, entity, onPreview }: { d: MigrationDetail; entity: MigrationEntity; onPreview: (fileId: number, ok: boolean) => void }) {
   const file = latestFile(d, entity);
   const detail = useMigrationFile(d.migrationId, file?.fileId ?? null);
   const mappedOk = !!detail.data && detail.data.missingRequired.length === 0 && detail.data.columnMappings.every((m) => m.confirmed);
@@ -135,7 +159,7 @@ function EntityPanel({ d, entity }: { d: MigrationDetail; entity: MigrationEntit
             <IssuesPanel migrationId={d.migrationId} fileId={file.fileId} rows={file.rows} />
           </Card>
           <Card title="미리보기·적재">
-            <LoadPanel d={d} entity={entity} file={file} />
+            <LoadPanel d={d} entity={entity} file={file} onPreview={(ok) => onPreview(file.fileId, ok)} />
           </Card>
         </>
       )}
@@ -143,20 +167,16 @@ function EntityPanel({ d, entity }: { d: MigrationDetail; entity: MigrationEntit
   );
 }
 
-const STEPS = ['업로드', '매핑', '검증', '미리보기', '적재', '대사'];
-
 function Job({ id }: { id: number }) {
   const q = useMigration(id);
   const [params, setParams] = useSearchParams();
+  // 미리보기에서 적재 가능으로 나온 파일(단계 표시용). 화면을 떠나면 다시 미리보기한다
+  const [previewed, setPreviewed] = useState<Record<number, boolean>>({});
   if (q.isError) return <ErrorPanel error={q.error} onRetry={() => q.refetch()} />;
   if (!q.data) return <Skeleton active={false} paragraph={{ rows: 8 }} />;
   const d = q.data;
   const ent = (ENTITY_ORDER as string[]).includes(params.get('entity') ?? '') ? (params.get('entity') as MigrationEntity) : 'HR_ORG';
-  const hasAll = ENTITY_ORDER.every((e) => latestFile(d, e));
-  const loadedOf = (e: MigrationEntity) => d.batches.some((b) => b.entity === e && b.status === 'LOADED');
-  const allLoaded = ENTITY_ORDER.every(loadedOf);
-  // 단계: 파일 없음 ① → 일부 파일 ② → 두 파일 ③ → 일부 적재 ⑤ → 모두 적재 ⑥(대사)
-  const cur = allLoaded ? 5 : ENTITY_ORDER.some(loadedOf) ? 4 : hasAll ? 2 : d.files.length ? 1 : 0;
+  const entFile = latestFile(d, ent);
   return (
     <>
       <div className={s.head}>
@@ -165,13 +185,6 @@ function Job({ id }: { id: number }) {
         {d.cutoverDate && <span className={s.muted}>기준일 {formatDate(d.cutoverDate)}</span>}
         <StatusBadge domain="MigrationStatus" value={d.status} />
       </div>
-      <ol className={s.stepper} aria-label="이관 단계">
-        {STEPS.map((label, i) => (
-          <li key={label} className={i < cur ? s.sDone : i === cur ? s.sCur : undefined}>
-            {'①②③④⑤⑥'[i]} {label}{i < cur && ' ✓'}
-          </li>
-        ))}
-      </ol>
       <Tabs
         activeKey={ent}
         onChange={(k) => setParams({ entity: k }, { replace: true })}
@@ -180,7 +193,9 @@ function Job({ id }: { id: number }) {
           return { key: e, label: `${ENTITY_LABEL[e]}${f ? ` · ${f.fileName}` : ''}` };
         })}
       />
-      <EntityPanel key={ent} d={d} entity={ent} />
+      <Stepper d={d} entity={ent} previewed={!!entFile && !!previewed[entFile.fileId]} />
+      <EntityPanel key={ent} d={d} entity={ent}
+                   onPreview={(fileId, ok) => setPreviewed((p) => (p[fileId] === ok ? p : { ...p, [fileId]: ok }))} />
       <div style={{ marginTop: 16 }}>
         <Card title="⑥ 대사">
           <Reconciliation d={d} />

@@ -94,7 +94,11 @@ function ReferencePlan({ items }: { items: ReferencePlanItem[] }) {
  * - 사원 파일은 서버가 기준정보(HR_CODE) 묶음을 같은 fileId로 먼저 넣는다 → 묶음은 entity로 구분한다.
  *   기준정보 중 고를 수 없는 값(AMBIGUOUS)이 있으면 적재가 409 LOAD_009로 막히므로 미리 끈다.
  */
-export function LoadPanel({ d, entity, file }: { d: MigrationDetail; entity: MigrationEntity; file: MigrationFileSummary }) {
+export function LoadPanel({ d, entity, file, onPreview }: {
+  d: MigrationDetail; entity: MigrationEntity; file: MigrationFileSummary;
+  /** 미리보기 결과(적재 가능 여부). 적재하거나 다시 막히면 false. 단계 표시가 쓴다 */
+  onPreview?: (loadable: boolean) => void;
+}) {
   const notify = useNotify();
   const detail = useMigrationFile(d.migrationId, file.fileId);
   const preview = usePreviewLoad(d.migrationId);
@@ -119,14 +123,16 @@ export function LoadPanel({ d, entity, file }: { d: MigrationDetail; entity: Mig
     : totals && totals.BLOCK > 0 ? `적재 불가 ${totals.BLOCK}건을 먼저 해결해 주세요`
     : totals && totals.FIX > 0 ? `자동 정리 ${totals.FIX}건을 먼저 적용해 주세요`
     : null;
-  const loadReason = prevMissing.length ? `${prevMissing.map((e) => ENTITY_LABEL[e]).join('·')}을(를) 먼저 적재해 주세요`
+  // 미리보기 뒤에 행 수정 등으로 다시 막히면 그 미리보기는 무효다
+  const loadReason = blockedReason ? blockedReason
+    : prevMissing.length ? `${prevMissing.map((e) => ENTITY_LABEL[e]).join('·')}을(를) 먼저 적재해 주세요`
     : !result ? '미리보기를 먼저 확인해 주세요'
     : !result.loadable ? '미리보기에서 적재할 수 없다고 나왔습니다'
     : ambiguous > 0 ? `고를 수 없는 기준정보 ${ambiguous}건이 있습니다(직급에 호봉을 적어 주세요)`
     : null;
 
   const runPreview = () => preview.mutate([file.fileId], {
-    onSuccess: setResult,
+    onSuccess: (r) => { setResult(r); onPreview?.(r.loadable); },
     onError: (e) => notify.error(e, '미리보기를 만들지 못했습니다'),
   });
   const runLoad = () => load.mutate([file.fileId], {
@@ -134,6 +140,7 @@ export function LoadPanel({ d, entity, file }: { d: MigrationDetail; entity: Mig
       setConfirmOpen(false);
       setTyped('');
       setResult(null);
+      onPreview?.(false);
       // 이번 요청의 묶음: 이 파일의 기준정보(사원일 때) + 본 묶음. 응답에는 작업 전체 묶음이 오므로 가장 최근 것만 본다
       const latest = (e: string) => r.batches.filter((x) => x.fileId === file.fileId && x.entity === e)
         .sort((a, c) => c.startedAt.localeCompare(a.startedAt))[0];
@@ -160,6 +167,8 @@ export function LoadPanel({ d, entity, file }: { d: MigrationDetail; entity: Mig
         <Tooltip title={loadReason}>
           <Button type="primary" onClick={() => setConfirmOpen(true)} disabled={!!loadReason}>⑤ 적재</Button>
         </Tooltip>
+        {/* 꺼진 이유를 툴팁에만 두지 않고 글자로도 적는다 */}
+        {!loaded && (blockedReason || (result && loadReason)) && <span className={s.pending}>{blockedReason ?? loadReason}</span>}
         {loaded && <span className={s.muted}>이 파일은 적재됐습니다. 다시 적재하면 기준 키(부서코드·사번)로 덮어씁니다.</span>}
       </div>
 
