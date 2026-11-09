@@ -1,6 +1,7 @@
 package com.ssafy.leaveservice.domain.request;
 
 import com.ssafy.leaveservice.domain.request.entity.LeaveRequestPortion;
+import com.ssafy.leaveservice.domain.request.entity.LeaveRequestStatus;
 import com.ssafy.leaveservice.domain.request.repository.LeaveRequestRepository;
 import com.ssafy.leaveservice.domain.request.repository.LeaveRequestRepository.RequestDateRow;
 import com.ssafy.leaveservice.domain.request.service.LeaveRequestDatesService;
@@ -41,6 +42,20 @@ class LeaveRequestDatesServiceTest {
             assertThat(date.leaveDate()).isEqualTo(LocalDate.of(2026, 11, 9));
             assertThat(date.portion()).isEqualTo(LeaveRequestPortion.HOURLY);
         });
+    }
+
+    @Test
+    void cancelledRequestIsNotFound() {
+        RequestDateRow row = mock(RequestDateRow.class);
+        when(row.getStatus()).thenReturn(LeaveRequestStatus.CANCELLED);
+        when(row.getLeaveDate()).thenReturn(OffsetDateTime.parse("2026-11-08T15:00:00Z"));
+        when(row.getLeaveTypeName()).thenReturn("연차");
+        when(row.getPaid()).thenReturn(true);
+        when(repository.findRequestDates(42L)).thenReturn(List.of(row));
+
+        assertThatThrownBy(() -> service.getDates(42L))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
 
     @Test

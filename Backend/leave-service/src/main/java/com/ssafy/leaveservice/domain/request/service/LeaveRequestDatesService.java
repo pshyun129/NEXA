@@ -2,6 +2,7 @@ package com.ssafy.leaveservice.domain.request.service;
 
 import com.ssafy.leaveservice.domain.request.dto.LeaveRequestDatesResponse;
 import com.ssafy.leaveservice.domain.request.dto.LeaveRequestDatesResponse.LeaveDateItem;
+import com.ssafy.leaveservice.domain.request.entity.LeaveRequestStatus;
 import com.ssafy.leaveservice.domain.request.repository.LeaveRequestRepository;
 import com.ssafy.leaveservice.domain.request.repository.LeaveRequestRepository.RequestDateRow;
 import com.ssafy.leaveservice.global.exception.BusinessException;
@@ -31,6 +32,10 @@ public class LeaveRequestDatesService {
             throw new BusinessException(ErrorCode.NOT_FOUND);
         }
         RequestDateRow firstRow = dateRows.getFirst();
+        // 취소된 신청은 근태에 휴가로 남으면 안 되므로 없는 신청과 같이 404 (늦게 처리된 승인 이벤트가 휴가를 되살리지 않게)
+        if (firstRow.getStatus() == LeaveRequestStatus.CANCELLED) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
         String leaveTypeName = firstRow.getLeaveTypeName();
         Boolean paid = firstRow.getPaid();
         if (firstRow.getLeaveDate() == null || leaveTypeName == null || paid == null) {

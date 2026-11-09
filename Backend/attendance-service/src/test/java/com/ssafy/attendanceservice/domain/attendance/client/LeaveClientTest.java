@@ -52,7 +52,7 @@ class LeaveClientTest {
                                    {"leaveDate":"2026-11-10","portion":"PM_HALF"}]}}""",
                         MediaType.APPLICATION_JSON));
 
-        ApprovedLeave leave = client.getRequestDates(42L).toApprovedLeave();
+        ApprovedLeave leave = client.getRequestDates(42L).orElseThrow().toApprovedLeave();
 
         assertThat(leave).isEqualTo(new ApprovedLeave(42L, 7L, "연차", true, List.of(
                 new ApprovedLeave.Day(LocalDate.of(2026, 11, 9), LeavePortion.FULL),
@@ -69,17 +69,14 @@ class LeaveClientTest {
                           "dates":[{"leaveDate":"2026-11-09","portion":"AM_HALF"}]}}""",
                         MediaType.APPLICATION_JSON));
 
-        assertThat(client.getRequestDates(42L).isPaid()).isFalse();
+        assertThat(client.getRequestDates(42L).orElseThrow().isPaid()).isFalse();
     }
 
     @Test
-    void 없는_신청이면_예외() {
+    void 취소됐거나_없는_신청_404면_빈_값() {
         server.expect(requestTo(DATES_URL)).andRespond(withResourceNotFound());
 
-        assertThatThrownBy(() -> client.getRequestDates(42L))
-                .isInstanceOf(BusinessException.class)
-                .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.LEAVE_CALL_FAILED);
+        assertThat(client.getRequestDates(42L)).isEmpty();
     }
 
     @Test

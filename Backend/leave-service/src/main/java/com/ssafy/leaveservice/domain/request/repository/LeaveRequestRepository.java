@@ -2,6 +2,7 @@ package com.ssafy.leaveservice.domain.request.repository;
 
 import com.ssafy.leaveservice.domain.request.entity.LeaveRequest;
 import com.ssafy.leaveservice.domain.request.entity.LeaveRequestPortion;
+import com.ssafy.leaveservice.domain.request.entity.LeaveRequestStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Lock;
@@ -15,7 +16,7 @@ import java.util.Optional;
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long> {
 
     @Query("""
-            select request.requestId as requestId, request.employeeId as employeeId,
+            select request.requestId as requestId, request.employeeId as employeeId, request.status as status,
                    date.leaveDate as leaveDate, date.portion as portion,
                    leaveType.name as leaveTypeName, leaveType.paid as paid
             from LeaveRequest request
@@ -28,6 +29,8 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
 
     interface RequestDateRow {
         Long getEmployeeId();
+
+        LeaveRequestStatus getStatus();
 
         OffsetDateTime getLeaveDate();
 

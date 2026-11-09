@@ -904,7 +904,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"SUBMITTING", "SUBMITTED", "APPROVED", "REJECTED", "WITHDRAWN", "CANCELLED"})
+    @ValueSource(strings = {"SUBMITTING", "SUBMITTED", "APPROVED", "REJECTED", "WITHDRAWN"})
     void internalDatesUseStoredRowsRegardlessOfRequestState(String state) throws Exception {
         LeaveSubmissionResult initial = submissionService.submit("dates", input(1, null,
                 date(day.plusDays(2), LeaveRequestPortion.PM_HALF),
@@ -937,6 +937,25 @@ class LeaveApprovalResultPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.dates[1].portion").value("AM_HALF"))
                 .andExpect(jsonPath("$.data.dates[2].portion").value("PM_HALF"));
         assertThat(rows()).isEqualTo(before);
+    }
+
+    // 취소된 신청은 근태가 휴가로 저장하지 않도록 없는 신청과 같이 404 (늦게 처리된 승인 이벤트가 휴가를 되살리지 않게)
+    @Test
+    void internalDatesReturnNotFoundForCancelledRequest() throws Exception {
+        LeaveSubmissionResult initial = submissionService.submit("cancelled", input(1, null,
+                date(day, LeaveRequestPortion.FULL)));
+        approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
+        approvalResultService.linkCreatedDocument(initial.requestId(), initial.approvalRequestId(), 501L);
+        jdbcTemplate.update("update leave_request set status='CANCELLED' where leave_req_id=?", initial.requestId());
+
+        MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build().perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/leaves/internal/requests/{requestId}/dates", initial.requestId()
+                )
+        ).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test

@@ -13,6 +13,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,12 +67,22 @@ class ApprovalResultListenerTest {
     void 휴가_문서_승인은_휴가_서비스에서_날짜를_받아_저장() {
         LeaveRequestDates dates = new LeaveRequestDates(42L, 7L, "연차", true,
                 List.of(new LeaveRequestDates.LeaveDate(LocalDate.of(2026, 11, 9), LeavePortion.FULL)));
-        given(leaveClient.getRequestDates(42L)).willReturn(dates);
+        given(leaveClient.getRequestDates(42L)).willReturn(Optional.of(dates));
 
         listener.onApprovalResult(event("LEAVE", 42, "APPROVED"));
 
         verify(leaveService).applyApprovedLeave(dates.toApprovedLeave());
         verify(service, never()).applyApprovalResult(anyLong(), any());
+    }
+
+    @Test
+    void 그_사이_취소된_휴가의_승인은_저장하지_않고_남은_휴가도_지움() {
+        given(leaveClient.getRequestDates(42L)).willReturn(Optional.empty());
+
+        listener.onApprovalResult(event("LEAVE", 42, "APPROVED"));
+
+        verify(leaveService, never()).applyApprovedLeave(any());
+        verify(leaveService).cancelLeave(42L);
     }
 
     @Test

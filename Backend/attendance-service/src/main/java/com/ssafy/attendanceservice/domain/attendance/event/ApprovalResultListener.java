@@ -69,7 +69,13 @@ public class ApprovalResultListener {
         if (STATUS_APPROVED.equals(event.status())) {
             log.info("휴가 승인 반영: eventId={}, documentId={}, leaveReqId={}",
                     event.eventId(), event.documentId(), leaveReqId);
-            leaveService.applyApprovedLeave(leaveClient.getRequestDates(leaveReqId).toApprovedLeave());
+            leaveClient.getRequestDates(leaveReqId).ifPresentOrElse(
+                    dates -> leaveService.applyApprovedLeave(dates.toApprovedLeave()),
+                    () -> {
+                        // 그 사이 취소된 신청 (늦게 처리된 승인 이벤트): 저장하지 않고, 혹시 남은 휴가도 지운다
+                        log.info("휴가 승인 반영 안 함 (휴가 서비스에서 취소됐거나 없는 신청): leaveReqId={}", leaveReqId);
+                        leaveService.cancelLeave(leaveReqId);
+                    });
         } else if (STATUS_CANCEL.equals(event.status())) {
             log.info("휴가 회수 반영: eventId={}, documentId={}, leaveReqId={}",
                     event.eventId(), event.documentId(), leaveReqId);
