@@ -1,0 +1,74 @@
+services:
+  fastapi:
+    build:
+      context: ./FastAPI
+    image: nexa-fastapi:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: nexa_ai
+      DB_USER: nexa_ai_app
+      DB_PASSWORD: ${AI_DB_PASSWORD:?AI_DB_PASSWORD is required}
+
+      EUREKA_SERVER_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+      INSTANCE_HOST: fastapi
+      INSTANCE_PORT: "8086"
+
+      LOCAL_LLM_BASE_URL: ${LOCAL_LLM_BASE_URL:-}
+      LOCAL_LLM_API_KEY: ${LOCAL_LLM_API_KEY:-}
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen3.8-27b}
+      LOCAL_LLM_TIMEOUT: ${LOCAL_LLM_TIMEOUT:-60}
+
+      GMS_BASE_URL: ${GMS_BASE_URL:-}
+      GMS_API_KEY: ${GMS_API_KEY:-}
+      GMS_MODEL: ${GMS_MODEL:-}
+
+      UPLOAD_DIR: /app/uploads
+      LLM_TEST_API_ENABLED: "false"
+
+      OCR_BASE_URL: ${OCR_BASE_URL:-}
+      OCR_TIMEOUT: ${OCR_TIMEOUT:-30}
+
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      USER_SERVICE_URL: http://user-service:8081
+      APPROVAL_SERVICE_URL: http://approval-service:8083
+
+      ATTENDANCE_SERVICE_URL: http://attendance-service:8084
+      LEAVE_SERVICE_URL: http://leave-service:8082
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+
+    volumes:
+      - fastapi-uploads:/app/uploads
+
+    ports:
+      - "127.0.0.1:8086:8086"
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8086/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  fastapi-uploads:

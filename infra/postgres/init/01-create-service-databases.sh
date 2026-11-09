@@ -7,6 +7,8 @@ set -euo pipefail
 : "${APPROVAL_DB_PASSWORD:?APPROVAL_DB_PASSWORD is required}"
 : "${ATTENDANCE_DB_PASSWORD:?ATTENDANCE_DB_PASSWORD is required}"
 : "${PAYROLL_DB_PASSWORD:?PAYROLL_DB_PASSWORD is required}"
+: "${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD is required}"
+: "${AI_DB_PASSWORD:?AI_DB_PASSWORD is required}"
 
 create_service_database() {
     local db_name="$1"
@@ -59,3 +61,5 @@ create_service_database nexa_leave nexa_leave_app "$LEAVE_DB_PASSWORD"
 create_service_database nexa_approval nexa_approval_app "$APPROVAL_DB_PASSWORD"
 create_service_database nexa_attendance nexa_attendance_app "$ATTENDANCE_DB_PASSWORD"
 create_service_database nexa_payroll nexa_payroll_app "$PAYROLL_DB_PASSWORD"
+create_service_database nexa_migration nexa_migration_app "$MIGRATION_DB_PASSWORD"
+create_service_database nexa_ai nexa_ai_app "$AI_DB_PASSWORD"

@@ -17,17 +17,36 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: user-service-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     build: .
     container_name: user-service-app
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       SERVER_PORT: "8081"
+      # dev 프로필: db/seed 의 개발용 관리자 계정(admin@local.dev)을 함께 적용
+      SPRING_PROFILES_ACTIVE: dev
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/user_service
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      # 운영에서는 반드시 주입. 비우면 컨테이너마다 임시 키가 생성된다
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:-}
     ports:
       - "8081:8081"
     restart: unless-stopped

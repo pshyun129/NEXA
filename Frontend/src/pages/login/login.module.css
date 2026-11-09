@@ -1,0 +1,8 @@
+.page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--nx-bg-app); }
+.box { width: 100%; max-width: 400px; background: var(--nx-bg-card); border: 1px solid var(--nx-border);
+       border-radius: var(--nx-r-lg); padding: 32px; box-sizing: border-box; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; color: var(--nx-n-800); margin-bottom: 24px; }
+.mark { color: var(--nx-brand-600); }
+.title { margin: 0; font-size: var(--nx-fs-h1); line-height: 30px; font-weight: 700; color: var(--nx-n-800); }
+.desc { margin: 4px 0 24px; font-size: 13px; color: var(--nx-n-500); }
+.alert { margin-bottom: 16px; }

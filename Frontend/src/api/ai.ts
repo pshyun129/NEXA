@@ -1,0 +1,282 @@
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from './client';
+
+// FastAPI ai-service (origin/develop f4725fd 기준). 바깥 필드는 camelCase, inputs·outputs·step output 안쪽은 snake_case.
+// 시각은 오프셋 없는 UTC라 화면에서는 serverUtc()를 거쳐 쓴다(frontend-backend-gaps.md B13).
+
+const BASE = '/api/v1/ai';
+
+export type RunStatus = 'QUEUED' | 'RUNNING' | 'WAITING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+export type StepStatus = 'RUNNING' | 'WAITING' | 'SUCCEEDED' | 'FAILED';
+
+/** 실행 진입 화면 코드(요구사항 3.7). 빌더 placements와 같은 값. 시연은 HOME만 쓴다 */
+export const SCREEN_CODES = ['HOME', 'ATTENDANCE', 'LEAVE', 'APPROVAL_DRAFT', 'PAYROLL'] as const;
+export type ScreenCode = (typeof SCREEN_CODES)[number];
+
+export interface WorkflowSummary {
+  id: number;
+  name: string;
+  description: string | null;
+  deployedVersion: number | null;
+  createdBy: string | null;
+  updatedAt: string;
+}
+
+export interface FormField {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select' | 'file';
+  required: boolean;
+  options: string[];
+  prefill: string | null;
+}
+
+export interface WorkflowDetail extends WorkflowSummary {
+  inputForm: FormField[];
+  placements: string[];
+  createdAt: string;
+}
+
+export interface RunSummary {
+  id: number;
+  workflowId: number;
+  version: number | null;
+  isTest: boolean;
+  status: RunStatus;
+  currentNodeId: string | null;
+  /** 토큰 sub 문자열("103") */
+  requestedBy: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+/** 실행에 붙은 파일. 서버가 inputs.files에 넣는다(runs/service.py `_file_info`, snake_case). path는 서버 경로라 쓰지 않는다 */
+export interface RunInputFile { file_id: number; name: string; content_type: string | null; size: number }
+
+export function runInputFiles(run: RunDetail): RunInputFile[] {
+  const files = run.inputs?.files;
+  return Array.isArray(files) ? (files as RunInputFile[]) : [];
+}
+
+/**
+ * 원본 내려받기(GET /runs/files/{id}/download, origin/develop e712f8e). 쿠키 인증이라 <img src>·링크로 바로 쓴다.
+ * 업로드한 사람·실행 요청자만 받을 수 있다(그 외 RUN_FORBIDDEN) → 결재자는 볼 수 없다.
+ */
+export const runFileDownloadUrl = (fileId: number) => `${BASE}/runs/files/${fileId}/download`;
+
+export interface RunDetail extends RunSummary {
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown> | null;
+  error: string | null;
+}
+
+export interface RunStep {
+  id: number;
+  nodeId: string;
+  nodeType: string;
+  status: StepStatus;
+  /** 나간 분기 라벨(카탈로그 branches 문자열: 성공/확인 필요/자동 확정/사람 확인/확인/반려/승인/회수 …) */
+  branch: string | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface RunFile {
+  id: number;
+  runId: number | null;
+  originalName: string;
+  contentType: string | null;
+  size: number;
+  uploadedBy: string | null;
+  createdAt: string;
+}
+
+export interface NodeSummary {
+  nodeType: string;
+  name: string;
+  category: 'input' | 'ai' | 'rule' | 'human' | 'output' | string;
+  description: string;
+}
+
+/** 사람 확인(human_confirm) 대기 내용 */
+export interface HitlWaiting {
+  type: 'human_confirm';
+  message: string;
+  fields: Record<string, unknown>;
+  reasons: string[];
+  gms_fields: Record<string, unknown> | null;
+}
+
+/** 결재 결과 대기(wait_approval). 수동 재개 불가(RUN_006), Kafka 결과로만 재개 */
+export interface ApprovalWaiting {
+  type: 'approval_wait';
+  message: string;
+  request_key: string;
+  document_id: number;
+  doc_no: string;
+}
+
+export type Waiting = HitlWaiting | ApprovalWaiting;
+
+export const runKeys = {
+  run: (id: number) => ['runs', id] as const,
+  steps: (id: number) => ['runs', id, 'steps'] as const,
+  pending: ['runs', 'me', 'pending'] as const,
+};
+
+/** 내 확인 대기(WAITING) 실행. 탑바 카운터와 홈 카드가 같은 키를 쓴다(설계 7.3 전역 카운트: 60초 + 포커스). */
+export function useMyPendingRuns(enabled = true) {
+  return useQuery({
+    queryKey: runKeys.pending,
+    queryFn: () => api.get<RunSummary[]>(`${BASE}/runs/me/pending`),
+    enabled,
+    refetchInterval: () => (document.hidden ? false : 60_000),
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+}
+
+/**
+ * 내 실행 이력(P1, 요구사항 3.7 #7). 서버가 최근 50건만 준다(id 내림차순, runs/service.py list_my_runs).
+ * status는 값 하나로만 거른다. 진행 중 실행이 있으면 10초마다 다시 불러온다.
+ */
+export function useMyRuns(status: RunStatus | null) {
+  return useQuery({
+    queryKey: ['runs', 'me', status ?? 'ALL'] as const,
+    queryFn: () => api.get<RunSummary[]>(`${BASE}/runs/me`, { params: status ? { status } : undefined }),
+    placeholderData: keepPreviousData,
+    refetchInterval: (q) => (!document.hidden && q.state.data?.some((r) => !isFinal(r.status)) ? 10_000 : false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** 여러 워크플로 이름. useWorkflow와 같은 키라 캐시를 같이 쓴다. 지워진 워크플로는 이름 없이 둔다 */
+export function useWorkflowNames(ids: number[]) {
+  const results = useQueries({
+    queries: [...new Set(ids)].map((id) => ({
+      queryKey: ['workflows', id] as const,
+      queryFn: () => api.get<WorkflowDetail>(`${BASE}/workflows/${id}`),
+      staleTime: 10 * 60_000,
+      retry: false,
+    })),
+  });
+  const names: Record<number, string> = {};
+  for (const r of results) if (r.data) names[r.data.id] = r.data.name;
+  return names;
+}
+
+export function useAvailableWorkflows(screen: ScreenCode) {
+  return useQuery({
+    queryKey: ['workflows', 'available', screen],
+    queryFn: () => api.get<WorkflowSummary[]>(`${BASE}/workflows/available`, { params: { screen } }),
+  });
+}
+
+export function useWorkflow(id: number | null) {
+  return useQuery({
+    queryKey: ['workflows', id],
+    queryFn: () => api.get<WorkflowDetail>(`${BASE}/workflows/${id}`),
+    enabled: id != null,
+    staleTime: 10 * 60_000,
+  });
+}
+
+export function useInputForm(id: number, screen: ScreenCode) {
+  return useQuery({
+    queryKey: ['workflows', id, 'input-form', screen],
+    queryFn: () => api.get<{ workflowId: number; fields: FormField[]; values: Record<string, unknown> }>(
+      `${BASE}/workflows/${id}/input-form`, { params: { screen } }),
+  });
+}
+
+/** 노드 카탈로그: 단계 이름과 AI 노드(category=ai) 표시에 쓴다. 거의 바뀌지 않는다 */
+export function useNodeCatalog() {
+  return useQuery({
+    queryKey: ['nodes'],
+    queryFn: () => api.get<NodeSummary[]>(`${BASE}/nodes`),
+    staleTime: 60 * 60_000,
+    select: (list) => new Map(list.map((n) => [n.nodeType, n])),
+  });
+}
+
+export function useUploadRunFile() {
+  return useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return api.post<RunFile>(`${BASE}/runs/files`, fd, { timeout: 120_000 });
+    },
+  });
+}
+
+export function useDeleteRunFile() {
+  return useMutation({ mutationFn: (id: number) => api.delete<null>(`${BASE}/runs/files/${id}`) });
+}
+
+export function useStartRun(workflowId: number) {
+  return useMutation({
+    mutationFn: (body: { inputs: Record<string, unknown>; fileIds: number[] }) =>
+      api.post<{ runId: number; status: RunStatus }>(`${BASE}/workflows/${workflowId}/runs`, body),
+  });
+}
+
+const FINAL: RunStatus[] = ['SUCCEEDED', 'FAILED', 'CANCELED'];
+export const isFinal = (s: RunStatus | undefined) => !!s && FINAL.includes(s);
+
+/** 폴링 주기(설계 7.3 RunMonitor): QUEUED·RUNNING 1.5초, WAITING 10초, 종료·숨겨진 탭은 중단 */
+function pollMs(status: RunStatus | undefined, boost = false) {
+  if (document.hidden || !status || isFinal(status)) return false;
+  // resume 직후에는 WAITING으로 응답이 와도 곧 RUNNING이 되므로 1.5초로 다시 본다
+  return status === 'WAITING' && !boost ? 10_000 : 1_500;
+}
+
+export function useRun(id: number, boost = false) {
+  return useQuery({
+    queryKey: runKeys.run(id),
+    queryFn: () => api.get<RunDetail>(`${BASE}/runs/${id}`),
+    placeholderData: undefined,
+    refetchInterval: (q) => (q.state.data ? pollMs(q.state.data.status, boost) : false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+/** steps는 실행과 같은 주기로 함께 부른다(요구사항 3.7). 실행 상태를 받아 주기를 맞춘다 */
+export function useRunSteps(id: number, status: RunStatus | undefined, boost = false) {
+  return useQuery({
+    queryKey: runKeys.steps(id),
+    queryFn: () => api.get<RunStep[]>(`${BASE}/runs/${id}/steps`),
+    placeholderData: undefined,
+    refetchInterval: () => pollMs(status, boost),
+    refetchIntervalInBackground: false,
+  });
+}
+
+function useInvalidateRun(id: number) {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: runKeys.run(id) });
+    qc.invalidateQueries({ queryKey: runKeys.steps(id) });
+    qc.invalidateQueries({ queryKey: runKeys.pending });
+  };
+}
+
+/** 사람 확인 재개(요청자만). data에는 고친 필드만 담는다. 202 응답 상태는 대개 WAITING이라 계속 폴링한다 */
+export function useResumeRun(id: number) {
+  const refresh = useInvalidateRun(id);
+  return useMutation({
+    mutationFn: (body: { approved: boolean; comment?: string; data?: Record<string, unknown> }) =>
+      api.post<{ runId: number; status: RunStatus }>(`${BASE}/runs/${id}/resume`, body),
+    onSettled: refresh,
+  });
+}
+
+export function useCancelRun(id: number) {
+  const refresh = useInvalidateRun(id);
+  return useMutation({
+    mutationFn: () => api.post<RunDetail>(`${BASE}/runs/${id}/cancel`),
+    onSettled: refresh,
+  });
+}

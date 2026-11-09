@@ -1,0 +1,311 @@
+services:
+  user-service:
+    build:
+      context: ./Backend/user-service
+    image: nexa-user:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    environment:
+      SERVER_PORT: "8081"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_user
+      SPRING_DATASOURCE_USERNAME: nexa_user_app
+      SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:?USER_DB_PASSWORD is required}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_USERNAME: user-service
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_USER_SERVICE_PASSWORD:?REDIS_USER_SERVICE_PASSWORD is required}
+      EUREKA_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+
+    ports:
+      - "127.0.0.1:8081:8081"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8081/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+
+  approval-service:
+    build:
+      context: ./Backend/approval-service
+    image: nexa-approval:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+    environment:
+      SERVER_PORT: "8083"
+
+      # Kafka 주소(spring.kafka.bootstrap-servers) 등 공통 설정을 config-server 에서 받는다
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_CLOUD_CONFIG_USERNAME: config-client
+      SPRING_CLOUD_CONFIG_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_approval
+      SPRING_DATASOURCE_USERNAME: nexa_approval_app
+      SPRING_DATASOURCE_PASSWORD: ${APPROVAL_DB_PASSWORD:?APPROVAL_DB_PASSWORD is required}
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      EUREKA_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+
+    ports:
+      - "127.0.0.1:8083:8083"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8083/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+  
+
+  attendance-service:
+    build:
+      context: ./Backend/attendance-service
+    image: nexa-attendance:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+
+    environment:
+      SERVER_PORT: "8084"
+
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_CLOUD_CONFIG_USERNAME: config-client
+      SPRING_CLOUD_CONFIG_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_attendance
+      SPRING_DATASOURCE_USERNAME: nexa_attendance_app
+      SPRING_DATASOURCE_PASSWORD: ${ATTENDANCE_DB_PASSWORD:?ATTENDANCE_DB_PASSWORD is required}
+
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+
+      EUREKA_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+
+    ports:
+      - "127.0.0.1:8084:8084"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8084/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+        
+
+  leave-service:
+    build:
+      context: ./Backend/leave-service
+    image: nexa-leave:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+
+    environment:
+      SERVER_PORT: "8082"
+
+      # PostgreSQL
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_leave
+      SPRING_DATASOURCE_USERNAME: nexa_leave_app
+      SPRING_DATASOURCE_PASSWORD: "${LEAVE_DB_PASSWORD:?LEAVE_DB_PASSWORD is required}"
+
+      # JWT 공개키
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+
+      # Eureka
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+
+      # User Service
+      LEAVE_HR_ENABLED: "${LEAVE_HR_ENABLED:-false}"
+      LEAVE_HR_BASE_URL: "${LEAVE_HR_BASE_URL:-}"
+      LEAVE_HR_SERVICE_ID: "${LEAVE_HR_SERVICE_ID:-user-service}"
+      LEAVE_HR_EMPLOYEE_INFO_URI: "${LEAVE_HR_EMPLOYEE_INFO_URI:-}"
+      LEAVE_HR_DEPARTMENT_MEMBERS_URI: "${LEAVE_HR_DEPARTMENT_MEMBERS_URI:-}"
+      LEAVE_HR_DUTY_INFO_URI: "${LEAVE_HR_DUTY_INFO_URI:-}"
+      LEAVE_HR_JWT_DEPARTMENT_ID_CLAIM: "${LEAVE_HR_JWT_DEPARTMENT_ID_CLAIM:-}"
+      LEAVE_HR_JWT_DUTY_ID_CLAIM: "${LEAVE_HR_JWT_DUTY_ID_CLAIM:-}"
+      LEAVE_HR_CONNECT_TIMEOUT: "${LEAVE_HR_CONNECT_TIMEOUT:-2s}"
+      LEAVE_HR_READ_TIMEOUT: "${LEAVE_HR_READ_TIMEOUT:-3s}"
+
+      # Approval HTTP
+      LEAVE_APPROVAL_ENABLED: "${LEAVE_APPROVAL_ENABLED:-false}"
+      LEAVE_APPROVAL_HTTP_CONTRACT_VERIFIED: "${LEAVE_APPROVAL_HTTP_CONTRACT_VERIFIED:-false}"
+      LEAVE_APPROVAL_BASE_URL: "${LEAVE_APPROVAL_BASE_URL:-}"
+      LEAVE_APPROVAL_SERVICE_ID: "${LEAVE_APPROVAL_SERVICE_ID:-approval-service}"
+      LEAVE_APPROVAL_CONNECT_TIMEOUT: "${LEAVE_APPROVAL_CONNECT_TIMEOUT:-2s}"
+      LEAVE_APPROVAL_READ_TIMEOUT: "${LEAVE_APPROVAL_READ_TIMEOUT:-3s}"
+
+      # Kafka 결과 수신
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-}"
+      LEAVE_APPROVAL_RESULTS_ENABLED: "${LEAVE_APPROVAL_RESULTS_ENABLED:-false}"
+      LEAVE_APPROVAL_RESULTS_CONTRACT_VERIFIED: "${LEAVE_APPROVAL_RESULTS_CONTRACT_VERIFIED:-false}"
+      LEAVE_APPROVAL_RESULTS_GROUP_ID: "${LEAVE_APPROVAL_RESULTS_GROUP_ID:-leave-service}"
+
+      # Attendance
+      LEAVE_ATTENDANCE_BASE_URL: "${LEAVE_ATTENDANCE_BASE_URL:-}"
+      LEAVE_ATTENDANCE_SERVICE_ID: "${LEAVE_ATTENDANCE_SERVICE_ID:-attendance-service}"
+      LEAVE_ATTENDANCE_CONNECT_TIMEOUT: "${LEAVE_ATTENDANCE_CONNECT_TIMEOUT:-2s}"
+      LEAVE_ATTENDANCE_READ_TIMEOUT: "${LEAVE_ATTENDANCE_READ_TIMEOUT:-3s}"
+
+      # 관리자 직접 취소
+      LEAVE_APPROVAL_WITHDRAWAL_ENABLED: "${LEAVE_APPROVAL_WITHDRAWAL_ENABLED:-false}"
+    ports:
+      - "127.0.0.1:8082:8082"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8082/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+
+  migration-service:
+    build:
+      context: ./Backend/migration-service
+    image: nexa-migration:local
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+
+    environment:
+      SERVER_PORT: "8087"
+
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_CLOUD_CONFIG_USERNAME: config-client
+      SPRING_CLOUD_CONFIG_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_migration
+      SPRING_DATASOURCE_USERNAME: nexa_migration_app
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD:?MIGRATION_DB_PASSWORD is required}
+
+      EUREKA_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+
+      HR_SERVICE_URL: http://user-service:8081
+      PAY_SERVICE_URL: http://payroll-service:8085
+      # 이관 매핑·값 추천 LLM. 비우면 동의어 추천만
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      # 서버의 공용 GMS 키를 마이그레이션에 전달
+      GMS_KEY: ${GMS_API_KEY:-}
+
+    ports:
+      - "127.0.0.1:8087:8087"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8087/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  payroll-service:
+    build:
+      context: ./Backend/payroll-service
+    image: nexa-payroll:local
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+
+    environment:
+      SERVER_PORT: "8085"
+
+      CONFIG_SERVER_URL: http://config-server:8888
+      SPRING_CLOUD_CONFIG_USERNAME: config-client
+      SPRING_CLOUD_CONFIG_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/nexa_payroll
+      SPRING_DATASOURCE_USERNAME: nexa_payroll_app
+      SPRING_DATASOURCE_PASSWORD: ${PAYROLL_DB_PASSWORD:?PAYROLL_DB_PASSWORD is required}
+
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+      EUREKA_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+
+    ports:
+      - "127.0.0.1:8085:8085"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8085/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

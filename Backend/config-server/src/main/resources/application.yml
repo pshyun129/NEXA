@@ -1,0 +1,31 @@
+
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_GIT_URI}
+          default-label: main
+          clone-on-start: true
+
+          # 로컬 .ssh 파일 대신 설정값 사용
+          ignore-local-ssh-settings: true
+
+          # GitHub 접속용 SSH 개인키
+          private-key: ${CONFIG_GIT_PRIVATE_KEY}
+
+          # GitHub 서버 호스트 키 검증
+          host-key-algorithm: ecdsa-sha2-nistp256
+          host-key: ${GITHUB_SSH_HOST_KEY}
+          strict-host-key-checking: true
+
+  security:
+    user:
+      name: config-client
+      password: ${CONFIG_SERVER_PASSWORD}

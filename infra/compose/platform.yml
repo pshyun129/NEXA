@@ -1,0 +1,121 @@
+services:
+  eureka-server:
+    build:
+      context: ./Backend/eureka-server
+    image: nexa-eureka:local
+
+    restart: unless-stopped
+
+    environment:
+      SERVER_PORT: "8761"
+      EUREKA_USER: ${EUREKA_USER:?EUREKA_USER is required}
+      EUREKA_PASSWORD: ${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}
+
+    ports:
+      - "127.0.0.1:8761:8761"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error
+          --max-time 3
+          --user "$${EUREKA_USER}:$${EUREKA_PASSWORD}"
+          --output /dev/null
+          http://localhost:8761/actuator/health
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+
+  config-server:
+    build:
+      context: ./Backend/config-server
+    image: nexa-config:local
+
+    restart: unless-stopped
+
+    environment:
+      CONFIG_GIT_URI: ${CONFIG_GIT_URI:?CONFIG_GIT_URI is required}
+      CONFIG_GIT_PRIVATE_KEY: ${CONFIG_GIT_PRIVATE_KEY:?CONFIG_GIT_PRIVATE_KEY is required}
+      GITHUB_SSH_HOST_KEY: ${GITHUB_SSH_HOST_KEY:?GITHUB_SSH_HOST_KEY is required}
+      CONFIG_SERVER_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+    ports:
+      - "127.0.0.1:8888:8888"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error
+          --max-time 10
+          --user "config-client:$${CONFIG_SERVER_PASSWORD}"
+          --output /dev/null
+          http://localhost:8888/gateway-service/default/main
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+  gateway-service:
+    build:
+      context: ./Backend/gateway-service
+    image: nexa-gateway:local
+
+    restart: unless-stopped
+
+    depends_on:
+      config-server:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      user-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    environment:
+      CONFIG_SERVER_URL: http://config-server:8888
+      CONFIG_SERVER_PASSWORD: ${CONFIG_SERVER_PASSWORD:?CONFIG_SERVER_PASSWORD is required}
+
+      JWT_JWKS_URI: http://user-service:8081/.well-known/jwks.json
+
+      EUREKA_SERVER_URL: "http://${EUREKA_USER:?EUREKA_USER is required}:${EUREKA_PASSWORD:?EUREKA_PASSWORD is required}@eureka-server:8761/eureka/"
+
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_DATABASE: "0"
+      SPRING_DATA_REDIS_USERNAME: gateway
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_GATEWAY_PASSWORD:?REDIS_GATEWAY_PASSWORD is required}
+
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: [ "CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://localhost:8080/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

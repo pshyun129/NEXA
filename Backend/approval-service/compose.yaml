@@ -17,20 +17,117 @@ services:
       timeout: 3s
       retries: 10
 
+  # 결재 결과 이벤트 브로커. KRaft 단일 노드 (ZooKeeper 없음, 한 노드가 broker + controller)
+  kafka:
+    image: apache/kafka:3.9.1
+    container_name: approval-service-kafka
+    ports:
+      # 호스트(로컬에서 띄운 앱, leave·attendance)에서 접속하는 주소. 컨테이너끼리는 kafka:9092
+      - "19092:19092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # 접속을 받는 주소: 컨테이너 내부용, 호스트용, 컨트롤러(내부 합의)용
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:19092,CONTROLLER://:9093
+      # 클라이언트에게 "이 주소로 다시 접속하라"고 알려주는 주소. 내부/외부를 다르게 알려줘야 양쪽 모두 접속된다
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # 브로커가 1대라 내부 토픽 복제 계수도 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # 토픽은 approval 앱이 NewTopic 으로 만든다 (오타 토픽 자동 생성 방지)
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - approval-service-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+
   app:
     build: .
     container_name: approval-service-app
     depends_on:
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
       SERVER_PORT: "8083"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/approval_service
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # user-service·Eureka·config-server 는 이 compose 밖(호스트)에서 띄운다.
+      # 컨테이너 안의 localhost 는 자기 자신이라 호스트를 가리키는 host.docker.internal 로 접속한다
+      JWT_JWKS_URI: http://host.docker.internal:8081/.well-known/jwks.json
+      EUREKA_URL: http://admin:1234@host.docker.internal:8761/eureka
+      CONFIG_SERVER_URL: http://host.docker.internal:8888
+    extra_hosts:
+      # Docker Desktop(Windows/Mac)은 기본 제공, Linux 는 이 설정이 있어야 host.docker.internal 이 잡힌다
+      - "host.docker.internal:host-gateway"
     ports:
       - "8083:8083"
     restart: unless-stopped
 
+  # ===== 모니터링 (docker compose --profile monitoring up -d 일 때만 뜬다) =====
+  # 설정 파일은 ./monitoring 아래. 사용법은 monitoring/README.md
+
+  # 메트릭 수집·저장. approval(/actuator/prometheus)과 kafka-exporter 를 15초마다 수집
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: approval-service-prometheus
+    profiles: ["monitoring"]
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - approval-service-prometheus-data:/prometheus
+    extra_hosts:
+      # 호스트에서 띄운 approval(8083)을 수집하기 위해
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "19090:9090"
+
+  # Kafka 메트릭(컨슈머 그룹 LAG, 토픽 오프셋)을 Prometheus 형식으로 내보낸다
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:v1.8.0
+    container_name: approval-service-kafka-exporter
+    profiles: ["monitoring"]
+    command: ["--kafka.server=kafka:9092"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 대시보드·알림. 대시보드, 데이터 소스(Prometheus, approval DB), 알림 규칙은 파일로 미리 넣어 둔다
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: approval-service-grafana
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # 로컬 개발용: 로그인 없이 보기 권한
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/approval-outbox-kafka.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - approval-service-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "13000:3000"
+
 volumes:
   approval-service-pgdata:
+  approval-service-kafka-data:
+  approval-service-prometheus-data:
+  approval-service-grafana-data:

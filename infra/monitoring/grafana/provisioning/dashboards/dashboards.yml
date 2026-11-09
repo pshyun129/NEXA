@@ -1,0 +1,10 @@
+# 이 폴더의 대시보드 JSON 을 Grafana 가 뜰 때 불러온다
+apiVersion: 1
+
+providers:
+  - name: approval
+    folder: approval
+    type: file
+    disableDeletion: true
+    options:
+      path: /var/lib/grafana/dashboards

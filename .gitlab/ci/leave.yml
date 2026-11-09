@@ -1,0 +1,62 @@
+build-leave:
+  extends:
+    - .testcontainers
+    - .gradle-cache
+  stage: build
+  image: eclipse-temurin:21-jdk
+
+  tags:
+    - nexa-ci
+
+  script:
+    - cd Backend/leave-service
+    - bash gradlew --no-daemon bootJar -x test
+
+  artifacts:
+    when: always
+    expire_in: 2 days
+    paths:
+      - Backend/leave-service/build/libs/*.jar
+    reports:
+      junit: Backend/leave-service/build/test-results/test/TEST-*.xml
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &leave_changes
+        - Backend/leave-service/**/*
+        - .gitlab/ci/leave.yml
+        - .gitlab/ci/testcontainers.yml
+        - .gitlab/ci/deploy.yml
+        - .gitlab/ci/gradle.yml
+        - compose.dev.yml
+        - infra/compose/backend.yml
+        - infra/compose/data.yml
+        - infra/docker/Dockerfile.ci
+      when: on_success
+      allow_failure: false
+
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *leave_changes
+      when: on_success
+      allow_failure: false
+
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+
+deploy-leave-dev:
+  extends: .deploy-dev
+
+  needs:
+    - job: build-leave
+    - job: deploy-eureka-dev
+      optional: true
+
+  variables:
+    DEPLOY_SERVICE: leave-service
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *leave_changes
+      when: on_success
+      allow_failure: false

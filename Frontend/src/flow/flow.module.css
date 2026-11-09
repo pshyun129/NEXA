@@ -1,0 +1,51 @@
+/* FlowNode (style-guide 8.13) */
+.node {
+  position: relative; width: 240px; height: 64px; box-sizing: border-box;
+  padding: 10px 12px 10px 16px; border-radius: var(--nx-r-lg);
+  background: var(--nx-n-0); border: 1px solid var(--nx-n-200);
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+}
+/* 왼쪽 4px 카테고리 띠 */
+.node::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 4px;
+                border-radius: var(--nx-r-lg) 0 0 var(--nx-r-lg); }
+.cat-input::before  { background: var(--nx-n-500); }
+.cat-ai::before     { background: var(--nx-ai-500); }
+.cat-rule::before   { background: var(--nx-info-fg); }
+.cat-human::before  { background: var(--nx-warning-fg); }
+.cat-output::before { background: var(--nx-brand-600); }
+
+.title { display: flex; align-items: center; gap: 4px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--nx-n-800);
+         padding-right: 72px; overflow: hidden; white-space: nowrap; }
+.aiIcon { color: var(--nx-ai-700); flex: none; }
+.sub { font-size: 13px; line-height: 18px; color: var(--nx-n-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.corner { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 4px; }
+.chip { font-family: var(--nx-font-mono); font-size: 12px; line-height: 16px; padding: 0 4px;
+        background: var(--nx-n-50); color: var(--nx-n-600); border-radius: var(--nx-r-sm); }
+
+.handle { width: 8px !important; height: 8px !important; background: var(--nx-n-0) !important;
+          border: 1.5px solid var(--nx-n-450) !important; }
+
+/* 상태: 테두리로만 */
+.st-QUEUED { border: 1px dashed var(--nx-n-450); }
+.queuedIcon { color: var(--nx-n-500); }
+.st-RUNNING { border-width: 2px; }
+.st-SUCCEEDED { border-color: var(--nx-success-bd); }
+.okIcon { color: var(--nx-success-fg); }
+.st-WAITING { border: 2px solid var(--nx-warning-fg); }
+.st-FAILED { border: 2px solid var(--nx-danger-fg); }
+.st-SKIPPED { border: 1px dashed var(--nx-n-300); }
+.st-SKIPPED .title, .st-SKIPPED .sub { color: var(--nx-n-400); }
+.skipped { color: var(--nx-n-500); font-size: 12px; }
+
+/* 빌더 (style-guide 8.13): 선택 outline, 순서 경고 2px 점선 warning, 서버 검사 오류 2px danger */
+.selected { outline: 2px solid var(--nx-brand-600); outline-offset: 2px; }
+.issue-warning { border: 2px dashed var(--nx-warning-fg); }
+.issue-error { border: 2px solid var(--nx-danger-fg); }
+.errorIcon { color: var(--nx-danger-fg); }
+.warnIcon { color: var(--nx-warning-fg); }
+/* 분기 출구 이름: 핸들 안쪽(노드 오른쪽 끝)에 오른쪽 정렬. 제목·부제는 그만큼 비운다 */
+.branchLabel { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); white-space: nowrap;
+               font-size: 11px; line-height: 14px; color: var(--nx-n-500); pointer-events: none; }
+.hasBranches .title { padding-right: 76px; }
+.hasBranches .sub { padding-right: 60px; }
+.hasBranches .corner { right: 64px; top: 6px; }

@@ -1,0 +1,36 @@
+/* src/styles/global.css (style-guide 12.4) */
+body {
+  margin:0; background:var(--nx-bg-app); color:var(--nx-text);
+  font-family:var(--nx-font); font-size:var(--nx-fs-body); line-height:22px;
+  word-break:keep-all; overflow-wrap:break-word; line-break:strict;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.nx-balance { text-wrap:balance; }
+.nx-num  { font-variant-numeric:tabular-nums; }
+.nx-mono { font-family:var(--nx-font-mono); font-size:13px; line-height:20px; font-weight:500; }
+.nx-break-any { overflow-wrap:anywhere; }
+.nx-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* 포커스: 자체 컴포넌트용. 특이도 0이라 AntD 자체 포커스 규칙(토큰으로 같은 값)을 덮지 않는다 */
+:where(a,button,[role="button"],[role="tab"],[tabindex]:not([tabindex="-1"])):focus-visible {
+  outline:2px solid var(--nx-focus-color); outline-offset:2px;
+}
+.nx-sidebar--admin { --nx-focus-color:var(--nx-n-0); }
+
+.nx-scroll { scroll-padding-top:calc(var(--nx-topbar-h) + var(--nx-row-h));
+             scroll-padding-bottom:var(--nx-actionbar-h); }
+.nx-hit24 { position:relative; }
+.nx-hit24::before { content:""; position:absolute; left:50%; top:50%;
+  width:max(100%, var(--nx-hit-min)); height:max(100%, var(--nx-hit-min)); transform:translate(-50%,-50%); }
+
+/* M3 RUNNING: ai-500(4.61:1) 링이 퍼지며 사라진다 */
+.nx-running { position:relative; border:2px solid var(--nx-ai-500); }
+.nx-running::after { content:""; position:absolute; inset:-2px; border-radius:inherit;
+  outline:2px solid var(--nx-ai-500); outline-offset:0;
+  animation:nx-ring var(--nx-pulse) var(--nx-ease-in-out) infinite; pointer-events:none; }
+@keyframes nx-ring { from { outline-offset:0; opacity:1 } to { outline-offset:4px; opacity:0 } }
+@media (prefers-reduced-motion: reduce) { .nx-running::after { animation:none; outline:none; } }
+
+@keyframes nx-spin { to { transform:rotate(360deg); } }
+.nx-spin { animation:nx-spin 1s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .nx-spin { animation:none; } }

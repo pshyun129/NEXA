@@ -1,0 +1,9 @@
+__pycache__/
+result.json
+/result/
+config.json
+fixture.json
+.env
+*.local.json
+results/*
+!results/.gitkeep

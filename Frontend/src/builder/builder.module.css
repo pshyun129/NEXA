@@ -1,0 +1,63 @@
+/* 자동화 빌더(설계 6.6). 1280px 이상에서만 연다 */
+.editor { display: flex; flex-direction: column; height: calc(100vh - 112px); min-height: 560px;
+          border: 1px solid var(--nx-n-200); border-radius: var(--nx-r-lg); background: var(--nx-n-0); overflow: hidden; }
+.bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--nx-n-200); }
+.back { font-size: 13px; color: var(--nx-n-600); white-space: nowrap; }
+.name { margin: 0 4px; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--nx-n-800); white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; }
+.spacer { flex: 1; }
+.muted { color: var(--nx-n-500); font-size: 13px; }
+.unsaved { color: var(--nx-warning-fg); font-size: 13px; font-weight: 500; }
+
+.body { flex: 1; display: grid; grid-template-columns: 200px 1fr 300px; min-height: 0; }
+.palette { border-right: 1px solid var(--nx-n-200); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.group { margin: 8px 0 4px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--nx-n-500); }
+.item { display: block; width: 100%; text-align: left; padding: 6px 8px 6px 12px; margin-bottom: 4px; cursor: grab;
+        font-size: 13px; color: var(--nx-n-800); background: var(--nx-n-0); border: 1px solid var(--nx-n-200);
+        border-radius: var(--nx-r-md); position: relative; }
+.item:hover { background: var(--nx-n-50); }
+.item::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; border-radius: 4px 0 0 4px; }
+.cat-input::before { background: var(--nx-n-500); }
+.cat-ai::before { background: var(--nx-ai-500); }
+.cat-rule::before { background: var(--nx-info-fg); }
+.cat-human::before { background: var(--nx-warning-fg); }
+.cat-output::before { background: var(--nx-brand-600); }
+
+.canvas { background: var(--nx-n-25); min-width: 0; }
+
+.panel { border-left: 1px solid var(--nx-n-200); padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px;
+         align-items: flex-start; }
+.panel > * { max-width: 100%; }
+.panelTitle { margin: 0; font-size: 14px; font-weight: 600; color: var(--nx-n-800); }
+.fields { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.field { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.fieldLabel { font-size: 12px; line-height: 16px; color: var(--nx-n-600); }
+.req { color: var(--nx-danger-fg); }
+.keys { font-size: 12px; color: var(--nx-n-600); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.keys code { font-family: var(--nx-font-mono); background: var(--nx-n-50); padding: 0 4px; border-radius: var(--nx-r-sm); }
+.warnText { margin: 0; font-size: 13px; color: var(--nx-warning-fg); display: flex; gap: 4px; align-items: center; }
+
+/* 검사 결과: 세로 목록, 넘치면 목록만 스크롤(헤더는 고정) */
+.issues { display: flex; flex-direction: column; border-top: 1px solid var(--nx-n-200); font-size: 13px; flex: none; }
+.issuesHead { display: flex; align-items: center; gap: 12px; padding: 8px 12px 4px; }
+.issuesTitle { font-weight: 600; color: var(--nx-n-800); }
+.issueList { list-style: none; margin: 0; padding: 0 12px 8px; max-height: 132px; overflow-y: auto; }
+.issue { display: flex; align-items: center; gap: 6px; min-height: 28px; color: var(--nx-n-700);
+         border-top: 1px solid var(--nx-n-100); }
+.issue:first-child { border-top: 0; }
+.errIcon { color: var(--nx-danger-fg); }
+.warnIcon { color: var(--nx-warning-fg); }
+.testForm { max-width: 520px; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--nx-n-100); }
+.row:first-child { border-top: 0; }
+.rowMain { flex: 1; min-width: 0; }
+.rowName { font-weight: 600; color: var(--nx-n-800); }
+.rowDesc { font-size: 13px; color: var(--nx-n-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.placement { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--nx-n-700); cursor: pointer; }
+.formEditor { display: flex; flex-direction: column; gap: 12px; }
+.formRow { display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 8px; padding: 8px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); }
+.formReq { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--nx-n-700); white-space: nowrap; }
+.formOptions { grid-column: 1 / -1; }
+.formKey { grid-column: 1 / -1; font-family: var(--nx-font-mono); font-size: 11px; color: var(--nx-n-500); }

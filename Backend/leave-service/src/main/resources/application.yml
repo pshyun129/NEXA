@@ -1,0 +1,89 @@
+server:
+  port: 8082
+leave:
+  hr:
+    enabled: ${LEAVE_HR_ENABLED:false}
+    base-url: ${LEAVE_HR_BASE_URL:}
+    service-id: ${LEAVE_HR_SERVICE_ID:user-service}
+    employee-info-uri: ${LEAVE_HR_EMPLOYEE_INFO_URI:}
+    department-members-uri: ${LEAVE_HR_DEPARTMENT_MEMBERS_URI:}
+    duty-info-uri: ${LEAVE_HR_DUTY_INFO_URI:}
+    connect-timeout: ${LEAVE_HR_CONNECT_TIMEOUT:2s}
+    read-timeout: ${LEAVE_HR_READ_TIMEOUT:3s}
+    jwt-claims:
+      department-id: ${LEAVE_HR_JWT_DEPARTMENT_ID_CLAIM:}
+      duty-id: ${LEAVE_HR_JWT_DUTY_ID_CLAIM:}
+  approval:
+    results:
+      enabled: ${LEAVE_APPROVAL_RESULTS_ENABLED:false}
+      contract-verified: ${LEAVE_APPROVAL_RESULTS_CONTRACT_VERIFIED:false}
+      group-id: ${LEAVE_APPROVAL_RESULTS_GROUP_ID:leave-service}
+    withdrawal:
+      enabled: ${LEAVE_APPROVAL_WITHDRAWAL_ENABLED:false}
+    enabled: ${LEAVE_APPROVAL_ENABLED:false}
+    http-contract-verified: ${LEAVE_APPROVAL_HTTP_CONTRACT_VERIFIED:false}
+    base-url: ${LEAVE_APPROVAL_BASE_URL:}
+    service-id: ${LEAVE_APPROVAL_SERVICE_ID:approval-service}
+    connect-timeout: ${LEAVE_APPROVAL_CONNECT_TIMEOUT:2s}
+    read-timeout: ${LEAVE_APPROVAL_READ_TIMEOUT:3s}
+  attendance:
+    base-url: ${LEAVE_ATTENDANCE_BASE_URL:}
+    service-id: ${LEAVE_ATTENDANCE_SERVICE_ID:attendance-service}
+    connect-timeout: ${LEAVE_ATTENDANCE_CONNECT_TIMEOUT:2s}
+    read-timeout: ${LEAVE_ATTENDANCE_READ_TIMEOUT:3s}
+nexa:
+  security:
+    # 토큰 검증 공개키 (user-service JWKS)
+    jwks-uri: ${JWT_JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:}
+    consumer:
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      properties:
+        allow.auto.create.topics: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+  cloud:
+    loadbalancer:
+      retry:
+        # 결재 생성 POST는 재전송하지 않고 UNKNOWN 및 UUID 조회로 복구한다.
+        enabled: false
+    config:
+      enabled: false
+
+  application:
+    name: leave-service
+
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/nexa_leave
+    username: nexa_leave_app
+    password: ${LEAVE_DB_PASSWORD}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${EUREKA_USER}:${EUREKA_PASSWORD}@localhost:8761/eureka/
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never

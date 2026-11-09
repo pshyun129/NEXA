@@ -1,0 +1,46 @@
+/* src/styles/tokens.css — 정적 파일(style-guide 12.4). main.tsx에서 global.css보다 먼저 import한다 */
+:root {
+  --nx-brand-50:#EEF2FD; --nx-brand-100:#DCE4FB; --nx-brand-200:#B8C8F5; --nx-brand-300:#8EA6EC;
+  --nx-brand-400:#5F80E0; --nx-brand-500:#3A5FCF; --nx-brand-600:#2A4BB5; --nx-brand-700:#213C93;
+  --nx-brand-800:#1C3174; --nx-brand-900:#16255A;
+  --nx-ai-50:#F4EEFC; --nx-ai-100:#ECE2FE; --nx-ai-200:#D9C7F8; --nx-ai-500:#8E5CCC;
+  --nx-ai-700:#6630A8; --nx-ai-800:#532583;
+  --nx-n-0:#FFFFFF; --nx-n-25:#FAFBFC; --nx-n-50:#F4F6F8; --nx-n-100:#EAEDF1; --nx-n-200:#DCE0E6;
+  --nx-n-300:#C3C9D2; --nx-n-400:#969DAA; --nx-n-450:#878F9C; --nx-n-500:#6A7180; --nx-n-600:#4A5160;
+  --nx-n-700:#343A46; --nx-n-800:#22262E; --nx-n-900:#14171C;
+  --nx-success-fg:#1A7540; --nx-success-bg:#E7F4EC; --nx-success-bd:#A9D8BB;
+  --nx-warning-fg:#A15C00; --nx-warning-bg:#FFF3DC; --nx-warning-bd:#F2CF8F;
+  --nx-danger-fg:#C2352A;  --nx-danger-bg:#FCEBE9;  --nx-danger-bd:#F1B4AE;
+  --nx-info-fg:#0A6F96;    --nx-info-bg:#E4F2F8;    --nx-info-bd:#A3D2E5;
+  --nx-neutral-fg:#4A5160; --nx-neutral-bg:#EEF0F3; --nx-neutral-bd:#D3D8DF;
+  --nx-ai-fg:#6630A8;      --nx-ai-bg:#F4EEFC;      --nx-ai-bd:#D9C7F8;
+  /* semantic */
+  --nx-bg-app:var(--nx-n-25); --nx-bg-card:var(--nx-n-0); --nx-bg-subtle:var(--nx-n-50);
+  --nx-bg-selected:var(--nx-brand-50); --nx-sidebar-bg:var(--nx-n-0); --nx-sidebar-bg-admin:var(--nx-brand-900);
+  --nx-border:var(--nx-n-200); --nx-border-input:var(--nx-n-450); --nx-border-strong:var(--nx-n-300);
+  --nx-divider:var(--nx-n-100);
+  --nx-text-strong:var(--nx-n-800); --nx-text:var(--nx-n-700); --nx-text-label:var(--nx-n-600);
+  --nx-text-sub:var(--nx-n-500); --nx-text-sub-on-tint:var(--nx-n-600); --nx-text-disabled:var(--nx-n-400);
+  --nx-focus-color:var(--nx-brand-600); --nx-mask:rgba(20,23,28,.45);
+  /* type */
+  --nx-font:"Pretendard Variable", Pretendard, -apple-system, "Malgun Gothic", sans-serif;
+  --nx-font-mono:"JetBrains Mono", ui-monospace, Consolas, monospace;
+  --nx-fs-caption:12px; --nx-fs-small:13px; --nx-fs-body:14px; --nx-fs-h3:16px;
+  --nx-fs-h2:18px; --nx-fs-h1:22px; --nx-fs-kpi:28px;
+  /* space */
+  --nx-sp-1:4px; --nx-sp-2:8px; --nx-sp-3:12px; --nx-sp-4:16px; --nx-sp-5:20px;
+  --nx-sp-6:24px; --nx-sp-8:32px; --nx-sp-10:40px; --nx-sp-12:48px;
+  /* size */
+  --nx-topbar-h:56px; --nx-sidebar-w:232px; --nx-sidebar-w-collapsed:64px; --nx-row-h:40px;
+  --nx-control-h:36px; --nx-badge-h:22px; --nx-counter-h:20px; --nx-hit-min:24px; --nx-actionbar-h:56px;
+  /* radius / shadow */
+  --nx-r-sm:4px; --nx-r-md:6px; --nx-r-lg:8px;
+  --nx-sh-sticky:0 1px 2px rgba(20,23,28,.06); --nx-sh-pop:0 4px 12px rgba(20,23,28,.10);
+  --nx-sh-modal:0 12px 32px rgba(20,23,28,.16);
+  /* motion */
+  --nx-dur-fast:120ms; --nx-dur-base:160ms; --nx-dur-slow:200ms; --nx-dur-count:800ms; --nx-pulse:1200ms;
+  --nx-ease:cubic-bezier(.2,.8,.2,1); --nx-ease-in-out:cubic-bezier(.4,0,.2,1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --nx-dur-fast:0ms; --nx-dur-base:0ms; --nx-dur-slow:0ms; --nx-dur-count:0ms; }
+}

@@ -1,0 +1,76 @@
+/* 레이아웃 셸 (설계 5장, style-guide 5.3·5.4·5.5) */
+.root { display: flex; min-height: 100vh; background: var(--nx-bg-app); }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: sticky; top: 0; height: 100vh; flex: none; box-sizing: border-box;
+  width: var(--nx-sidebar-w); background: var(--nx-sidebar-bg); border-right: 1px solid var(--nx-border);
+  display: flex; flex-direction: column; transition: width var(--nx-dur-base) var(--nx-ease);
+}
+.collapsed { width: var(--nx-sidebar-w-collapsed); }
+.admin { background: var(--nx-sidebar-bg-admin); border-right-color: var(--nx-sidebar-bg-admin); }
+
+.brand { height: var(--nx-topbar-h); display: flex; align-items: center; gap: 8px; padding: 0 20px;
+         font-weight: 700; font-size: 16px; color: var(--nx-n-800); letter-spacing: 0.02em; white-space: nowrap; }
+.brandMark { color: var(--nx-brand-600); flex: none; }
+.admin .brand { color: var(--nx-n-0); }
+.admin .brandMark { color: var(--nx-brand-200); }
+.collapsed .brand { padding: 0; justify-content: center; }
+
+.mode { padding: 0 16px 12px; }
+.collapsed .mode { display: none; }
+
+.nav { flex: 1; overflow-y: auto; padding: 4px 8px; display: flex; flex-direction: column; gap: 2px; }
+.item {
+  position: relative; display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px;
+  border-radius: var(--nx-r-md); color: var(--nx-n-600); text-decoration: none; font-weight: 500; white-space: nowrap;
+}
+.item:hover { background: var(--nx-n-50); color: var(--nx-n-800); }
+.itemActive, .itemActive:hover { background: var(--nx-brand-50); color: var(--nx-brand-700); font-weight: 600; }
+.itemActive::before { content: ""; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px;
+                      border-radius: 0 2px 2px 0; background: var(--nx-brand-600); }
+.itemLabel { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.collapsed .item { justify-content: center; padding: 0; }
+.collapsed .itemLabel, .collapsed .itemCount { display: none; }
+
+/* 관리 모드: brand-900 배경 + 흰 글자 */
+.admin .item { color: var(--nx-brand-100); }
+.admin .item:hover { background: var(--nx-brand-800); color: var(--nx-n-0); }
+.admin .itemActive, .admin .itemActive:hover { background: var(--nx-brand-700); color: var(--nx-n-0); }
+.admin .itemActive::before { background: var(--nx-n-0); }
+
+.foot { padding: 8px; border-top: 1px solid var(--nx-divider); }
+.admin .foot { border-top-color: var(--nx-brand-800); }
+.collapseBtn { width: 100%; height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 12px;
+               border: 0; background: none; border-radius: var(--nx-r-md); color: var(--nx-n-500); cursor: pointer; font: inherit; }
+.collapseBtn:hover { background: var(--nx-n-50); color: var(--nx-n-800); }
+.admin .collapseBtn { color: var(--nx-brand-200); }
+.admin .collapseBtn:hover { background: var(--nx-brand-800); color: var(--nx-n-0); }
+.collapsed .collapseBtn { justify-content: center; padding: 0; }
+.collapsed .collapseLabel { display: none; }
+
+/* ---------- Main ---------- */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 10; height: var(--nx-topbar-h); box-sizing: border-box; flex: none;
+  display: flex; align-items: center; gap: 16px; padding: 0 24px;
+  background: var(--nx-n-0); border-bottom: 1px solid var(--nx-border);
+}
+.crumbs { flex: 1; min-width: 0; font-size: 13px; color: var(--nx-n-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumbs b { color: var(--nx-n-800); font-weight: 600; }
+.topRight { display: flex; align-items: center; gap: 12px; flex: none; }
+.todo { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: var(--nx-r-md);
+        border: 1px solid var(--nx-border); background: var(--nx-n-0); color: var(--nx-n-700); font: inherit; font-size: 13px;
+        cursor: pointer; text-decoration: none; }
+.todo:hover { border-color: var(--nx-n-300); }
+.profile { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px; border: 0; background: none;
+           border-radius: var(--nx-r-md); cursor: pointer; font: inherit; color: var(--nx-n-800); }
+.profile:hover { background: var(--nx-n-50); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--nx-brand-100); color: var(--nx-brand-700);
+          display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.profileSub { font-size: 12px; color: var(--nx-n-500); }
+
+.content { flex: 1; padding: 24px; width: 100%; max-width: 1600px; box-sizing: border-box; margin: 0 auto; }
+
+/* ---------- < 1024 안내 ---------- */
+.narrow { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--nx-n-700); }

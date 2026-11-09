@@ -1,0 +1,55 @@
+/* 데이터 이관 ①~③ (설계 6.7) */
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.spacer { flex: 1; }
+.pending { font-size: 12px; color: var(--nx-warning-fg); }
+.section { display: flex; flex-direction: column; gap: 12px; }
+.foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--nx-n-700); }
+
+/* ---------- 시작 화면 ---------- */
+.startGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.form { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- 작업 헤더·스텝퍼 ---------- */
+.head { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.title { margin: 0; font-size: var(--nx-fs-h2); line-height: 26px; font-weight: 700; color: var(--nx-n-800); }
+.stepper { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 0; align-items: center; }
+.stepper li { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--nx-n-500); }
+.stepper li + li::before { content: ""; width: 24px; height: 1px; background: var(--nx-n-300); margin: 0 8px; }
+.sDone { color: var(--nx-success-fg) !important; font-weight: 600; }
+.sCur { color: var(--nx-brand-700) !important; font-weight: 700; }
+
+/* ---------- 업로드 ---------- */
+.fileSum { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); font-size: 13px; }
+.drop { display: flex; flex-direction: column; gap: 4px; padding: 12px; }
+
+/* ---------- 매핑 ---------- */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { padding: 6px 8px; border-bottom: 1px solid var(--nx-divider); text-align: left; vertical-align: middle; }
+.table thead th { color: var(--nx-n-500); font-weight: 500; }
+.table tbody th { color: var(--nx-n-800); font-weight: 600; }
+
+/* ---------- 검증 ---------- */
+.totals { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.total { display: inline-flex; align-items: center; gap: 6px; }
+.total b { font-size: 18px; }
+.bar { display: flex; height: 10px; border-radius: 2px; overflow: hidden; background: var(--nx-n-100); }
+.barSeg { height: 100%; transition: width .4s ease; }
+.barEmpty { width: 100%; background: var(--nx-success-bg); }
+@media (prefers-reduced-motion: reduce) { .barSeg { transition: none; } }
+.issuesGrid { display: grid; grid-template-columns: minmax(300px, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+.groups { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.groups li { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--nx-divider); }
+.groupText { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; font-size: 13px; color: var(--nx-n-800); }
+.value { font-family: var(--nx-font-mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* ⑥ 대사 */
+.recon { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.recon li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--nx-r-md); font-size: 14px; }
+.reconOk { background: var(--nx-success-bg); color: var(--nx-success-fg); }
+.reconBad { background: var(--nx-warning-bg); color: var(--nx-warning-fg); }
+.recon b { color: var(--nx-n-800); min-width: 40px; }
+.scrollBox { max-height: 240px; overflow-y: auto; border: 1px solid var(--nx-divider); border-radius: var(--nx-r-md); }
+.valueCell { display: inline-flex; align-items: center; gap: 4px; }
+.editCell { display: flex; flex-direction: column; gap: 2px; }

@@ -1,0 +1,26 @@
+/* 홈 (설계 6.1) */
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.grid3 { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.6fr) minmax(240px, 1fr); gap: 16px; align-items: stretch; }
+.grid3 > section { min-width: 0; }
+
+.todos { display: flex; flex-wrap: wrap; gap: 8px; }
+.todo { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: var(--nx-r-md);
+        border: 1px solid var(--nx-border); color: var(--nx-n-700); text-decoration: none; font-weight: 500; }
+.todo:hover { border-color: var(--nx-n-300); color: var(--nx-n-800); }
+.todoMuted { font-size: 12px; color: var(--nx-n-500); font-weight: 400; }
+
+.week { display: flex; flex-direction: column; gap: 8px; }
+.days { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--nx-n-500); }
+.days b { color: var(--nx-n-800); font-weight: 600; }
+.dayToday { color: var(--nx-brand-600); }
+
+.aiCard { border: 1px solid var(--nx-ai-200); border-radius: var(--nx-r-md); background: var(--nx-bg-card); padding: 12px 16px; }
+.aiHead { display: flex; align-items: center; gap: 8px; color: var(--nx-n-800); margin-bottom: 8px; }
+.aiList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.aiList li { display: flex; align-items: center; gap: 12px; }
+.aiList li > a { margin-left: auto; }
+.aiIcon { color: var(--nx-ai-500); }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
+.grid2 > section { min-width: 0; }
+@media (max-width: 1151px) { .grid2 { grid-template-columns: 1fr; } }

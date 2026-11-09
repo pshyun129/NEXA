@@ -1,0 +1,106 @@
+/* 공통 UI 프리미티브 (style-guide 8.4, 8.1 Kbd, 9.2 AiMark, 6.2 빈 상태) */
+
+/* ---------- StatusBadge ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: var(--nx-badge-h); padding: 0 8px; box-sizing: border-box;
+  border-radius: var(--nx-r-sm); border: 1px solid transparent;
+  font-size: var(--nx-fs-caption); line-height: 16px; font-weight: 500; white-space: nowrap;
+  vertical-align: middle;
+}
+.dashed { border-style: dashed; }
+.filled { border-color: transparent; color: var(--nx-n-0); font-weight: 600; }
+
+.t-success { background: var(--nx-success-bg); border-color: var(--nx-success-bd); color: var(--nx-success-fg); }
+.t-warning { background: var(--nx-warning-bg); border-color: var(--nx-warning-bd); color: var(--nx-warning-fg); }
+.t-danger  { background: var(--nx-danger-bg);  border-color: var(--nx-danger-bd);  color: var(--nx-danger-fg); }
+.t-info    { background: var(--nx-info-bg);    border-color: var(--nx-info-bd);    color: var(--nx-info-fg); }
+.t-neutral { background: var(--nx-neutral-bg); border-color: var(--nx-neutral-bd); color: var(--nx-neutral-fg); }
+.t-ai      { background: var(--nx-ai-bg);      border-color: var(--nx-ai-bd);      color: var(--nx-ai-fg); }
+.t-brand   { background: var(--nx-brand-50);   border-color: var(--nx-brand-200);  color: var(--nx-brand-600); }
+
+.filled.t-success { background: var(--nx-success-fg); color: var(--nx-n-0); }
+.filled.t-warning { background: var(--nx-warning-fg); color: var(--nx-n-0); }
+.filled.t-danger  { background: var(--nx-danger-fg);  color: var(--nx-n-0); }
+.filled.t-info    { background: var(--nx-info-fg);    color: var(--nx-n-0); }
+.filled.t-neutral { background: var(--nx-neutral-fg); color: var(--nx-n-0); }
+.filled.t-ai      { background: var(--nx-ai-fg);      color: var(--nx-n-0); }
+.filled.t-brand   { background: var(--nx-brand-600);  color: var(--nx-n-0); }
+/* 톤 규칙 뒤에 둬서 같은 특이도로 덮는다(LeaveRequest CANCELLED) */
+.badge.strong { border-color: var(--nx-n-500); }
+
+/* ---------- 점 칩(근무 상태) ---------- */
+.dotChip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--nx-n-700); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+/* ---------- Counter ---------- */
+.counter {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: var(--nx-counter-h); height: var(--nx-counter-h); padding: 0 6px; box-sizing: border-box;
+  border-radius: var(--nx-r-sm); font-size: var(--nx-fs-caption); font-weight: 600; line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  background: var(--nx-n-100); color: var(--nx-n-600);
+}
+.counterBrand { background: var(--nx-brand-600); color: var(--nx-n-0); }
+.counterWarning { background: var(--nx-warning-fg); color: var(--nx-n-0); }
+
+/* ---------- Kbd ---------- */
+.kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 20px; min-width: 20px; padding: 0 6px; box-sizing: border-box;
+  border-radius: var(--nx-r-sm); background: var(--nx-n-0); border: 1px solid var(--nx-n-200);
+  font-family: var(--nx-font-mono); font-size: 12px; font-weight: 500; line-height: 16px; color: var(--nx-n-600);
+}
+.kbdOnPrimary { background: transparent; border-color: var(--nx-brand-500); color: var(--nx-brand-100); }
+
+/* ---------- AiMark (비대화형) ---------- */
+.aiMark {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: var(--nx-badge-h); padding: 0 8px; box-sizing: border-box;
+  border-radius: var(--nx-r-sm); background: var(--nx-ai-50); border: 1px solid var(--nx-ai-200);
+  color: var(--nx-ai-700); font-size: var(--nx-fs-caption); font-weight: 500; line-height: 16px; white-space: nowrap;
+}
+
+/* ---------- EmptyState ---------- */
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center;
+         padding: 32px 16px; max-width: 360px; margin: 0 auto; }
+.emptyIcon { width: 40px; height: 40px; border-radius: 50%; background: var(--nx-n-100); color: var(--nx-n-500);
+             display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+.emptyTitle { font-size: 14px; font-weight: 600; color: var(--nx-n-700); text-wrap: balance; }
+.emptyDesc { font-size: 13px; line-height: 20px; color: var(--nx-n-500); margin-top: 4px; }
+.emptyAction { margin-top: 16px; }
+
+/* ---------- ErrorPanel / Gate ---------- */
+.panel { border: 1px solid var(--nx-border); border-radius: var(--nx-r-md); background: var(--nx-bg-card);
+         padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+.panelDanger { color: var(--nx-danger-fg); flex: none; margin-top: 3px; }
+.panelInfo { color: var(--nx-info-fg); flex: none; margin-top: 3px; }
+.panelBody { flex: 1; min-width: 0; }
+.panelTitle { font-weight: 600; color: var(--nx-n-800); }
+.panelMsg { color: var(--nx-n-700); margin-top: 2px; }
+.panelMeta { margin-top: 8px; font-size: 13px; color: var(--nx-n-500); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- PageHeader ---------- */
+.pageHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+.pageTitle { margin: 0; font-size: var(--nx-fs-h1); line-height: 30px; font-weight: 700; color: var(--nx-n-800); }
+.pageDesc { margin-top: 4px; font-size: 13px; color: var(--nx-n-500); }
+.pageActions { display: flex; gap: 8px; flex: none; }
+
+/* ---------- Card ---------- */
+.card { background: var(--nx-bg-card); border: 1px solid var(--nx-border); border-radius: var(--nx-r-md); }
+.cardHead { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.cardTitle { font-size: 16px; font-weight: 600; color: var(--nx-n-800); margin: 0; }
+.cardMeta { font-size: 13px; color: var(--nx-n-500); }
+.cardBody { padding: 0 16px 16px; }
+.cardBodyFlush { padding: 0; }
+
+/* ---------- BarSegments ---------- */
+.bar { display: flex; height: 8px; border-radius: 2px; overflow: hidden; background: var(--nx-n-100); gap: 1px; }
+.barSeg { height: 100%; }
+
+/* ---------- EmpName ---------- */
+.nameLoading { display: inline-block; width: 3.5em; height: 12px; border-radius: 4px; background: var(--nx-n-100); vertical-align: middle; }
+.nameUnknown { color: var(--nx-n-500); }
+
+/* ---------- Full page notice ---------- */
+.full { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--nx-n-500); }

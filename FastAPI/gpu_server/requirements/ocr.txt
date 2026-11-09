@@ -1,0 +1,8 @@
+--extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu126/
+paddlepaddle-gpu==3.3.1
+paddleocr
+nvidia-pytriton
+# pytriton 0.7.0 requires numpy<2, so keep pandas on 2.x (numpy 1.x compatible)
+pandas<3
+# tritonclient is generated with protobuf 6.33.5
+protobuf>=6.33.5,<7

@@ -1,0 +1,17 @@
+# 로컬 모니터링용 Prometheus 설정 (docker compose --profile monitoring)
+global:
+  scrape_interval: 15s       # 15초마다 수집
+  evaluation_interval: 15s
+
+scrape_configs:
+  # approval-service 메트릭 (아웃박스 게이지·카운터, JVM, HTTP)
+  # 앱은 호스트에서 bootRun 으로 띄우거나 compose app 으로 띄운다. 둘 다 호스트 8083 이라 같은 주소로 수집된다
+  - job_name: approval-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8083"]
+
+  # Kafka 메트릭 (컨슈머 그룹 LAG, 토픽·파티션 오프셋) — kafka-exporter 가 Prometheus 형식으로 바꿔 준다
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]

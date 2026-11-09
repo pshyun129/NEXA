@@ -1,0 +1,37 @@
+# Grafana 가 뜰 때 자동으로 등록하는 데이터 소스
+apiVersion: 1
+
+datasources:
+  # 메트릭 (아웃박스 게이지, Kafka LAG)
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: approval-db
+    uid: approval-db
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: nexa_grafana_reader
+    jsonData:
+      database: nexa_approval
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
+
+  - name: ai-db
+    uid: ai-db
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432
+    user: nexa_grafana_reader
+    jsonData:
+      database: nexa_ai
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD

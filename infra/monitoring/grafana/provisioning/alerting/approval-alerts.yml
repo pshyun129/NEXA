@@ -1,0 +1,103 @@
+# 결재 결과 전달 알림 규칙 (Grafana 통합 알림)
+# 각 규칙: A(Prometheus 쿼리) → B(마지막 값으로 줄임) → C(기준과 비교). C 가 참인 상태가 for 만큼 이어지면 Firing
+# 알림 채널(Slack 등)은 아직 없다. Grafana 의 Alerting → Alert rules 화면에서 상태를 본다
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: approval-outbox-kafka
+    folder: approval
+    interval: 30s
+    rules:
+      # 1) approval → Kafka 발행이 막힘 (브로커 장애 등)
+      - uid: approval-outbox-delay
+        title: 아웃박스 발행 지연
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max(approval_outbox_oldest_age_seconds)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [300] }
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: critical }
+        annotations:
+          summary: 가장 오래된 미발행 아웃박스 이벤트가 5분 넘게 Kafka 로 나가지 못하고 있습니다
+          description: 결재 결과가 원본 서비스(leave·attendance)에 전달되지 않습니다. Kafka 브로커와 approval 로그(아웃박스 발행 실패)를 확인하세요
+
+      # 2) Kafka → 수신 서비스 처리가 밀림 (수신 서비스 장애·처리 오류)
+      - uid: approval-result-consumer-lag
+        title: 결재 결과 수신 지연 (LAG)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max by (consumergroup) (kafka_consumergroup_lag_sum{topic="approval.document.result"})
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "컨슈머 그룹 {{ $labels.consumergroup }} 이 결재 결과를 10분 넘게 다 읽지 못하고 있습니다"
+          description: 수신 서비스가 내려가 있거나 처리 중 오류가 반복되고 있습니다. 해당 서비스 로그를 확인하세요
+
+      # 3) 수신 서비스가 끝내 처리 못 한 메시지가 DLT 로 감
+      - uid: approval-result-dlt
+        title: 결재 결과 DLT 메시지 발생
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(kafka_topic_partition_current_offset{topic="approval.document.result.DLT"}[10m]))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: 최근 10분 동안 결재 결과 메시지가 DLT 로 옮겨졌습니다
+          description: 수신 서비스가 재시도 후에도 처리하지 못한 메시지입니다. kafka-console-consumer 로 approval.document.result.DLT 내용을 확인하고 by-request 조회 API 로 복구하세요 (monitoring/README.md)

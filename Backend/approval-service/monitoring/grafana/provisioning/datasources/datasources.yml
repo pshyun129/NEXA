@@ -1,0 +1,24 @@
+# Grafana 가 뜰 때 자동으로 등록하는 데이터 소스
+apiVersion: 1
+
+datasources:
+  # 메트릭 (아웃박스 게이지, Kafka LAG)
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  # 아웃박스 테이블을 직접 조회 (미발행 이벤트 목록 패널). 로컬 개발 DB 라 계정을 그대로 둔다
+  - name: approval-db
+    uid: approval-db
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: postgres
+    jsonData:
+      database: approval_service
+      sslmode: disable
+      postgresVersion: 1700
+    secureJsonData:
+      password: postgres

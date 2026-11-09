@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: payroll-service
+
+  cloud:
+    config:
+      enabled: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+eureka:
+  client:
+    enabled: false
+
+payroll:
+  clients:
+    attendance:
+      base-url: http://localhost:8084
+    user:
+      base-url: http://localhost:8081
+
+nexa:
+  security:
+    permit-urls: /actuator/health,/error,/internal/v1/pay/migration/**

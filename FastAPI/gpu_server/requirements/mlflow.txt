@@ -1,0 +1,2 @@
+# MLflow tracking server (GPU server only, separate venv ~/ai/.venv-mlflow)
+mlflow==3.18.0

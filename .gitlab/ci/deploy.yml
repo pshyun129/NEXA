@@ -1,0 +1,77 @@
+.deploy-dev:
+  stage: deploy
+  tags:
+    - nexa-dev-deploy
+
+  resource_group: nexa-development
+  interruptible: false
+  timeout: 20m
+
+  environment:
+    name: development/$DEPLOY_SERVICE
+    url: https://nexa-erp.duckdns.org
+
+  variables:
+    GIT_STRATEGY: clone
+
+  script:
+    - |
+      set -euo pipefail
+      cd "$CI_PROJECT_DIR"
+
+      test -r /opt/nexa-dev/.env
+      : "${DEPLOY_SERVICE:?DEPLOY_SERVICE is required}"
+
+      compose() {
+        docker compose \
+          --env-file /opt/nexa-dev/.env \
+          -p nexa \
+          -f compose.dev.yml "$@"
+      }
+
+      compose config --quiet
+
+      case "$DEPLOY_SERVICE" in
+        user-service)       image_name="nexa-user:local" ;;
+        approval-service)   image_name="nexa-approval:local" ;;
+        attendance-service) image_name="nexa-attendance:local" ;;
+        leave-service)      image_name="nexa-leave:local" ;;
+        eureka-server)      image_name="nexa-eureka:local" ;;
+        config-server)      image_name="nexa-config:local" ;;
+        gateway-service)    image_name="nexa-gateway:local" ;;
+        payroll-service)    image_name="nexa-payroll:local" ;;
+        migration-service)  image_name="nexa-migration:local" ;;
+        *)
+          echo "지원하지 않는 배포 서비스: $DEPLOY_SERVICE"
+          exit 1
+          ;;
+      esac
+
+      jar_dir="Backend/$DEPLOY_SERVICE/build/libs"
+      mapfile -t jars < <(
+        find "$jar_dir" -maxdepth 1 -type f \
+          -name '*.jar' ! -name '*-plain.jar' | sort
+      )
+
+      if [ "${#jars[@]}" -ne 1 ]; then
+        echo "실행용 JAR가 정확히 1개 필요합니다: $jar_dir"
+        exit 1
+      fi
+
+      build_context="$(mktemp -d)"
+      trap 'rm -rf -- "$build_context"' EXIT
+      cp "${jars[0]}" "$build_context/app.jar"
+
+      dockerfile="infra/docker/Dockerfile.ci"
+      if [ "$DEPLOY_SERVICE" = "user-service" ]; then
+        dockerfile="infra/docker/Dockerfile.user-ci"
+      fi
+
+      docker build \
+        -f "$dockerfile" \
+        -t "$image_name" \
+        "$build_context"
+      compose up -d --no-deps --no-build \
+        --wait --wait-timeout 180 "$DEPLOY_SERVICE"
+
+      compose ps "$DEPLOY_SERVICE"

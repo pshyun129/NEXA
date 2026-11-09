@@ -1,0 +1,55 @@
+/* 근태 신청: 입력, preview, 목록, 상세 (요구사항 3.3, 설계 7.3) */
+
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.spacer { flex: 1; }
+.ok { font-size: 13px; font-weight: 600; color: var(--nx-success-fg); }
+
+/* ---------- 입력 ---------- */
+.formGrid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr); gap: 16px; align-items: start; }
+@media (max-width: 1151px) { .formGrid { grid-template-columns: 1fr; } }
+.form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fieldCol { display: flex; flex-direction: column; gap: 8px; }
+.label { min-width: 84px; font-size: 13px; font-weight: 600; color: var(--nx-n-700); }
+.checkRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; border-radius: var(--nx-r-md);
+       background: var(--nx-bg-subtle); }
+.rowOrig { min-width: 150px; font-size: 13px; color: var(--nx-n-800); }
+.rowDeleted .rowOrig { text-decoration: line-through; color: var(--nx-n-500); }
+.rowAdded { background: var(--nx-brand-50); }
+
+/* ---------- preview ---------- */
+.preview { display: flex; flex-direction: column; gap: 12px; }
+.cmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cmp th, .cmp td { padding: 6px 8px; border-bottom: 1px solid var(--nx-divider); text-align: right; }
+.cmp thead th { color: var(--nx-n-500); font-weight: 500; }
+.cmp tbody th { text-align: left; color: var(--nx-n-600); font-weight: 500; }
+.changed td:last-child { color: var(--nx-brand-700); font-weight: 700; }
+.weekly { font-size: 13px; color: var(--nx-n-700); }
+.kv { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.kv > div { display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: var(--nx-r-md); background: var(--nx-bg-subtle); }
+.kv dt { color: var(--nx-n-600); font-size: 13px; }
+.kv dd { margin: 0; color: var(--nx-n-800); font-weight: 600; }
+
+/* ---------- 목록 ---------- */
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.reason { display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--nx-n-700); }
+.statusCell { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.applied { font-size: 12px; color: var(--nx-n-500); }
+
+/* ---------- 상세 ---------- */
+.detail { display: flex; flex-direction: column; gap: 16px; }
+.head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.items { width: 100%; border-collapse: collapse; font-size: 13px; }
+.items th, .items td { padding: 6px 8px; border-bottom: 1px solid var(--nx-divider); text-align: left; }
+.items th { color: var(--nx-n-500); font-weight: 500; }
+.foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--nx-border); }
+
+/* ---------- 홈 최근 신청 ---------- */
+.recent { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.recent li { border-bottom: 1px solid var(--nx-divider); }
+.recent li:last-child { border-bottom: 0; }
+.recent a { display: flex; align-items: center; gap: 8px; padding: 10px 16px; color: var(--nx-n-800); }
+.recent a:hover { background: var(--nx-bg-subtle); }

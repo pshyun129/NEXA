@@ -1,0 +1,22 @@
+
+spring:
+  application:
+    name: gateway-service
+
+  config:
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+  cloud:
+    config:
+      username: config-client
+      password: ${CONFIG_SERVER_PASSWORD}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never

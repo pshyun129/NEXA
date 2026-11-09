@@ -1,0 +1,74 @@
+build-approval:
+  extends:
+    - .testcontainers
+    - .gradle-cache
+  stage: build
+  image: eclipse-temurin:21-jdk
+
+  tags:
+    - nexa-ci
+
+  variables:
+    EUREKA_CLIENT_ENABLED: "false"
+
+  script:
+    - cd Backend/approval-service
+    - |
+      if [ "$CI_PIPELINE_SOURCE" = "push" ] && [ "$CI_COMMIT_BRANCH" = "develop" ]; then
+        echo "develop: 테스트 생략, JAR 생성"
+        bash gradlew --no-daemon bootJar -x test
+      else
+        echo "MR 또는 수동 실행: 테스트 및 JAR 생성"
+        bash gradlew --no-daemon test bootJar
+      fi
+
+  artifacts:
+    when: always
+    expire_in: 2 days
+    paths:
+      - Backend/approval-service/build/libs/*.jar
+    reports:
+      junit: Backend/approval-service/build/test-results/test/TEST-*.xml
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &approval_changes
+        - Backend/approval-service/**/*
+        - .gitlab/ci/approval.yml
+        - .gitlab/ci/testcontainers.yml
+        - .gitlab/ci/deploy.yml
+        - .gitlab/ci/gradle.yml
+        - compose.dev.yml
+        - infra/compose/backend.yml
+        - infra/compose/data.yml
+        - infra/docker/Dockerfile.ci
+      when: on_success
+      allow_failure: false
+
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *approval_changes
+      when: on_success
+      allow_failure: false
+
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+
+deploy-approval-dev:
+  extends: .deploy-dev
+
+  needs:
+    - job: build-approval
+    - job: deploy-eureka-dev
+      optional: true
+    - job: deploy-user-dev
+      optional: true
+
+  variables:
+    DEPLOY_SERVICE: approval-service
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *approval_changes
+      when: on_success
+      allow_failure: false

@@ -1,0 +1,10 @@
+.gradle-cache:
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-ci"
+
+  cache:
+    key: "gradle-v1-$CI_JOB_NAME"
+    paths:
+      - .gradle-ci/wrapper/
+      - .gradle-ci/caches/modules-2/
+    policy: pull-push

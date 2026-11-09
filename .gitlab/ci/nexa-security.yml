@@ -1,0 +1,57 @@
+test-nexa-security:
+  extends:
+    - .gradle-cache
+  stage: build
+  image: eclipse-temurin:21-jdk
+
+  tags:
+    - nexa-ci
+
+  script:
+    - cd Backend/nexa-security
+    - bash gradlew --no-daemon test
+
+  artifacts:
+    when: always
+    expire_in: 2 days
+    reports:
+      junit: Backend/nexa-security/build/test-results/test/TEST-*.xml
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &nexa_security_changes
+        - Backend/nexa-security/**/*
+        - .gitlab/ci/nexa-security.yml
+        - .gitlab/ci/gradle.yml
+      when: on_success
+      allow_failure: false
+
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *nexa_security_changes
+      when: on_success
+      allow_failure: false
+
+# nexa-security-v<버전> 태그를 push 하면 Package Registry 에 올린다.
+# 태그 버전과 build.gradle 의 version 이 다르면 실패한다 (이미 올라간 버전은 덮어쓰지 않도록 레지스트리에서 중복 금지)
+publish-nexa-security:
+  extends:
+    - .gradle-cache
+  stage: deploy
+  image: eclipse-temurin:21-jdk
+
+  tags:
+    - nexa-ci
+
+  script:
+    - cd Backend/nexa-security
+    - |
+      version="$(bash gradlew --no-daemon -q properties | sed -n 's/^version: //p')"
+      if [ "nexa-security-v$version" != "$CI_COMMIT_TAG" ]; then
+        echo "태그($CI_COMMIT_TAG)와 build.gradle 버전($version)이 다릅니다"
+        exit 1
+      fi
+    - bash gradlew --no-daemon test publish
+
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^nexa-security-v/'
+      when: on_success

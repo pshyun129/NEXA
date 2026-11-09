@@ -1,0 +1,60 @@
+build-frontend:
+  stage: build
+  image: node:22-bookworm-slim
+
+  tags:
+    - nexa-ci
+
+  cache:
+    key:
+      prefix: frontend-npm
+      files:
+        - Frontend/package-lock.json
+    paths:
+      - Frontend/.npm/
+
+  script:
+    - cd Frontend
+    - npm ci --cache .npm --prefer-offline
+    - npm run build
+
+  artifacts:
+    expire_in: 2 days
+    paths:
+      - Frontend/dist/
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes: &frontend_changes
+        - Frontend/**/*
+        - .gitlab/ci/frontend.yml
+
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *frontend_changes
+
+deploy-frontend-dev:
+  stage: deploy
+
+  tags:
+    - nexa-dev-deploy
+
+  needs:
+    - job: build-frontend
+      artifacts: true
+
+  resource_group: nexa-development
+  interruptible: false
+
+  environment:
+    name: development/frontend
+    url: https://nexa-erp.duckdns.org
+
+  script:
+    - test -s Frontend/dist/index.html
+    - test -w /var/www/nexa-frontend
+    - rsync -rp --chmod=D755,F644 --exclude=/index.html Frontend/dist/ /var/www/nexa-frontend/
+    - install -m 644 Frontend/dist/index.html /var/www/nexa-frontend/index.html.next
+    - mv -f /var/www/nexa-frontend/index.html.next /var/www/nexa-frontend/index.html
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "develop"'
+      changes: *frontend_changes

@@ -1,0 +1,17 @@
+/* 관리자 인사(부서) — 요구사항 4.1 */
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1151px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.muted { font-size: 13px; color: var(--nx-n-500); }
+.h4 { margin: 16px 0 8px; font-size: 13px; font-weight: 600; color: var(--nx-n-700); }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.node { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.type { font-size: 12px; color: var(--nx-n-600); padding: 0 6px; border-radius: var(--nx-r-sm); background: var(--nx-bg-subtle); }
+.flagWarn, .flagDanger, .flagMuted { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.flagWarn { color: var(--nx-warning-fg); }
+.flagDanger { color: var(--nx-danger-fg); font-weight: 600; }
+.flagMuted { color: var(--nx-n-500); }
+.props { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+.props dt { color: var(--nx-n-500); }
+.props dd { margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--nx-n-700); }
