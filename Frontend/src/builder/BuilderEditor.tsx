@@ -149,12 +149,14 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
   const [formOpen, setFormOpen] = useState(false);
   // 파일 업로드 노드가 있는데 사원 입력 폼에 파일 칸이 없으면 사원이 파일을 올릴 수 없다(서버 검사는 이걸 보지 않는다)
-  const fileNode = graph.nodes.find((n) => n.type === 'file_upload');
+  // 실행 첨부 파일(inputs.files)을 직접 읽는 노드: 파일 업로드, 그리고 'OCR할 파일'을 비운 OCR(FastAPI nodes/impl)
+  const fileNode = graph.nodes.find((n) => n.type === 'file_upload'
+    || (n.type === 'ocr_extract' && !String(n.config.files ?? '').trim()));
   const fileMissing = !!fileNode && !live.inputForm.some((f) => f.type === 'file');
   const warnings = useMemo(() => [
     ...orderWarnings(graph, catalog),
     ...(fileNode && fileMissing
-      ? [{ nodeId: fileNode.id, message: `'${byType.get('file_upload')?.name ?? '파일 업로드'}'가 있는데 사원 입력 폼에 파일 칸이 없습니다(사원이 파일을 올릴 수 없음)` }]
+      ? [{ nodeId: fileNode.id, message: `'${byType.get(fileNode.type)?.name ?? fileNode.type}'가 첨부 파일을 읽는데 사원 입력 폼에 파일 칸이 없습니다(사원이 파일을 올릴 수 없음)` }]
       : []),
   ], [graph, catalog, fileNode, fileMissing, byType]);
   const selectedNode = nodes.find((n) => n.selected);

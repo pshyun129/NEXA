@@ -29,7 +29,7 @@ function nextKey(fields: FormField[]) {
  */
 export function InputFormEditor({ workflowId, fields, open, setOpen, needsFile }: {
   workflowId: number; fields: FormField[]; open: boolean; setOpen: (o: boolean) => void;
-  /** 그래프에 파일 업로드 노드가 있음 */
+  /** 그래프에 첨부 파일을 읽는 노드(파일 업로드, OCR할 파일을 비운 OCR)가 있음 */
   needsFile: boolean;
 }) {
   const notify = useNotify();
@@ -63,7 +63,7 @@ export function InputFormEditor({ workflowId, fields, open, setOpen, needsFile }
         <div className={s.formEditor}>
           <p className={s.muted}>사원이 [실행]을 누르면 이 칸들을 채웁니다. 저장하면 배포 없이 바로 반영됩니다.</p>
           {fileMissing && (
-            <Alert type="warning" showIcon message="그래프에 파일 업로드 노드가 있는데 파일 칸이 없습니다"
+            <Alert type="warning" showIcon message="첨부 파일을 읽는 노드(파일 업로드·OCR)가 있는데 파일 칸이 없습니다"
                    description="파일 칸이 없으면 사원이 파일을 올릴 수 없어 실행이 실패합니다."
                    action={<Button size="small" onClick={() => setDraft([DEFAULT_FILE_FIELD, ...draft])}>파일 칸 추가</Button>} />
           )}
