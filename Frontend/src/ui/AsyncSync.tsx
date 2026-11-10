@@ -15,6 +15,8 @@ interface Props {
   checkedAt: number;
   /** 반영 지연 시 이동할 결재 문서 */
   delayedHref?: string;
+  /** 호출 측 Query가 폴링하면 중복 타이머를 만들지 않는다. */
+  autoCheck?: boolean;
 }
 
 /**
@@ -22,17 +24,17 @@ interface Props {
  * 5초 간격 + 창 포커스로 확인하고, 2분이 지나도 그대로면 멈추고 "반영 지연"으로 바꾼다.
  * 반영되면 칩이 사라지고 호출 측이 최종 배지를 그린다. 낙관적으로 미리 바꾸지 않는다.
  */
-export function AsyncSync({ waiting, onCheck, checkedAt, delayedHref }: Props) {
+export function AsyncSync({ waiting, onCheck, checkedAt, delayedHref, autoCheck = true }: Props) {
   const poll = usePollWindow(waiting);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!poll.active) return;
+    if (!poll.active || !autoCheck) return;
     const check = () => { if (!document.hidden) onCheck(); };
     const t = window.setInterval(check, INTERVAL_MS);
     window.addEventListener('focus', check);
     return () => { window.clearInterval(t); window.removeEventListener('focus', check); };
-  }, [poll.active, onCheck]);
+  }, [poll.active, onCheck, autoCheck]);
 
   // "n초 전 확인" 표시용 1초 틱
   useEffect(() => {

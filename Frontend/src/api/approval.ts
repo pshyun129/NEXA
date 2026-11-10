@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
+import { usePollWindow } from '@/common/usePollWindow';
 
 // approval-service DTO (2026-11-05 develop 기준)
 
@@ -134,13 +135,16 @@ export function useDocumentCount(filter: DocumentFilter, enabled = true) {
   });
 }
 
-export function useDocument(id: number | null) {
+export function useDocument(id: number | null, pollPending = false) {
+  const poll = usePollWindow(pollPending);
   return useQuery({
     queryKey: docKeys.detail(id ?? 0),
     queryFn: () => api.get<DocumentDetail>(`${BASE}/${id}`),
     enabled: id != null,
     // 다른 문서로 넘어갈 때 이전 문서를 잠깐 보여 주지 않는다(잘못된 문서에 승인하는 사고 방지)
     placeholderData: undefined,
+    refetchInterval: (q) => (poll.active && q.state.data?.status === 'INPROGRESS' && !document.hidden ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
 }
 

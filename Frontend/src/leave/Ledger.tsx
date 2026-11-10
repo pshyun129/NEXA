@@ -4,14 +4,14 @@ import type { UseQueryResult } from '@tanstack/react-query';
 import { useLeaveGrants, useLeaveLedger, type LeaveGrant, type LeaveLedgerEntry } from '@/api/leave';
 import { Card } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
-import { formatDate, formatDateTime, formatLeaveDays, kst, serverUtc } from '@/format';
+import { formatDate, formatDateTime, formatLeaveAmount, kst, serverUtc } from '@/format';
 import { leaveGrantKindLabel, leaveLedgerLabel } from '@/status/labels';
 import s from './leave.module.css';
 
 /** 증감 표시. 0이면 비운다 */
 function Delta({ v }: { v: number }) {
   if (v === 0) return null;
-  return <span className={`${s.delta} ${v > 0 ? s.plus : s.minus} nx-num`}>{v > 0 ? '+' : ''}{formatLeaveDays(v)}</span>;
+  return <span className={`${s.delta} ${v > 0 ? s.plus : s.minus} nx-num`}>{v > 0 ? '+' : ''}{formatLeaveAmount(v)}</span>;
 }
 
 /** 발생 내역 + 변동 원장(P1, 설계 9장 "휴가 잔여·신청·내역") */
@@ -29,7 +29,7 @@ export function LedgerTables({ grants, ledger, onOpenRequest }: {
   const grantCols: ColumnsType<LeaveGrant> = [
     { title: '유형', dataIndex: 'balanceTypeName', width: 110 },
     { title: '구분', dataIndex: 'grantKind', width: 110, render: (v: string) => leaveGrantKindLabel(v) },
-    { title: '발생', dataIndex: 'originalMinutes', width: 100, align: 'right', render: (v: number) => <span className="nx-num">{formatLeaveDays(v)}</span> },
+    { title: '발생', dataIndex: 'originalMinutes', width: 100, align: 'right', render: (v: number) => <span className="nx-num">{formatLeaveAmount(v)}</span> },
     { title: '유효 기간', key: 'valid',
       // expiresOn은 만료 시각(그 시각부터 무효)이라 하루 전 날짜까지 쓸 수 있다
       render: (_, g) => (

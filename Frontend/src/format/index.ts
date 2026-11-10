@@ -40,6 +40,14 @@ export const formatCount = (n: number | null | undefined, unit: string) => (n ==
 export const formatLeaveDays = (minutes: number | null | undefined) =>
   minutes == null ? DASH : `${minus(minutes, (Math.abs(minutes) / 480).toFixed(1))}일`;
 
+/** 정확한 시간·분을 먼저 표시한다. 반올림된 일수는 보조 정보이며 합산에 사용하지 않는다. */
+export function formatLeaveAmount(minutes: number | null | undefined): string {
+  if (minutes == null) return DASH;
+  if (minutes === 0) return '0분';
+  const approximate = Number((Math.abs(minutes) / 480).toFixed(1)) * 480 !== Math.abs(minutes);
+  return `${formatDuration(minutes)} (${approximate ? '약 ' : ''}${formatLeaveDays(minutes)})`;
+}
+
 /* ---------- 근로시간(분) ---------- */
 /** 문장: 8시간 10분 / 8시간 / 45분 */
 export function formatDuration(min: number | null | undefined): string {
