@@ -81,6 +81,22 @@ export function useCreateMigration() {
   });
 }
 
+/** 작업 목록 한 줄. fileCount: 올린 파일 수, loadedBatches: 적재된 묶음 수 */
+export interface MigrationListItem {
+  migrationId: number; name: string; status: MigrationStatus; cutoverDate: string | null; createdAt: string;
+  fileCount: number; loadedBatches: number;
+}
+export interface MigrationList { content: MigrationListItem[]; page: number; size: number; totalElements: number }
+
+/** 최근 만든 작업부터 */
+export function useMigrationList(page: number, size: number) {
+  return useQuery({
+    queryKey: ['migrations', 'list', page, size] as const,
+    queryFn: () => api.get<MigrationList>(BASE, { params: { page, size } }),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useMigration(id: number) {
   return useQuery({ queryKey: migKeys.detail(id), queryFn: () => api.get<MigrationDetail>(`${BASE}/${id}`), placeholderData: undefined });
 }
