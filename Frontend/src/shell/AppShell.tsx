@@ -8,7 +8,8 @@ import { Counter } from '@/ui/primitives';
 import { useSession } from '@/auth/session';
 import { authApi } from '@/auth/authApi';
 import { useCan } from '@/auth/useCan';
-import { adminNav, allNav, userNav, type NavItem } from './nav';
+import { adminNav, allNav, userNav, leaveAdminNav, type NavItem } from './nav';
+import { useLeaveAdministrator } from '@/auth/RequireLeaveAdministrator';
 import { useViewport } from './useViewport';
 import { useTodoCounts } from './useTodoCounts';
 import { ClockChip } from '@/attendance/Clock';
@@ -56,6 +57,8 @@ export function AppShell() {
   const qc = useQueryClient();
   const { me, clear } = useSession();
   const canAdmin = useCan('admin.view');
+  const leaveAccess = useLeaveAdministrator();
+  const canManageLeave = leaveAccess.data === true && leaveAccess.isFetchedAfterMount && !leaveAccess.isError;
   const line = useLineSidebar();
 
   // 모드는 URL에서 계산한다(새로고침해도 유지, 설계 5장)
@@ -128,10 +131,10 @@ export function AppShell() {
         <div className={s.navWrap} ref={line.ref} onMouseMove={line.onMouseMove} onMouseLeave={line.onMouseLeave}>
           {!collapsed && <div className={s.navLabel}>WORKSPACE</div>}
           <nav className={s.nav} aria-label="사원 메뉴">{renderNav(userNav)}</nav>
-          {canAdmin && (
+          {(canAdmin || canManageLeave) && (
             <>
               {collapsed ? <div className={s.navDivider} /> : <div className={`${s.navLabel} ${s.navLabelSecond}`}>ADMIN</div>}
-              <nav className={s.nav} aria-label="관리자 메뉴">{renderNav(adminNav)}</nav>
+              <nav className={s.nav} aria-label="관리자 메뉴">{renderNav([...(canAdmin ? adminNav : []), ...(canManageLeave ? leaveAdminNav : [])])}</nav>
             </>
           )}
         </div>

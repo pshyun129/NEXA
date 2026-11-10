@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { SessionGate } from '@/auth/SessionGate';
 import { RequireAdmin } from '@/auth/RequireAdmin';
+import { RequireLeaveAdministrator } from '@/auth/RequireLeaveAdministrator';
 import { AppShell } from '@/shell/AppShell';
 import { LoginPage } from '@/pages/login/LoginPage';
 import { HomePage } from '@/pages/home/HomePage';
@@ -43,7 +44,7 @@ export function App() {
         <Route path="admin/migration/:id" element={<RequireAdmin><MigrationPage /></RequireAdmin>} />
         {/* 빌더는 모든 사원이 쓴다(관리자 전용 아님): 예전 주소는 업무 자동화 창을 연다 */}
         <Route path="admin/builder/*" element={<AutomationPage />} />
-        <Route path="admin/leave" element={<RequireAdmin><LeavePolicyPage /></RequireAdmin>} />
+        <Route path="admin/leave" element={<RequireLeaveAdministrator><LeavePolicyPage /></RequireLeaveAdministrator>} />
         <Route path="*" element={<Placeholder title="페이지를 찾을 수 없습니다" week="—" />} />
       </Route>
     </Routes>

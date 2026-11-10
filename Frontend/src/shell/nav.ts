@@ -27,7 +27,8 @@ export const adminNav: NavItem[] = [
   { to: '/admin/hr', label: '인사', icon: Users },
   { to: '/admin/pay', label: '급여', icon: Wallet },
   { to: '/admin/migration', label: '데이터 이관', icon: DatabaseZap },
-  { to: '/admin/leave', label: '휴가 정책', icon: CalendarDays },
 ];
 
-export const allNav = [...userNav, ...adminNav];
+export const leaveAdminNav: NavItem[] = [{ to: '/admin/leave', label: '휴가 관리', icon: CalendarDays }];
+
+export const allNav = [...userNav, ...adminNav, ...leaveAdminNav];

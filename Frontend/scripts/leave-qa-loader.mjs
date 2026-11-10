@@ -17,7 +17,7 @@ const ui = new URL('./leave-qa-ui.mjs', import.meta.url).href;
 
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === 'antd' || specifier.startsWith('@/ui/') || specifier === '@/auth/session') {
+    if (specifier === 'antd' || specifier.startsWith('@/ui/') || (specifier === '@/auth/session' && process.env.LEAVE_ADMIN_REAL_AUTH !== '1')) {
       return { url: ui, shortCircuit: true };
     }
     if ((specifier.startsWith('dayjs/plugin/') || specifier.startsWith('dayjs/locale/')) && !specifier.endsWith('.js')) return next(`${specifier}.js`, context);

@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test:leave": "node --import ./scripts/leave-qa-loader.mjs --test ./scripts/leave-qa.test.mjs",
+    "test:leave:admin": "node --import ./scripts/leave-admin-loader.mjs --test ./scripts/leave-admin.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
