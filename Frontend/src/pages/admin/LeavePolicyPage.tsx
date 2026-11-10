@@ -137,10 +137,10 @@ function PolicyTab({ typeNames, masters }: { typeNames: Map<number, string>; mas
       </aside>
       <div className={s.main}>
         <div className={s.versionBar}>
-          <strong>{policies.data.find((p) => p.policyId === policyId)?.name}</strong>
+          <strong title={policies.data.find((p) => p.policyId === policyId)?.name}>{policies.data.find((p) => p.policyId === policyId)?.name}</strong>
           {policy.isError && <ErrorPanel error={policy.error} onRetry={() => policy.refetch()} />}
-          {policy.data && !policy.isError && <PolicyNameAction key={policyId} policy={policy.data} />}
-          {policyId != null && <VersionEditor key={policyId} policyId={policyId} onSaved={(id) => set('version', id)} />}
+          {policy.data && !policy.isError && <PolicyNameAction key={`policy-name:${policyId}`} policy={policy.data} />}
+          {policyId != null && <VersionEditor key={`version-create:${policyId}`} policyId={policyId} onSaved={(id) => set('version', id)} />}
           {versions.isError ? <ErrorPanel error={versions.error} onRetry={() => versions.refetch()} />
             : !versions.data ? <Skeleton.Button active={false} size="small" />
             : sorted.length === 0 ? <span className={s.muted}>버전이 없습니다</span>

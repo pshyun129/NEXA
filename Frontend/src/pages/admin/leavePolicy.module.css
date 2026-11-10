@@ -15,7 +15,7 @@
 .main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 
 .versionBar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.versionBar > strong { font-size: 16px; font-weight: 650; color: var(--nx-n-900); letter-spacing: -.3px; }
+.versionBar > strong { min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: 16px; font-weight: 650; color: var(--nx-n-900); letter-spacing: -.3px; }
 .versions { display: flex; gap: 6px; flex-wrap: wrap; }
 .versions button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--nx-border);
                    border-radius: 16px; background: var(--nx-bg-card); font: inherit; font-size: 13px; font-weight: 600; color: var(--nx-n-700); cursor: pointer; }

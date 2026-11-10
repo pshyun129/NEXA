@@ -18,6 +18,7 @@ import { LeaveTypeEditor, DisableLeaveType } from '../src/leave/admin/TypeAction
 import { AssignmentEditor, ManualGrantEditor, AdjustmentEditor } from '../src/leave/admin/EmployeeActions.tsx';
 import { AdminRequestView, RequestManagement } from '../src/leave/admin/RequestManagement.tsx';
 import { kst } from '../src/format/index.ts';
+import { LeavePolicyPage } from '../src/pages/admin/LeavePolicyPage.tsx';
 
 let client, renderer, respond, calls, latest;
 const me = (role = 'USER', dutyName = '휴가관리자') => ({ empId: 1, dutyId: 99, dutyName, role, status: 'EMPLOYED', name: '테스트', deptId: 1 });
@@ -373,4 +374,150 @@ test('정책 그룹 상세 404에서 다른 그룹의 캐시로 대체하지 않
   await mount(React.createElement(Hook, { hook: () => useLeavePolicy(2) }));
   assert.equal(latest.data, undefined);
   assert.equal(latest.error.code, 'LEAVE_004');
+});
+
+function countPolicyButtons(label, node = renderer.toJSON()) {
+  if (Array.isArray(node)) return node.reduce((count, child) => count + countPolicyButtons(label, child), 0);
+  if (node == null || typeof node !== 'object') return 0;
+  const own = node.type === 'button' && node.children?.join('') === label ? 1 : 0;
+  return own + countPolicyButtons(label, node.children ?? []);
+}
+
+function assertPolicyActions() {
+  // Host tree도 검사한다. key 충돌로 Fiber에서 분리되어 남은 노드까지 찾는다.
+  assert.equal(countPolicyButtons('그룹 이름 수정'), 1);
+  assert.equal(countPolicyButtons('새 버전 생성'), 1);
+}
+
+async function selectPolicy(name) {
+  const button = renderer.root.findAllByType('button').find((candidate) =>
+    candidate.findAllByType('span').some((span) => span.children.join('') === name));
+  assert.ok(button, `정책 그룹 ${name}`);
+  await act(async () => button.props.onClick());
+  await settle();
+}
+
+function policyPageFixture({ cached = true, withVersions = false } = {}) {
+  let groups = [{ policyId: 2, name: '정책 A' }, { policyId: 4, name: '정책 B' }];
+  const versionsFor = (policyId) => withVersions ? [1, 2].map((no) => ({ ...version,
+    policyId, policyVersionId: policyId * 10 + no, versionNo: no })) : [];
+  if (cached) {
+    client.setQueryData(['leaveAdmin', 'policies'], groups);
+    for (const group of groups) {
+      client.setQueryData(['leaveAdmin', 'policy', group.policyId], group);
+      client.setQueryData(['leaveAdmin', 'versions', group.policyId], versionsFor(group.policyId));
+    }
+  }
+  respond = (call) => {
+    if (call.url.endsWith('/types')) return [];
+    if (call.url.endsWith('/policies')) {
+      if (call.method === 'post') {
+        const created = { policyId: 6, name: call.body.name };
+        groups = [...groups, created];
+        return created;
+      }
+      return groups;
+    }
+    const match = call.url.match(/\/policies\/(\d+)(.*)$/);
+    assert.ok(match, `예상하지 못한 API ${call.url}`);
+    const policyId = Number(match[1]);
+    if (!match[2]) {
+      if (call.method === 'patch') groups = groups.map((group) => group.policyId === policyId ? { ...group, ...call.body } : group);
+      return groups.find((group) => group.policyId === policyId);
+    }
+    if (match[2] === '/versions') return versionsFor(policyId);
+    if (/^\/versions\/\d+$/.test(match[2])) return versionsFor(policyId).find((item) => item.policyVersionId === Number(match[2].split('/')[2]));
+    if (/\/(accrual-rules|type-rules)$/.test(match[2])) return [];
+    assert.fail(`예상하지 못한 API ${call.url}`);
+  };
+}
+
+test('정책 화면에서 그룹을 반복 변경해도 이름 수정 버튼과 새 버전 버튼은 하나씩 유지한다', async () => {
+  policyPageFixture();
+  await mount(React.createElement(LeavePolicyPage));
+  assertPolicyActions();
+  for (const name of Array.from({ length: 30 }, (_, index) => ['정책 A', '정책 B', '정책 A'][index % 3])) {
+    await selectPolicy(name);
+    assertPolicyActions();
+  }
+  assert.equal(calls.some((call) => call.method !== 'get'), false);
+});
+
+test('정책 화면에서 첫 조회·미캐시 그룹 선택·새로고침 후에도 버튼은 하나씩 표시된다', async () => {
+  policyPageFixture({ cached: false });
+  await mount(React.createElement(LeavePolicyPage));
+  await settle();
+  assertPolicyActions();
+  await selectPolicy('정책 B');
+  await settle();
+  assertPolicyActions();
+  await act(async () => renderer.unmount()); renderer = null;
+  client.clear();
+  await mount(React.createElement(LeavePolicyPage));
+  await settle();
+  assertPolicyActions();
+});
+
+test('정책 이름 모달 닫기·동일 그룹 선택·이름 변경 후 갱신에도 버튼 하나와 올바른 대상 유지', async () => {
+  policyPageFixture();
+  await mount(React.createElement(LeavePolicyPage));
+  await selectPolicy('정책 B');
+  await click('그룹 이름 수정');
+  const editing = renderer.root.findByType('form').props.form;
+  await act(async () => editing.setFieldValue('name', '작성 중인 이름'));
+  await selectPolicy('정책 B');
+  assert.equal(renderer.root.findByType('form').props.form, editing);
+  assert.equal(editing.values.name, '작성 중인 이름');
+  assertPolicyActions();
+  await click('닫기');
+  assertPolicyActions();
+  await click('그룹 이름 수정');
+  await finish({ name: '정책 B 수정' });
+  assertPolicyActions();
+  assert.deepEqual(calls.find((call) => call.method === 'patch'), {
+    method: 'patch', url: '/api/v1/leaves/admin/policies/4', body: { name: '정책 B 수정' }, key: undefined,
+  });
+  assert.ok(renderer.root.findAllByType('strong').some((node) => node.children.join('') === '정책 B 수정'));
+  assert.ok(renderer.root.findAllByType('span').some((node) => node.children.join('') === '정책 B 수정'));
+  await click('그룹 이름 수정');
+  assert.equal(renderer.root.findByType('form').props.form.values.name, '정책 B 수정');
+});
+
+test('새 정책 그룹 생성·자동 선택 후에도 수정 버튼 하나와 긴 이름 전체를 유지한다', async () => {
+  policyPageFixture();
+  await mount(React.createElement(LeavePolicyPage));
+  await click('정책 그룹 생성');
+  const name = `E2E_LEAVE_TEST_${'A'.repeat(75)}`;
+  await finish({ name });
+  await settle();
+  assertPolicyActions();
+  const heading = renderer.root.findAllByType('strong').find((node) => node.children.join('') === name);
+  assert.ok(heading);
+  assert.equal(heading.props.title, name);
+  await click('그룹 이름 수정');
+  assert.equal(renderer.root.findByType('form').props.form.values.name, name);
+  await finish({ name: '새 그룹 이름 수정' });
+  assert.equal(calls.filter((call) => call.method === 'patch').at(-1).url, '/api/v1/leaves/admin/policies/6');
+  assertPolicyActions();
+});
+
+test('정책 버전을 바꿔도 그룹 이름 수정 버튼과 새 버전 버튼이 재생성되거나 누적되지 않는다', async () => {
+  policyPageFixture({ withVersions: true });
+  await mount(React.createElement(LeavePolicyPage));
+  await settle();
+  const selectVersion = async (label) => {
+    const button = renderer.root.findAllByType('button').find((candidate) => candidate.props.role === 'tab' && candidate.children[0] + candidate.children[1] === label);
+    assert.ok(button, label);
+    await act(async () => button.props.onClick());
+    await settle();
+  };
+  await click('그룹 이름 수정');
+  const form = renderer.root.findByType('form').props.form;
+  await act(async () => form.setFieldValue('name', '버전 전환 중 입력 보존'));
+  for (const label of ['v1', 'v2', 'v1']) {
+    await selectVersion(label);
+    assertPolicyActions();
+    assert.equal(renderer.root.findByType('form').props.form, form);
+    assert.equal(form.values.name, '버전 전환 중 입력 보존');
+  }
 });
