@@ -14,6 +14,10 @@ import { useTodoCounts } from './useTodoCounts';
 import { ClockChip } from '@/attendance/Clock';
 import { ShortcutHelp } from './ShortcutHelp';
 import { AutomationLauncher } from './AutomationLauncher';
+import { AutomationHub } from '@/automation/AutomationHub';
+import { MiniRunPanel } from '@/automation/MiniRunPanel';
+import { WaitingNotice } from '@/automation/WaitingNotice';
+import hub from '@/automation/hub.module.css';
 import { BrandMark } from '@/ui/BrandMark';
 import s from './shell.module.css';
 
@@ -158,16 +162,11 @@ export function AppShell() {
             {adminMode ? 'ADMIN' : 'NEXA'} <span className={s.crumbSep}>/</span> <b>{current?.label ?? ''}</b>
           </div>
           <div className={s.topRight}>
-            {!adminMode && <AutomationLauncher />}
+            <AutomationLauncher />
             {!adminMode && <ClockChip />}
             {!adminMode && counts.approval !== undefined && (
               <NavLink to="/approvals" className={`${s.todo} nx-hit24`}>
                 결재 <Counter value={counts.approval} tone="brand" label="결재" />
-              </NavLink>
-            )}
-            {!adminMode && counts.waiting !== undefined && (
-              <NavLink to="/automation" className={`${s.todo} nx-hit24`}>
-                확인 대기 <Counter value={counts.waiting} tone="warning" label="확인 대기" />
               </NavLink>
             )}
             <span className={s.divider} aria-hidden />
@@ -190,6 +189,12 @@ export function AppShell() {
         </main>
         <footer className={s.pageFoot}><span>© 2026 NEXA</span><span>SSAFY 15기 자율 프로젝트 D107</span></footer>
         <ShortcutHelp />
+        {/* 업무 자동화: 큰 창 + 오른쪽 위 진행 창·확인 알림(어느 화면에서든) */}
+        <AutomationHub />
+        <div className={hub.stack}>
+          <MiniRunPanel />
+          <WaitingNotice />
+        </div>
       </div>
     </div>
   );

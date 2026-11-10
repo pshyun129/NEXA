@@ -5,15 +5,17 @@ import { useBuilderWorkflows, useWorkflowList } from '@/api/builder';
 import { Card, PageHeader } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { formatCount } from '@/format';
+import { openAutomation } from '@/automation/automationStore';
 import s from './adminHome.module.css';
 
-function Stat({ label, value, tone, to }: { label: string; value: string; tone?: 'warning' | 'danger'; to?: string }) {
+function Stat({ label, value, tone, to, onClick }: { label: string; value: string; tone?: 'warning' | 'danger'; to?: string; onClick?: () => void }) {
   const body = (
     <>
       <span className={`${s.value} ${tone ? s[tone] : ''} nx-num`}>{value}</span>
       <span className={s.label}>{label}</span>
     </>
   );
+  if (onClick) return <button type="button" onClick={onClick} className={`${s.stat} ${s.link} ${s.statBtn}`}>{body}</button>;
   return to ? <Link to={to} className={`${s.stat} ${s.link}`}>{body}</Link> : <div className={s.stat}>{body}</div>;
 }
 
@@ -57,7 +59,7 @@ function AutomationCard() {
     content = (
       <>
         <div className={s.stats}>
-          <Stat label="워크플로" value={formatCount(list.data.length, '개')} to="/admin/builder" />
+          <Stat label="워크플로" value={formatCount(list.data.length, '개')} onClick={() => openAutomation({ kind: 'home', tab: 'mine' })} />
           <Stat label="배포됨" value={formatCount(deployed.length, '개')} />
           <Stat label="배포됐지만 사원에게 안 보임" value={formatCount(hidden.length, '개')} tone={hidden.length ? 'warning' : undefined} />
         </div>
@@ -66,7 +68,7 @@ function AutomationCard() {
             {hidden.map((w) => (
               <li key={w.id}>
                 <span>{w.name} <span className={s.muted}>v{w.deployedVersion}</span></span>
-                <Link to={`/admin/builder/${w.id}`}><Button size="small">[사원에게 노출] 켜기 →</Button></Link>
+                <Button size="small" onClick={() => openAutomation({ kind: 'builder', workflowId: w.id })}>[사원에게 노출] 켜기 →</Button>
               </li>
             ))}
           </ul>
@@ -74,7 +76,7 @@ function AutomationCard() {
       </>
     );
   }
-  return <Card title="업무 자동화" meta={<Link to="/admin/builder">자동화 빌더 →</Link>}>{content}</Card>;
+  return <Card title="업무 자동화" meta={<Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => openAutomation({ kind: 'home', tab: 'mine' })}>워크플로 관리 →</Button>}>{content}</Card>;
 }
 
 /** 이관: 작업 목록 API가 아직 develop에 없어 바로가기만 둔다(gaps) */

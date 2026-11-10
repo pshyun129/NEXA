@@ -1,14 +1,21 @@
 /* 전자결재: 문서함 2분할, 문서 상세, 결재선 (설계 6.2) */
 
 /* ---------- 레이아웃 ---------- */
-.split { display: grid; grid-template-columns: 35fr 65fr; gap: 16px; align-items: start; }
-.listPane { min-width: 0; }
+.split { display: grid; grid-template-columns: minmax(0, 38fr) minmax(0, 62fr); gap: 16px; align-items: start; }
+/* 목록 표가 칸 너비를 넘으면 상세 패널 밑으로 겹쳐 보였다: 칸 안에 가두고, 넘치면 표 안에서만 가로 스크롤 */
+.listPane { min-width: 0; overflow: hidden; }
+.listPane :global(.ant-table-wrapper), .listPane :global(.ant-table) { max-width: 100%; }
+.listPane :global(.ant-table-content) { overflow-x: auto; }
 .detailPane { position: sticky; top: calc(var(--nx-topbar-h) + 16px); min-width: 0;
               max-height: calc(100vh - var(--nx-topbar-h) - 32px); display: flex; }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .row { cursor: pointer; }
 .rowActive td { background: var(--nx-bg-selected) !important; }
+.cellDoc { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cellTitle { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--nx-n-800); }
+.subLine { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cellState { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.cellState .progress { justify-content: flex-end; }
 .cellSub { font-size: 12px; color: var(--nx-n-500); }
 .autoTag { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; color: var(--nx-ai-700); font-weight: 500; }
 .progress { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

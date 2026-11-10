@@ -20,7 +20,7 @@ export function NoPolicyNotice() {
 
 const days = (min: number) => formatLeaveDays(min).replace(/일$/, '');
 
-function BalanceItem({ b }: { b: LeaveBalance }) {
+export function BalanceItem({ b }: { b: LeaveBalance }) {
   return (
     <div className={s.balance}>
       <span className={s.balanceName}>{b.balanceTypeName}</span>

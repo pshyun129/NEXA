@@ -39,9 +39,14 @@
 .dot { width: 5px; height: 5px; border-radius: 50%; background: #c7cdd5; }
 .ring { width: 10px; height: 10px; border-radius: 50%; border: 1.6px solid currentColor; border-top-color: transparent; animation: nx-spin .8s linear infinite; }
 
-.handle { width: 8px !important; height: 8px !important; background: #fff !important; border: 1.6px solid #c4ccd8 !important;
-          box-shadow: 0 0 0 3px #f9fafc; transition: background .2s; }
-.handle:hover { border-color: var(--accent) !important; background: var(--accent) !important; }
+/* 연결점: 보이는 점은 12px, 누를 수 있는 범위는 ::after로 36px까지 넓혀 간선을 쉽게 잇는다 */
+.handle { width: 12px !important; height: 12px !important; background: #fff !important; border: 2px solid #b9c2cf !important;
+          box-shadow: 0 0 0 3px #f9fafc; transition: background .15s, transform .15s, border-color .15s; cursor: crosshair; }
+.handle::after { content: ''; position: absolute; inset: -12px; border-radius: 50%; }
+.handle:hover { border-color: var(--accent) !important; background: var(--accent) !important; transform: scale(1.25); }
+/* 끌고 오는 중 가까운 연결점은 크게 강조한다(React Flow가 connectingto/valid 클래스를 붙인다) */
+:global(.react-flow__handle.connectingto).handle, :global(.react-flow__handle.connectionindicator).handle:hover { transform: scale(1.4); }
+:global(.react-flow__handle.valid).handle { border-color: #5f8fd9 !important; background: #5f8fd9 !important; box-shadow: 0 0 0 6px rgba(95,143,217,.18); }
 .branchLabel { position: absolute; left: 10px; top: -15px; white-space: nowrap; font-size: 9px; line-height: 13px; padding: 0 4px;
                color: #6f7885; background: #fff; border: 1px solid #e6e9ee; border-radius: 3px; pointer-events: none; }
 

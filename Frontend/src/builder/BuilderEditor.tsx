@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Drawer, Input, InputNumber, Modal, Select, Skeleton } from 'antd';
-import { Link } from 'react-router-dom';
 import {
   Background, BackgroundVariant, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
@@ -20,7 +19,7 @@ import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { Icon } from '@/ui/Icon';
 import {
-  ArrowLeft, Check, ChevronRight, CircleAlert, GitBranch, Grip, History, Minus, Play, Plus, RotateCcw, Search, Sparkles,
+  Check, ChevronDown, ChevronRight, CircleAlert, GitBranch, Grip, History, Minus, Play, Plus, RotateCcw, Search, Sparkles,
   SquareArrowOutUpRight, TriangleAlert, Workflow, X, Expand, Link2, SlidersHorizontal, Receipt, FileText,
 } from '@/ui/icons';
 import { BlurTitle, Kbd, modKey } from '@/ui/primitives';
@@ -147,7 +146,8 @@ const SUMMARY: Record<RunStatus | 'none', [string, string?]> = {
  * wf는 처음 받은 초안(캔버스 초기값), live는 최신 서버 값(배포 버전·노출 화면 등 헤더 표시용).
  * 캔버스는 다시 받은 값으로 덮지 않고, 헤더는 배포·노출 변경이 바로 보이게 live를 쓴다.
  */
-function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: BuilderWorkflow; catalog: NodeDetail[]; byType: Map<string, NodeDetail> }) {
+function Editor({ wf, live, catalog, byType, onDirtyChange }:
+  { wf: BuilderWorkflow; live: BuilderWorkflow; catalog: NodeDetail[]; byType: Map<string, NodeDetail>; onDirtyChange?: (dirty: boolean) => void }) {
   const notify = useNotify();
   const flow = useReactFlow<BNode, BEdge>();
   const categories = useNodeCategories();
@@ -161,6 +161,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   // 이 화면에서 배포한 뒤 아직 바꾼 게 없으면 같은 초안을 또 배포하지 않게 막는다(서버는 같은 그래프도 새 버전으로 쌓는다)
   const [justDeployed, setJustDeployed] = useState(false);
   useEffect(() => { if (dirty) setJustDeployed(false); }, [dirty]);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [savedAt, setSavedAt] = useState(wf.updatedAt);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
   const [q, setQ] = useState('');
@@ -170,6 +171,10 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
   /** 테스트 실행 창: form = 입력 폼, monitor = 실행 화면(사람 확인 포함) */
   const [drawer, setDrawer] = useState<'form' | 'monitor' | null>(null);
   const [testRunId, setTestRunId] = useState<number | null>(null);
+  // 아래 실행 모니터는 접어 두고 캔버스를 넓게 쓴다. 테스트 실행·검사 이슈가 생기면 저절로 펼친다
+  const [execOpen, setExecOpen] = useState(false);
+  useEffect(() => { if (testRunId != null) setExecOpen(true); }, [testRunId]);
+  useEffect(() => { if (execTab === 'issues') setExecOpen(true); }, [execTab]);
 
   const graph = useMemo(() => toGraph(nodes, edges), [nodes, edges]);
   const [formOpen, setFormOpen] = useState(false);
@@ -382,41 +387,29 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
 
   return (
     <div className={s.editor}>
-      {/* ---------- 제목줄 ---------- */}
+      {/* ---------- 제목줄(한 줄): 이름 · 보기 탭 · 도구 ---------- */}
       <section className={s.titlebar}>
-        <div className={s.titleGroup}>
-          <Link to="/admin/builder" className={s.back} aria-label="자동화 빌더 목록으로"><Icon as={ArrowLeft} size={16} /></Link>
-          <div className={s.titleText}>
-            <div className={s.eyebrow}>AUTOMATION STUDIO</div>
-            <div className={s.headingLine}>
-              <BlurTitle key={wf.name} text={wf.name} className={s.name} />
-              <span className={live.deployedVersion != null ? s.badgeOn : s.badge}>
-                {live.deployedVersion != null ? `v${live.deployedVersion} 배포됨` : '배포 전'}
-              </span>
-            </div>
-            <p className={s.desc}>{live.description || '노드를 연결해 흐름을 만들고, 검사한 뒤 테스트 실행합니다.'}</p>
+        <div className={s.titleText}>
+          <div className={s.headingLine}>
+            <BlurTitle key={wf.name} text={wf.name} className={s.name} />
+            <span className={live.deployedVersion != null ? s.badgeOn : s.badge}>
+              {live.deployedVersion != null ? `v${live.deployedVersion} 배포됨` : '배포 전'}
+            </span>
+            <span className={dirty ? s.unsaved : s.saved}><i />{dirty ? '저장 안 됨' : `저장 ${formatTime(serverUtc(savedAt))}`}</span>
           </div>
+          <p className={s.desc}>{live.description || '노드를 연결해 흐름을 만들고, 검사한 뒤 테스트 실행합니다.'}</p>
         </div>
-        <div className={s.titleActions}>
-          <span className={dirty ? s.unsaved : s.saved}><i />{dirty ? '저장 안 됨' : `초안 저장 ${formatTime(serverUtc(savedAt))}`}</span>
-          <Button icon={<Icon as={Check} size={16} />} onClick={onSave} loading={save.isPending} disabled={!dirty}>저장</Button>
-          <Button onClick={onValidate} loading={validate.isPending}>검사</Button>
-          <Button type="primary" className={s.runBtn} icon={<Icon as={Play} size={12} />} onClick={onTest}>테스트 실행</Button>
-        </div>
-      </section>
-
-      {/* ---------- 툴바: 보기 탭 + 배포 도구 ---------- */}
-      <div className={s.toolbar}>
         <div className={s.tabs} role="tablist" aria-label="빌더 보기">
           <button type="button" role="tab" aria-selected={view === 'editor'} className={view === 'editor' ? s.tabOn : ''} onClick={() => setView('editor')}>
-            <Icon as={Workflow} size={16} />에디터
+            <Icon as={Workflow} size={16} />캔버스
           </button>
           <button type="button" role="tab" aria-selected={view === 'history'} className={view === 'history' ? s.tabOn : ''} onClick={() => setView('history')}>
             <Icon as={History} size={16} />실행 기록<span>{myRuns.data ? history.length : '–'}</span>
           </button>
         </div>
-        <div className={s.toolEnd}>
-          <span className={s.hintKeys}><Kbd>{modKey}+S</Kbd> 저장 · <Kbd>{modKey}+Shift+V</Kbd> 검사</span>
+        <div className={s.titleActions}>
+          <Button icon={<Icon as={Check} size={16} />} onClick={onSave} loading={save.isPending} disabled={!dirty} title={`${modKey}+S`}>저장</Button>
+          <Button onClick={onValidate} loading={validate.isPending} title={`${modKey}+Shift+V`}>검사</Button>
           <InputFormEditor workflowId={wf.id} fields={live.inputForm} open={formOpen} setOpen={setFormOpen} needsFile={!!fileNode} />
           <PlacementToggle workflowId={wf.id} placements={live.placements} deployed={live.deployedVersion != null} />
           <DeployControls
@@ -431,8 +424,9 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
               : issues.length > 0 ? `검사 이슈 ${issues.length}건을 먼저 해결해 주세요`
               : null}
           />
+          <Button type="primary" className={s.runBtn} icon={<Icon as={Play} size={12} />} onClick={onTest}>테스트 실행</Button>
         </div>
-      </div>
+      </section>
 
       <div className={s.studioBody}>
         <section className={s.canvasColumn}>
@@ -453,7 +447,9 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
                 onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
                 deleteKeyCode={['Delete', 'Backspace']} fitView fitViewOptions={{ padding: 0.14, maxZoom: 1 }} minZoom={0.2} maxZoom={1.6}
                 proOptions={{ hideAttribution: true }} defaultEdgeOptions={{ type: 'flow' }}
-                connectionLineStyle={{ stroke: '#8398cc', strokeWidth: 2 }}
+                // 핸들 근처(48px)에서 놓아도 이어지고, 핸들을 눌렀다 다른 핸들을 눌러도 이어진다
+                connectionRadius={48} connectOnClick
+                connectionLineStyle={{ stroke: '#8398cc', strokeWidth: 2.5 }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#d9dce2" />
                 <MiniMap pannable zoomable className={s.minimap} maskColor="rgba(249,250,251,.85)"
@@ -466,7 +462,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
                   <span />
                   <button type="button" aria-label="전체 화면에 맞추기" onClick={fit}><Icon as={Expand} size={16} /></button>
                 </div>
-                <span className={s.canvasHint}><Icon as={Grip} size={12} />드래그로 이동 · 스크롤로 확대 · 노드 클릭으로 설정 · 선택 후 <Kbd>Delete</Kbd> 삭제</span>
+                <span className={s.canvasHint}><Icon as={Grip} size={12} />노드 오른쪽 점을 끌어 다른 노드 왼쪽 점 근처에 놓으면 이어져요 · 선택 후 <Kbd>Delete</Kbd> 삭제</span>
               </div>
               {!overlay && <div className={s.caption}><span />한 번 이어 두면, 매번 같은 흐름으로.</div>}
             </div>
@@ -499,7 +495,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
           )}
 
           {/* ---------- 실행 모니터 / 검사 결과 ---------- */}
-          <section className={s.exec} aria-label="실행 모니터">
+          <section className={`${s.exec} ${execOpen ? '' : s.execClosed}`} aria-label="실행 모니터">
             <div className={s.execHead}>
               <div className={s.execTitle}>
                 <span className={`${s.ind} ${indCls}`} />
@@ -510,8 +506,13 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
                   </button>
                 </div>
                 <span className={s.runId}>{testRunId != null ? `RUN #${String(testRunId).padStart(3, '0')}${run?.isTest ? ' · 초안 테스트' : ''}` : 'LIVE PREVIEW'}</span>
+                {!execOpen && run && <span className={s.execPeek}>{sumTitle} · {done}/{nodes.length} 단계</span>}
               </div>
               <div className={s.execActions}>
+                <button type="button" className={s.iconBtn} aria-expanded={execOpen} aria-label={execOpen ? '실행 모니터 접기' : '실행 모니터 펼치기'}
+                        onClick={() => setExecOpen((o) => !o)}>
+                  <Icon as={ChevronDown} size={16} className={execOpen ? '' : s.chevUp} />
+                </button>
                 {testRunId != null && (
                   <>
                     <Button size="small" type={run?.status === 'WAITING' ? 'primary' : 'default'} icon={<Icon as={SquareArrowOutUpRight} size={12} />}
@@ -681,7 +682,6 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
           <div className={s.inspectorFoot}><Icon as={Link2} size={12} /><span>저장한 초안 기준 · 테스트 실행은 초안 그래프로 돌아요</span></div>
         </aside>
       </div>
-      <footer className={s.bottomBar}><span><i />NEXA Workflow Studio</span><span>React Flow 캔버스{live.deployedVersion != null && ` · 배포 v${live.deployedVersion}`}</span></footer>
 
       {/* ---------- 단계 추가(라이브러리) ---------- */}
       <Modal open={libOpen} onCancel={() => setLibOpen(false)} footer={null} width={640} destroyOnHidden className={s.libModal}
@@ -738,7 +738,7 @@ function Editor({ wf, live, catalog, byType }: { wf: BuilderWorkflow; live: Buil
 }
 
 /** 자동화 빌더 캔버스(설계 6.6, 요구사항 4.6 P0): 워크플로 열기·노드 추가·연결·설정·검사·저장·테스트 실행 */
-export function BuilderEditor({ id }: { id: number }) {
+export function BuilderEditor({ id, onDirtyChange }: { id: number; onDirtyChange?: (dirty: boolean) => void }) {
   const wf = useBuilderWorkflow(id);
   const cat = useNodeDetails();
   // 처음 받은 초안으로 한 번만 편집 상태를 만든다(저장 후 다시 받아도 편집 중인 캔버스를 덮지 않는다)
@@ -750,7 +750,7 @@ export function BuilderEditor({ id }: { id: number }) {
   if (!initial || !cat.nodes || !cat.byType) return <Skeleton active={false} paragraph={{ rows: 10 }} />;
   return (
     <ReactFlowProvider>
-      <Editor wf={initial} live={wf.data ?? initial} catalog={cat.nodes} byType={cat.byType} />
+      <Editor wf={initial} live={wf.data ?? initial} catalog={cat.nodes} byType={cat.byType} onDirtyChange={onDirtyChange} />
     </ReactFlowProvider>
   );
 }

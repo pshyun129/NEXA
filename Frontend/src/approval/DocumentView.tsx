@@ -14,6 +14,7 @@ import { approvalLevelLabel, formTypeLabel } from '@/status/labels';
 import { useHotkeys } from '@/common/useHotkeys';
 import { requestHref } from '@/attendance/requests/links';
 import { APPLY_PATH, leaveRequestHref } from '@/leave/links';
+import { openAutomation } from '@/automation/automationStore';
 import { ApprovalLine } from './ApprovalLine';
 import { ReferrerEditor, ResubmitButton } from './DraftTools';
 import { documentPermissions, type DocumentPermissions } from './permissions';
@@ -218,7 +219,10 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
             <AiMark label="자동화로 생성됨" />
             {doc.sourceLabel && <span>{doc.sourceLabel}</span>}
             {doc.sourceId != null && <span className="nx-mono">run #{doc.sourceId}</span>}
-            {doc.sourceId != null && <Link to={`/automation/runs/${doc.sourceId}`} style={{ marginLeft: 'auto' }}>원본 실행 보기 ↗</Link>}
+            {doc.sourceId != null && (
+              <Button type="link" size="small" style={{ marginLeft: 'auto', paddingInline: 0 }}
+                      onClick={() => openAutomation({ kind: 'run', runId: doc.sourceId! })}>원본 실행 보기 ↗</Button>
+            )}
           </div>
         )}
         {(doc.sourceType === 'LEAVE' || doc.sourceType === 'ATTENDANCE') && (

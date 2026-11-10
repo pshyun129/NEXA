@@ -1,5 +1,6 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { useLeaveGrants, useLeaveLedger, type LeaveGrant, type LeaveLedgerEntry } from '@/api/leave';
 import { Card } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
@@ -17,6 +18,13 @@ function Delta({ v }: { v: number }) {
 export function LeaveLedger({ onOpenRequest }: { onOpenRequest: (id: number) => void }) {
   const grants = useLeaveGrants();
   const ledger = useLeaveLedger();
+  return <LedgerTables grants={grants} ledger={ledger} onOpenRequest={onOpenRequest} />;
+}
+
+/** 발생 내역 + 변동 내역 표. 내 휴가와 관리자 사원별 휴가가 같이 쓴다(신청 링크는 onOpenRequest가 있을 때만) */
+export function LedgerTables({ grants, ledger, onOpenRequest }: {
+  grants: UseQueryResult<LeaveGrant[]>; ledger: UseQueryResult<LeaveLedgerEntry[]>; onOpenRequest?: (id: number) => void;
+}) {
 
   const grantCols: ColumnsType<LeaveGrant> = [
     { title: '유형', dataIndex: 'balanceTypeName', width: 110 },
@@ -39,10 +47,11 @@ export function LeaveLedger({ onOpenRequest }: { onOpenRequest: (id: number) => 
     { title: '내용', key: 'reason', render: (_, e) => (
       <span>
         {e.reason}
-        {e.leaveReqId != null && (
+        {e.leaveReqId != null && onOpenRequest && (
           <> · <a role="button" tabIndex={0} onClick={() => onOpenRequest(e.leaveReqId!)}
                  onKeyDown={(k) => { if (k.key === 'Enter') onOpenRequest(e.leaveReqId!); }}>신청 #{e.leaveReqId}</a></>
         )}
+        {e.leaveReqId != null && !onOpenRequest && <span className="nx-num"> · 신청 #{e.leaveReqId}</span>}
       </span>
     ) },
   ];

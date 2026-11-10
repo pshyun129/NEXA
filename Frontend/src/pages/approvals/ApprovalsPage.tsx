@@ -12,7 +12,7 @@ import { useViewport } from '@/shell/useViewport';
 import { useTodoCounts } from '@/shell/useTodoCounts';
 import { DocumentView } from '@/approval/DocumentView';
 import { ComposeDrawer } from '@/approval/Compose';
-import { docColumns } from '@/approval/columns';
+import { compactDocColumns, docColumns } from '@/approval/columns';
 import s from '@/approval/approval.module.css';
 
 type Tab = 'pending' | 'drafted' | 'all';
@@ -29,8 +29,8 @@ const EMPTY: Record<Tab, string> = {
 
 const docSearch = (r: DocumentSummary) => `${r.title} ${r.docNo}`;
 
-function DocumentList({ tab, selected, onOpen, orderRef }:
-  { tab: Tab; selected: number | null; onOpen: (id: number) => void; orderRef: MutableRefObject<number[]> }) {
+function DocumentList({ tab, selected, onOpen, orderRef, narrow }:
+  { tab: Tab; selected: number | null; onOpen: (id: number) => void; orderRef: MutableRefObject<number[]>; narrow: boolean }) {
   const [params, setParams] = useSearchParams();
   const formType = (params.get('form') as FormType | null) ?? undefined;
   // 결재 대기함은 진행중 문서만 나오므로 상태 필터를 두지 않는다
@@ -45,11 +45,10 @@ function DocumentList({ tab, selected, onOpen, orderRef }:
     setParams(next, { replace: true });
   };
 
-  const cols: ColumnsType<DocumentSummary> = docColumns({
-    drafter: tab !== 'drafted',
-    status: tab !== 'pending',
-    progress: true,
-  });
+  // 2분할 왼쪽(좁은 목록)은 칸 두 개로 줄여 상세 패널 쪽으로 넘치지 않게 한다. 상세를 Drawer로 여는 폭에서는 넓은 표 그대로
+  const cols: ColumnsType<DocumentSummary> = narrow
+    ? compactDocColumns({ drafter: tab !== 'drafted', status: tab !== 'pending' })
+    : docColumns({ drafter: tab !== 'drafted', status: tab !== 'pending', progress: true });
 
   if (q.isError) return <ErrorPanel error={q.error} onRetry={() => q.refetch()} />;
   return (
@@ -65,6 +64,7 @@ function DocumentList({ tab, selected, onOpen, orderRef }:
       </div>
       <DataTable<DocumentSummary>
         rowKey="documentId"
+        tableLayout="fixed"
         data={q.data}
         loading={q.isPending}
         columns={cols}
@@ -121,7 +121,7 @@ export function ApprovalsPage() {
     if (next != null) open(next); else close();
   };
 
-  const list = <DocumentList key={tab} tab={tab} selected={selected} onOpen={open} orderRef={orderRef} />;
+  const list = <DocumentList key={tab} tab={tab} selected={selected} onOpen={open} orderRef={orderRef} narrow={band !== 'compact'} />;
   const detail = selected != null
     ? <DocumentView key={selected} id={selected} onProcessed={afterProcessed} />
     : <div className={s.empty}><EmptyState title="문서를 선택해 주세요" description="목록에서 문서를 고르면 여기에 상세가 표시됩니다" /></div>;

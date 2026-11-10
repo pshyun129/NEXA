@@ -15,7 +15,7 @@ export function FlowEdge(props: EdgeProps<FlowEdgeType>) {
   const branch = props.data?.branch;
   return (
     <>
-      <BaseEdge id={props.id} path={path} interactionWidth={18}
+      <BaseEdge id={props.id} path={path} interactionWidth={26}
                 style={{ stroke: props.selected ? '#3a3b3e' : STROKE[status], strokeWidth: status === 'idle' && !props.selected ? 1.5 : 2, transition: 'stroke .35s' }} />
       {status === 'running' && (
         <g className={s.edgeRun}>
