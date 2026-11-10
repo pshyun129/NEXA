@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -61,12 +62,20 @@ public class LoadService {
         List<MigrationFile> files = selectFiles(migrationId, fileIds);
         long blocks = count(migrationId, files, Severity.BLOCK);
         long fixes = count(migrationId, files, Severity.FIX);
-        List<LoadPreviewResponse.Item> items = units(files).stream().map(u -> {
+        List<Unit> units = units(files);
+        List<LoadPreviewResponse.Item> items = units.stream().map(u -> {
             List<LoadRow> rows = rows(u, false);
             List<Map<String, Object>> sample = rows.stream().limit(PREVIEW_SAMPLE).map(LoadRow::data).toList();
             return new LoadPreviewResponse.Item(u.file().getFileId(), u.entity(), rows.size(), sample);
         }).toList();
-        return new LoadPreviewResponse(blocks == 0 && fixes == 0, blocks, fixes, items);
+        // 미리보기는 대상이 꺼져 있어도 보여준다 (그때는 기준정보 확인을 건너뛴다)
+        long ambiguous;
+        try {
+            ambiguous = ambiguousReferences(migrationId, units).size();
+        } catch (RuntimeException e) {
+            ambiguous = 0;
+        }
+        return new LoadPreviewResponse(blocks == 0 && fixes == 0 && ambiguous == 0, blocks, fixes, ambiguous, items);
     }
 
     /**
@@ -87,13 +96,9 @@ public class LoadService {
             throw new BusinessException(ErrorCode.FIX_PENDING, "자동 정리 " + fixes + "건을 먼저 적용하세요");
         }
         List<Unit> units = units(files);
-        if (units.stream().anyMatch(u -> u.entity() == MigrationEntity.HR_CODE)) {
-            String ambiguous = references(migrationId).items().stream()
-                    .filter(i -> i.status() == ReferencePlanResponse.Status.AMBIGUOUS)
-                    .map(ReferencePlanResponse.Item::message).collect(Collectors.joining(" / "));
-            if (!ambiguous.isEmpty()) {
-                throw new BusinessException(ErrorCode.REFERENCE_AMBIGUOUS, ambiguous);
-            }
+        List<String> ambiguous = ambiguousReferences(migrationId, units);
+        if (!ambiguous.isEmpty()) {
+            throw new BusinessException(ErrorCode.REFERENCE_AMBIGUOUS, String.join(" / ", ambiguous));
         }
 
         for (Unit unit : units) {
@@ -157,9 +162,19 @@ public class LoadService {
      * 호봉이 없어 1호봉으로 넣는 직급은 NEW 에 message 로 알린다
      */
     public ReferencePlanResponse references(Long migrationId) {
+        // 같은 작업에 사원 파일을 다시 올렸으면 화면처럼 가장 최근 파일만 본다
+        Set<Long> latest = fileRepository.findByMigrationIdOrderByFileIdAsc(migrationId).stream()
+                .filter(f -> f.getEntity() == MigrationEntity.HR_EMPLOYEE)
+                .max(Comparator.comparing(MigrationFile::getFileId))
+                .map(f -> Set.of(f.getFileId())).orElse(Set.of());
+        return references(migrationId, latest);
+    }
+
+    /** fileIds 의 사원 파일 중 기준정보가 아직 적재되지 않은 것만 */
+    private ReferencePlanResponse references(Long migrationId, Set<Long> fileIds) {
         findJob(migrationId);
         List<MigrationFile> employeeFiles = fileRepository.findByMigrationIdOrderByFileIdAsc(migrationId).stream()
-                .filter(f -> f.getEntity() == MigrationEntity.HR_EMPLOYEE)
+                .filter(f -> f.getEntity() == MigrationEntity.HR_EMPLOYEE && fileIds.contains(f.getFileId()))
                 .filter(f -> !batchRepository.existsByFileIdAndEntityAndStatus(f.getFileId(), MigrationEntity.HR_CODE, BatchStatus.LOADED))
                 .toList();
         if (employeeFiles.isEmpty()) {
@@ -222,6 +237,18 @@ public class LoadService {
         return new ReferencePlanResponse(items);
     }
 
+    /** 이번에 넣을 사원 파일(기준정보 묶음)에서 하나로 못 고르는 기준정보 안내. 같은 문장은 한 번만 */
+    private List<String> ambiguousReferences(Long migrationId, List<Unit> units) {
+        Set<Long> codeFiles = units.stream().filter(u -> u.entity() == MigrationEntity.HR_CODE)
+                .map(u -> u.file().getFileId()).collect(Collectors.toSet());
+        if (codeFiles.isEmpty()) {
+            return List.of();
+        }
+        return references(migrationId, codeFiles).items().stream()
+                .filter(i -> i.status() == ReferencePlanResponse.Status.AMBIGUOUS)
+                .map(ReferencePlanResponse.Item::message).distinct().toList();
+    }
+
     /** 적재된 묶음마다 원본 행 수와 대상 서비스에 들어간 수를 비교 */
     public List<ReconciliationItem> reconcile(Long migrationId) {
         findJob(migrationId);
@@ -242,12 +269,20 @@ public class LoadService {
     // ---------- 내부 ----------
 
     /** fileIds가 비면 적재 가능한 파일 전체(이미 적재된 것·미지원 entity 제외), 있으면 그 파일만 엄격하게 확인 */
+    private static final Set<MigrationEntity> SINGLE_FILE = EnumSet.of(MigrationEntity.HR_ORG, MigrationEntity.HR_EMPLOYEE);
+
     private List<MigrationFile> selectFiles(Long migrationId, List<Long> fileIds) {
         List<MigrationFile> all = fileRepository.findByMigrationIdOrderByFileIdAsc(migrationId);
         List<MigrationFile> selected;
         if (fileIds == null || fileIds.isEmpty()) {
+            // 조직·사원은 회사에 하나뿐이라 다시 올린 예전 파일은 넣지 않는다 (지난 급여는 달마다 파일이 따로일 수 있어 모두)
+            Map<MigrationEntity, MigrationFile> latest = new LinkedHashMap<>();
+            all.stream().filter(f -> SINGLE_FILE.contains(f.getEntity()))
+                    .forEach(f -> latest.merge(f.getEntity(), f, (a, b) -> a.getFileId() > b.getFileId() ? a : b));
             selected = all.stream()
-                    .filter(f -> isSupported(f) && !batchRepository.existsByFileIdAndEntityAndStatus(f.getFileId(), f.getEntity(), BatchStatus.LOADED))
+                    .filter(this::isSupported)
+                    .filter(f -> !SINGLE_FILE.contains(f.getEntity()) || latest.get(f.getEntity()) == f)
+                    .filter(f -> !batchRepository.existsByFileIdAndEntityAndStatus(f.getFileId(), f.getEntity(), BatchStatus.LOADED))
                     .toList();
         } else {
             selected = fileIds.stream().map(id -> all.stream().filter(f -> f.getFileId().equals(id)).findFirst()

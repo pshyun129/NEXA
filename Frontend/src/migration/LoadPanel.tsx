@@ -66,11 +66,14 @@ function RollbackCell({ d, b }: { d: MigrationDetail; b: BatchView }) {
       )}
       trigger={(open) => <Button size="small" onClick={open}>되돌리기</Button>}
     >
-      <p>이 묶음으로 들어간 <b>{label} {formatNumber(b.sourceRows)}행</b>(생성 {formatNumber(b.created)} · 수정 {formatNumber(b.updated)})을 대상 서비스에서 되돌립니다.</p>
+      <p>이 묶음으로 들어간 <b>{label} {formatNumber(b.sourceRows)}행</b>(생성 {formatNumber(b.created)} · {updatedLabel(b)} {formatNumber(b.updated)})을 대상 서비스에서 되돌립니다.</p>
       <p className={s.muted}>되돌린 뒤에는 이 파일을 다시 고치거나 적재할 수 있습니다.</p>
     </ConfirmAction>
   );
 }
+
+/** 기준정보(직위·직급…)와 급여 직급표는 이미 있는 값을 그대로 두므로 '수정'이 아니라 '이미 있음'이다 */
+const updatedLabel = (b: BatchView) => (b.entity === 'HR_CODE' || b.entity === 'PAY_PROFILE' ? '이미 있음' : '수정');
 
 function BatchRow({ d, b }: { d: MigrationDetail; b: BatchView }) {
   return (
@@ -78,7 +81,7 @@ function BatchRow({ d, b }: { d: MigrationDetail; b: BatchView }) {
       <td>{batchEntityLabel(b.entity)}</td>
       <td><StatusBadge domain="BatchStatus" value={b.status} /></td>
       <td className="nx-num">{formatNumber(b.sourceRows)}행</td>
-      <td className="nx-num">생성 {formatNumber(b.created)} · 수정 {formatNumber(b.updated)}</td>
+      <td className="nx-num">생성 {formatNumber(b.created)} · {updatedLabel(b)} {formatNumber(b.updated)}</td>
       <td className="nx-num">{formatDateTime(serverUtc(b.finishedAt ?? b.startedAt), true)}</td>
       <td className={s.value}>{b.error ?? ''}</td>
       <td><RollbackCell d={d} b={b} /></td>
@@ -221,7 +224,9 @@ export function LoadPanel({ d, entity, file, onPreview }: {
             ? <Alert type="success" showIcon message={`${ENTITY_LABEL[entity]} ${formatNumber(item?.rows ?? file.rows)}행을 적재할 수 있습니다`}
                      description="아래는 자동 정리가 반영된 값 예시입니다. 실제로는 아직 보내지 않았습니다." />
             : <Alert type="warning" showIcon message="적재할 수 없습니다"
-                     description={`적재 불가 ${formatNumber(result.blockIssues)}건 · 자동 정리 ${formatNumber(result.fixIssues)}건이 남아 있습니다.`} />}
+                     description={[`적재 불가 ${formatNumber(result.blockIssues)}건 · 자동 정리 ${formatNumber(result.fixIssues)}건이 남아 있습니다.`,
+                       result.ambiguousReferences > 0 && `고를 수 없는 기준정보 ${formatNumber(result.ambiguousReferences)}건이 있습니다(직급에 호봉을 적어 주세요).`]
+                       .filter(Boolean).join(' ')} />}
           {item && <SampleTable entity={entity} sample={item.sample} />}
         </div>
       )}

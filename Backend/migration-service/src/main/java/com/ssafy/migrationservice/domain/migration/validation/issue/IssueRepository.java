@@ -70,10 +70,10 @@ public class IssueRepository {
     public List<IssueGroup> groups(Long migrationId, Long fileId, Severity severity) {
         String sql = """
                 SELECT file_id, code, field, source_column, severity, COUNT(*) AS cnt,
-                       MIN(message) AS message,
+                       MIN(message) AS message, COUNT(DISTINCT message) AS message_kinds,
                        (ARRAY_AGG(row_no ORDER BY row_no) FILTER (WHERE row_no IS NOT NULL))[1:%d] AS sample_rows,
                        (ARRAY_AGG(DISTINCT value) FILTER (WHERE value IS NOT NULL))[1:%d] AS sample_values,
-                       MIN(suggestion) AS sample_suggestion
+                       MIN(suggestion) AS sample_suggestion, COUNT(DISTINCT suggestion) AS suggestion_kinds
                 FROM validation_issue
                 %s
                 GROUP BY file_id, code, field, source_column, severity
@@ -87,11 +87,20 @@ public class IssueRepository {
                         rs.getString("source_column"),
                         Severity.valueOf(rs.getString("severity")),
                         rs.getLong("cnt"),
-                        rs.getString("message"),
+                        groupMessage(rs.getString("code"), rs.getString("source_column"), rs.getString("message"), rs.getLong("message_kinds")),
                         intList(rs.getArray("sample_rows")),
                         stringList(rs.getArray("sample_values")),
-                        rs.getString("sample_suggestion")),
+                        // 바꿀 값이 여럿이면 묶음에는 하나만 보여 주지 않는다 (예: 계약 → 계약직, 정규 → 정규직)
+                        rs.getLong("suggestion_kinds") > 1 ? null : rs.getString("sample_suggestion")),
                 params(migrationId, fileId, severity));
+    }
+
+    /** 묶음 제목. 값마다 문장이 다른 허용 값 제안은 첫 행 문장 대신 묶음 전체를 말한다 */
+    private static String groupMessage(String code, String column, String message, long kinds) {
+        if (kinds > 1 && IssueCode.ENUM_VALUE_SUGGESTED.name().equals(code)) {
+            return "'" + column + "'의 허용되지 않는 값을 허용 값으로 바꿉니다 (값마다 바꿀 값은 행 단위 표에서 확인)";
+        }
+        return message;
     }
 
     public List<ValidationIssue> page(Long migrationId, Long fileId, Severity severity, int page, int size) {

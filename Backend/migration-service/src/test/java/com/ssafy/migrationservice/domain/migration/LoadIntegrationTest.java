@@ -237,7 +237,7 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
     @Test
     void 중간에_실패하면_그_묶음을_자동으로_되돌리고_뒤는_진행하지_않는다() throws Exception {
         long id = createJob();
-        upload(id, "HR_ORG", ORG_CSV.replace("D200,인사팀,D010", "D200,FAIL,D010"));
+        upload(id, "HR_ORG", ORG_CSV + "D300,FAIL,D010\n");
         upload(id, "HR_EMPLOYEE", EMP_CSV);
         applyFixes(id);
 
@@ -250,7 +250,7 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
                 .andReturn().getResponse().getContentAsString();
         assertThat((String) JsonPath.read(body, "$.data.batches[1].error")).contains("인사 서비스 호출 실패");
 
-        // 실패 전에 들어간 D010, D100도 자동으로 지워졌다
+        // 실패 전에 들어간 D010·D100·D200도 자동으로 지워졌다
         assertThat(HR.rows("orgs")).isEmpty();
         assertThat(HR.rows("employees")).isEmpty();
         List<?> batches = JsonPath.read(body, "$.data.batches");
@@ -345,6 +345,100 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
         assertThat(HR.rows("employees")).extracting(r -> r.data().get("grade").asString())
                 .containsExactlyInAnyOrder("G3 27호봉", "G2 1호봉");
         assertThat(HR.rows("employees")).allSatisfy(r -> assertThat(r.data().has("gradeStep")).isFalse());
+    }
+
+    // ===== QA 2026-11-09 (MIG-B1~B4, C1) =====
+
+    @Test
+    void 같은_작업에_사원_파일을_다시_올리면_최근_파일의_기준정보만_본다() throws Exception {
+        HR.existingGrade("G3", 1);
+        HR.existingGrade("G3", 2);
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        upload(id, "HR_EMPLOYEE", EMP_CSV);                                   // 예전 파일: 호봉 없는 G3 → 고를 수 없음
+        long fixed = upload(id, "HR_EMPLOYEE", EMP_CSV.replace(",G3,", ",G3 1호봉,"));
+        applyFixes(id);
+
+        mvc.perform(get(BASE + "/{id}/references", id))
+                .andExpect(jsonPath("$.data.items[?(@.status == 'AMBIGUOUS')]").isEmpty())
+                .andExpect(jsonPath("$.data.items[*].fileId").value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is((int) fixed))));
+        // 파일을 고르지 않아도 entity 마다 최근 파일만 넣는다
+        mvc.perform(post(BASE + "/{id}/loads", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("LOADED"))
+                .andExpect(jsonPath("$.data.batches[?(@.entity == 'HR_EMPLOYEE')].fileId").value(contains((int) fixed)));
+    }
+
+    @Test
+    void 미리보기는_고를_수_없는_기준정보가_있으면_적재할_수_없다고_한다() throws Exception {
+        HR.existingGrade("G3", 1);
+        HR.existingGrade("G3", 2);
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        long emp = upload(id, "HR_EMPLOYEE", EMP_CSV);
+        applyFixes(id);
+
+        mvc.perform(post(BASE + "/{id}/loads", id).param("dryRun", "true").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileIds\":[" + emp + "]}"))
+                .andExpect(jsonPath("$.data.loadable").value(false))
+                .andExpect(jsonPath("$.data.blockIssues").value(0))
+                .andExpect(jsonPath("$.data.ambiguousReferences").value(1));
+        // 적재 거절 메시지는 같은 문장을 한 번만
+        String body = mvc.perform(post(BASE + "/{id}/loads", id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fileIds\":[" + emp + "]}"))
+                .andExpect(status().isConflict())
+                .andReturn().getResponse().getContentAsString();
+        String message = JsonPath.read(body, "$.error.message");
+        assertThat(message.split("직급 'G3'", -1)).hasSize(2);
+    }
+
+    @Test
+    void 행_수정에서_형식이_틀린_날짜는_저장하지_않는다() throws Exception {
+        long id = createJob();
+        long emp = upload(id, "HR_EMPLOYEE", EMP_CSV);
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch(BASE + "/{id}/files/{fileId}/rows/{rowNo}", id, emp, 3).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"values\":{\"입사일\":\"2020-13-45\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_001"))
+                .andExpect(jsonPath("$.error.message").value(org.hamcrest.Matchers.containsString("저장하지 않았습니다")));
+        // 원래 값 그대로 (3행 입사일은 형식 문제 없음)
+        mvc.perform(get(BASE + "/{id}/issues", id).param("fileId", String.valueOf(emp)).param("severity", "BLOCK"))
+                .andExpect(jsonPath("$.data.content[?(@.rowNo == 3 && @.field == 'hireDate')]").isEmpty());
+        // 빈 값·고칠 수 있는 표기는 저장한다
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .patch(BASE + "/{id}/files/{fileId}/rows/{rowNo}", id, emp, 3).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"values\":{\"입사일\":\"2023.3.15\"}}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void 조직_파일에_없는_부서는_적재_불가이고_조직을_나중에_올려도_다시_본다() throws Exception {
+        long id = createJob();
+        long emp = upload(id, "HR_EMPLOYEE", EMP_CSV);
+        mvc.perform(get(BASE + "/{id}/issues", id).param("fileId", String.valueOf(emp)))
+                .andExpect(jsonPath("$.data.groups[?(@.code == 'ORG_FILE_MISSING')]").isNotEmpty());
+
+        upload(id, "HR_ORG", ORG_CSV.replace("D200,인사팀,D010\n", ""));     // 인사팀이 없는 조직 파일
+        mvc.perform(get(BASE + "/{id}/issues", id).param("fileId", String.valueOf(emp)).param("severity", "BLOCK"))
+                .andExpect(jsonPath("$.data.content[*].code").value(contains("DEPT_NOT_IN_ORG")))
+                .andExpect(jsonPath("$.data.content[0].rowNo").value(3))
+                .andExpect(jsonPath("$.data.groups[?(@.code == 'ORG_FILE_MISSING')]").isEmpty());
+    }
+
+    @Test
+    void 자동_정리_적용은_요청한_파일의_건수도_돌려준다() throws Exception {
+        long id = createJob();
+        upload(id, "HR_ORG", ORG_CSV);
+        long emp = upload(id, "HR_EMPLOYEE", EMP_CSV);
+
+        mvc.perform(post(BASE + "/{id}/fixes", id).contentType(MediaType.APPLICATION_JSON).content("{\"fileId\":" + emp + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.fileTotals.FIX").value(0))
+                .andExpect(jsonPath("$.data.issueTotals").exists());
+        mvc.perform(post(BASE + "/{id}/fixes", id))
+                .andExpect(jsonPath("$.data.fileTotals").doesNotExist());
     }
 
     @Test
