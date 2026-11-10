@@ -26,6 +26,10 @@
 | `12-admin-builder.md` | 자동화 빌더(캔버스·검사·저장·테스트 실행·입력 폼·노출·배포·버전) | `/admin/builder`, `/admin/builder/:id` |
 | `13-e2e-scenarios.md` | 계정을 넘나드는 종단 시나리오(창 2개) | 여러 화면 |
 
+**실행 결과**: 2026-11-09~10 회차 결과는 각 체크리스트의 결과 칸에 적었다. 상세는 [`results/2026-11-09/`](results/2026-11-09/README.md)에 있다.
+- 서비스별 버그·수정 요청: [`bugs-by-service.md`](results/2026-11-09/bugs-by-service.md)
+- 아직 못 한 항목: [`remaining-by-service.md`](results/2026-11-09/remaining-by-service.md)
+
 ---
 
 ## 2. 환경 (배포 서버 기준, 2026-11-09 갱신)
