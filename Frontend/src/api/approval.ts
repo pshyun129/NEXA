@@ -193,7 +193,8 @@ export function useApprovalLinePreview(formType: DraftFormType, attributes: Appr
 export function useCreateDocument() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { title: string; formType: DraftFormType; attributes: ApprovalAttributes }) =>
+    // requestKey: 같은 키로 다시 보내면 서버가 처음 만든 문서를 돌려준다(연타·재시도 중복 상신 방지)
+    mutationFn: (body: { title: string; formType: DraftFormType; attributes: ApprovalAttributes; requestKey: string }) =>
       api.post<{ documentId: number; docNo: string }>(BASE, body),
     onSettled: () => qc.invalidateQueries({ queryKey: docKeys.lists }),
   });

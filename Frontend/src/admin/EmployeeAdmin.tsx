@@ -10,6 +10,7 @@ import { DataTable } from '@/ui/DataTable';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { useNotify } from '@/ui/useNotify';
+import { isApiError } from '@/api/ApiError';
 import { formatDateShort, formatNumber, nowKst } from '@/format';
 import s from './admin.module.css';
 
@@ -46,10 +47,20 @@ function TerminateModal({ emp, headOf, onClose }: { emp: Employee; headOf: Depar
   const terminate = useTerminateEmployee();
   const [date, setDate] = useState(nowKst().format('YYYY-MM-DD'));
   const [reason, setReason] = useState('');
-  const ok = () => terminate.mutate({ empId: emp.empId, resignDate: date, resignReason: reason.trim() }, {
-    onSuccess: () => { notify.success(`${emp.name} 님을 퇴직 처리했습니다`); onClose(); },
-    onError: (e) => notify.error(e, '퇴직 처리하지 못했습니다'),
-  });
+  // 입력값 오류(COMMON_001)는 "resignDate: …"처럼 필드명이 붙어 온다. 해당 칸 아래에 문구만 보여 준다(QA HR-C1)
+  const [fieldError, setFieldError] = useState<Record<string, string>>({});
+  const ok = () => {
+    setFieldError({});
+    terminate.mutate({ empId: emp.empId, resignDate: date, resignReason: reason.trim() }, {
+      onSuccess: () => { notify.success(`${emp.name} 님을 퇴직 처리했습니다`); onClose(); },
+      onError: (e) => {
+        const fields = isApiError(e) ? e.fieldErrors() : [];
+        // 이 모달에 없는 칸의 오류면 숨지 않도록 토스트로 보낸다
+        if (fields.length > 0 && fields.every((f) => f.name === 'resignDate' || f.name === 'resignReason')) setFieldError(Object.fromEntries(fields.map((f) => [f.name, f.errors.join(' ')])));
+        else notify.error(e, '퇴직 처리하지 못했습니다');
+      },
+    });
+  };
   return (
     <Modal
       open
@@ -72,11 +83,15 @@ function TerminateModal({ emp, headOf, onClose }: { emp: Employee; headOf: Depar
         )}
         <label className={s.field}>
           <span>퇴직일</span>
-          <DatePicker value={dayjs(date)} allowClear={false} onChange={(v) => v && setDate(v.format('YYYY-MM-DD'))} aria-label="퇴직일" />
+          <DatePicker value={dayjs(date)} allowClear={false} onChange={(v) => v && setDate(v.format('YYYY-MM-DD'))} aria-label="퇴직일"
+                      status={fieldError.resignDate ? 'error' : undefined} />
+          {fieldError.resignDate && <span className={s.fieldError} role="alert">{fieldError.resignDate}</span>}
         </label>
         <label className={s.field}>
           <span>사유(선택)</span>
-          <Input.TextArea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoSize={{ minRows: 2, maxRows: 4 }} aria-label="퇴직 사유" />
+          <Input.TextArea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoSize={{ minRows: 2, maxRows: 4 }} aria-label="퇴직 사유"
+                          status={fieldError.resignReason ? 'error' : undefined} />
+          {fieldError.resignReason && <span className={s.fieldError} role="alert">{fieldError.resignReason}</span>}
         </label>
       </div>
     </Modal>
