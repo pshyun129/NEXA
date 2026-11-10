@@ -54,6 +54,33 @@ class LeaveApprovalResultServiceTest {
     }
 
     @Test
+    void recoveryClaimsOnceAndFencesAnOlderFailureWithoutLedgerChanges() {
+        UUID traceId = request.getApprovalRequestId();
+        service.startCall(7L, traceId);
+        service.recordUnknownAfterHttp(7L, traceId, "TIMEOUT", 1);
+
+        assertThat(service.startRecoveryCall(7L, traceId).attemptCount()).isEqualTo(2);
+        assertThat(service.startRecoveryCall(7L, traceId).callRequired()).isFalse();
+        service.recordUnknownAfterHttp(7L, traceId, "LATE_TIMEOUT", 1);
+
+        assertThat(request.getApprovalCreationStatus()).isEqualTo(ApprovalCreationStatus.IN_PROGRESS);
+        assertThat(request.getApprovalRequestId()).isEqualTo(traceId);
+        verifyNoInteractions(ledger, allocations, accounts, recovery);
+    }
+
+    @Test
+    void recoveryMayReclaimAbandonedInProgressButNeverCancelsReservation() {
+        UUID traceId = request.getApprovalRequestId();
+        service.startCall(7L, traceId);
+        when(locks.currentTime()).thenReturn(now.plusSeconds(29));
+        assertThat(service.startRecoveryCall(7L, traceId).callRequired()).isFalse();
+        when(locks.currentTime()).thenReturn(now.plusSeconds(30));
+        assertThat(service.startRecoveryCall(7L, traceId).callRequired()).isTrue();
+        assertThat(request.getStatus()).isEqualTo(LeaveRequestStatus.SUBMITTING);
+        verifyNoInteractions(ledger, allocations, accounts, recovery);
+    }
+
+    @Test
     void successNeverAccessesReservationOrConsumesIt() {
         service.linkCreatedDocument(7L, request.getApprovalRequestId(), 901L);
         assertThat(request.getStatus()).isEqualTo(LeaveRequestStatus.SUBMITTED);

@@ -15,6 +15,15 @@ public interface ApprovalClient {
         return false;
     }
 
+    default boolean supportsIdempotentResume() {
+        return false;
+    }
+
+    default ApprovalCreationResult resume(ApprovalCreateCommand command) {
+        return new ApprovalCreationResult(command.approvalRequestId(), ApprovalCreationResult.Outcome.UNKNOWN,
+                null, "APPROVAL_RESUME_UNSUPPORTED");
+    }
+
     default ApprovalCreationResult recover(com.ssafy.leaveservice.domain.request.dto.LeaveSubmissionResult request) {
         return findByRequestId(request.approvalRequestId());
     }

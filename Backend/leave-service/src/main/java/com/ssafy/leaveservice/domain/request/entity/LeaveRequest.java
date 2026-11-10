@@ -242,6 +242,19 @@ public class LeaveRequest {
         if (approvalCreationStatus != ApprovalCreationStatus.NOT_SENT) {
             throw new BusinessException(ErrorCode.DATA_INTEGRITY_VIOLATION);
         }
+        beginApprovalAttempt(now);
+    }
+
+    public void resumeApprovalCall(OffsetDateTime now) {
+        requirePendingApproval();
+        if (approvalCreationStatus != ApprovalCreationStatus.UNKNOWN
+                && approvalCreationStatus != ApprovalCreationStatus.IN_PROGRESS) {
+            throw new BusinessException(ErrorCode.DATA_INTEGRITY_VIOLATION);
+        }
+        beginApprovalAttempt(now);
+    }
+
+    private void beginApprovalAttempt(OffsetDateTime now) {
         int nextAttempt;
         try {
             nextAttempt = Math.addExact(approvalAttemptCount, 1);

@@ -74,8 +74,9 @@ class ApprovalHttpClientTest {
                 .andRespond(withStatus(HttpStatusCode.valueOf(status)));
 
         ApprovalCreationResult result = client.recover(pending());
-        assertThat(result.outcome()).isEqualTo(status == 409
-                ? ApprovalCreationResult.Outcome.CONFLICT : ApprovalCreationResult.Outcome.UNKNOWN);
+        ApprovalCreationResult.Outcome expected = status == 409 ? ApprovalCreationResult.Outcome.CONFLICT
+                : status == 404 ? ApprovalCreationResult.Outcome.LOOKUP_NOT_FOUND : ApprovalCreationResult.Outcome.UNKNOWN;
+        assertThat(result.outcome()).isEqualTo(expected);
         assertThat(result.documentId()).isNull();
         server.verify();
     }
@@ -99,6 +100,35 @@ class ApprovalHttpClientTest {
         SecurityContextHolder.clearContext();
 
         assertThatThrownBy(() -> client.create(command())).isInstanceOf(BusinessException.class);
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {7, 8})
+    void resumeUsesSameUuidAndVerifiesIdentityAfterIdempotentPost(long drafter) {
+        server.expect(requestTo(DOCUMENTS)).andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"sourceId":42,"requestKey":"%s","attributes":{"days":1.5}}
+                        """.formatted(KEY)))
+                .andRespond(withSuccess("{\"success\":true,\"data\":{\"documentId\":123}}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(DOCUMENTS + "/by-request/" + KEY)).andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"success":true,"data":{"documentId":123,"requestKey":"%s","sourceId":42,
+                         "sourceType":"LEAVE","formType":"LEAVE","drafterId":%d,"status":"INPROGRESS"}}
+                        """.formatted(KEY, drafter), MediaType.APPLICATION_JSON));
+
+        assertThat(client.resume(command()).outcome()).isEqualTo(drafter == 7
+                ? ApprovalCreationResult.Outcome.SUBMITTED_CONFIRMED : ApprovalCreationResult.Outcome.CONFLICT);
+        server.verify();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 403, 409, 503})
+    void failedResumeNeverTreatsHttpStatusAsConfirmedAbsence(int status) {
+        server.expect(requestTo(DOCUMENTS)).andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatusCode.valueOf(status)));
+        assertThat(client.resume(command()).outcome()).isEqualTo(status == 409
+                ? ApprovalCreationResult.Outcome.CONFLICT : ApprovalCreationResult.Outcome.UNKNOWN);
         server.verify();
     }
 

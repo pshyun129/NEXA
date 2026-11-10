@@ -106,6 +106,8 @@ class ApprovalLeaveFlowIntegrationTest {
     private volatile long lookupSourceOffset;
     private volatile long lookupDrafter = 1;
     private volatile long lookupDocumentOffset;
+    private volatile boolean unavailableBeforeCreate;
+    private final AtomicInteger createdDocuments = new AtomicInteger();
     private MockMvc mvc;
     private LocalDate day;
 
@@ -279,7 +281,8 @@ class ApprovalLeaveFlowIntegrationTest {
         submit().andExpect(status().isCreated()).andExpect(jsonPath("$.data.status").value("SUBMITTED"));
         assertThat(reserved()).isEqualTo(480L);
         submit().andExpect(status().isCreated());
-        assertThat(posts).hasValue(1);
+        assertThat(posts).hasValue(2);
+        assertThat(createdDocuments).hasValue(1);
         assertThat(lookups).hasValue(5);
 
         publish(earlyApproval);
@@ -287,6 +290,51 @@ class ApprovalLeaveFlowIntegrationTest {
         publish(conflict);
         awaitDeadLetter(conflict);
         assertSettlement("APPROVED", "CONSUME", -480);
+    }
+
+    @Test
+    void resumesMissingDocumentWithSameUuidThenSettlesThroughKafka() throws Exception {
+        unavailableBeforeCreate = true;
+        String first = submit().andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        long requestId = JSON.readTree(first).path("data").path("requestId").asLong();
+        UUID originalKey = jdbc.queryForObject("select approval_request_id from leave_request where leave_req_id=?",
+                UUID.class, requestId);
+        assertThat(remote).isNull();
+
+        unavailableBeforeCreate = false;
+        submit().andExpect(status().isCreated()).andExpect(jsonPath("$.data.requestId").value(requestId));
+        assertThat(remote.requestKey()).isEqualTo(originalKey.toString());
+        assertThat(createdDocuments).hasValue(1);
+        assertThat(posts).hasValue(2);
+        assertThat(reserved()).isEqualTo(480);
+        assertThat(jdbc.queryForObject("select count(*) from leave_ledger where leave_req_id=? and event_type='RESERVE'",
+                Integer.class, requestId)).isEqualTo(1);
+        submit().andExpect(status().isCreated());
+        assertThat(posts).hasValue(2);
+
+        publish(event("APPROVED"));
+        String conflict = event("REJECTED");
+        publish(conflict);
+        awaitDeadLetter(conflict);
+        assertSettlement("APPROVED", "CONSUME", -480);
+    }
+
+    @Test
+    void permissionFailureDuringLookupNeverRecreatesOrReleases() throws Exception {
+        loseResponse = true;
+        submit().andExpect(status().isAccepted());
+        lookupStatus = 403;
+        submit().andExpect(status().isAccepted());
+        assertThat(posts).hasValue(1);
+        assertThat(reserved()).isEqualTo(480);
+        assertThat(row()).containsEntry("status", "SUBMITTING");
+        lookupStatus = 200;
+        submit().andExpect(status().isCreated());
+        publish(event("REJECTED"));
+        String conflict = event("APPROVED");
+        publish(conflict);
+        awaitDeadLetter(conflict);
+        assertSettlement("REJECTED", "RELEASE", 0);
     }
 
     @Test
@@ -340,8 +388,18 @@ class ApprovalLeaveFlowIntegrationTest {
             if ("POST".equals(exchange.getRequestMethod())) {
                 posts.incrementAndGet();
                 JsonNode body = JSON.readTree(exchange.getRequestBody().readAllBytes());
+                if (unavailableBeforeCreate) {
+                    respond(exchange, 503, "{\"success\":false}");
+                    return;
+                }
                 long requestId = body.path("sourceId").asLong();
-                remote = new RemoteDocument(requestId, requestId + 1000, body.path("requestKey").asString());
+                if (remote == null) {
+                    remote = new RemoteDocument(requestId, requestId + 1000, body.path("requestKey").asString());
+                    createdDocuments.incrementAndGet();
+                } else {
+                    assertThat(remote.requestId()).isEqualTo(requestId);
+                    assertThat(remote.requestKey()).isEqualTo(body.path("requestKey").asString());
+                }
                 assertThat(body.path("sourceType").asString()).isEqualTo("LEAVE");
                 assertThat(body.path("formType").asString()).isEqualTo("LEAVE");
                 assertThat(body.path("attributes").path("days").asInt()).isEqualTo(1);
@@ -356,6 +414,10 @@ class ApprovalLeaveFlowIntegrationTest {
             }
 
             lookups.incrementAndGet();
+            if (remote == null) {
+                respond(exchange, 404, "{\"success\":false}");
+                return;
+            }
             assertThat(exchange.getRequestURI().getPath()).isEqualTo("/api/v1/documents/by-request/" + remote.requestKey());
             respond(exchange, lookupStatus, """
                     {"success":true,"data":{"documentId":%d,"requestKey":"%s","sourceId":%d,

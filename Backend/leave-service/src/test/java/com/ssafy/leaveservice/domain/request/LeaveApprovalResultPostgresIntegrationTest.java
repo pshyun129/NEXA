@@ -470,6 +470,34 @@ class LeaveApprovalResultPostgresIntegrationTest {
     }
 
     @Test
+    void concurrentRecoveryClaimsOnlyOneCommittedAttemptAndFencesLateFailure() throws Exception {
+        LeaveSubmissionResult initial = pending();
+        approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
+        approvalResultService.recordUnknownAfterHttp(initial.requestId(), initial.approvalRequestId(), "TIMEOUT", 1);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<LeaveApprovalCallStartResult> claim = () -> {
+                start.await();
+                return approvalResultService.startRecoveryCall(initial.requestId(), initial.approvalRequestId());
+            };
+            Future<LeaveApprovalCallStartResult> first = executor.submit(claim);
+            Future<LeaveApprovalCallStartResult> second = executor.submit(claim);
+            start.countDown();
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .filteredOn(LeaveApprovalCallStartResult::callRequired).hasSize(1);
+            approvalResultService.recordUnknownAfterHttp(initial.requestId(), initial.approvalRequestId(), "LATE", 1);
+            assertThat(requestRow(initial)).containsEntry("approval_attempt_count", 2)
+                    .containsEntry("approval_creation_status", "IN_PROGRESS")
+                    .containsEntry("approval_request_id", initial.approvalRequestId());
+            assertThat(jdbcTemplate.queryForObject("select count(*) from leave_ledger where event_type='RESERVE'", Integer.class)).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject("select count(*) from leave_ledger where event_type='RELEASE'", Integer.class)).isZero();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void differentEmployeesRacingForSameDocumentAreProtectedByRealUniqueConstraint() throws Exception {
         LeaveSubmissionResult first = pending();
         currentEmployeeId.set(2L);
