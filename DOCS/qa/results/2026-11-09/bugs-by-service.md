@@ -114,7 +114,7 @@
 | CM-B3 (F5) | P2 | 로그인된 상태에서 `/login`을 직접 열면 홈으로 가지 않고 로그인 폼이 보임 | `LoginPage.tsx:46`은 `status === 'authenticated'`만 처리. 직접 열면 status가 unknown이라 폼부터 보임 | unknown일 때 `/employees/me` 확인 후 이동(SessionGate 안에서 렌더) |
 | CM-B4 (F14) | P2 | 로그인 잠금 카운트다운이 처음 1초 "16:29"로 표시 | 남은 시간 초기값 계산 | 서버 남은 초로 첫 렌더 |
 | CM-C1 (C29) | P3 | 세션 만료(퇴직·다른 기기)로 로그인 화면에 올 때 안내 문구·`?next`가 남지 않을 때가 있음(E9-03) | 만료 처리 경로마다 다름 | 공통 만료 핸들러로 통일 |
-| CM-C2 (C36) | P3 | 서비스가 꺼지면 게이트웨이가 30초 기다린 뒤 재시도해 약 45초 동안 Skeleton만 보임 / attendance가 꺼지면 홈 "오늘 근무" 카드가 빈 채로 남음 | gateway 타임아웃·재시도 설정(Sunghyun Park), 홈 카드 오류 처리(프론트) | 연결 실패는 빠르게 실패(connect timeout 짧게), 카드마다 ErrorPanel |
+| CM-C2 (C36) | P3 | 서비스가 꺼지면 게이트웨이가 30초 기다린 뒤 재시도해 약 45초 동안 Skeleton만 보임 / attendance가 꺼지면 홈 "오늘 근무" 카드가 빈 채로 남음 | gateway 타임아웃·재시도 설정(Sunghyun Park), 홈 카드 오류 처리(프론트) | 연결 실패는 빠르게 실패(connect timeout 짧게), 카드마다 ErrorPanel. **홈 카드 수정(2026-11-10, 황문규, `fix/qa-1109-clock-card`)**: "오늘 근무" 카드가 오류면 ErrorPanel + [다시 시도], 불러오는 중이면 Skeleton(`Clock.tsx` `ClockPanel`). 로컬 확인: attendance 중지 → 다른 카드처럼 "불러오지 못했습니다", 재기동 후 [다시 시도]로 복구. **gateway 대기(약 45초 Skeleton)는 남음(Sunghyun Park)** |
 | CM-C3 (C21) | P3 | 이메일 앞뒤 공백이 있으면 형식 오류로 막힘 | 로그인 폼 검증 | trim 후 검사 |
 | (참고) F12 | — | 탑바 결재 숫자 60초 갱신 없음 → **재현 안 됨**: 11-10 AP-120·E1-05에서 20~50초 안에 갱신 확인 | — | 종료 처리 |
 
