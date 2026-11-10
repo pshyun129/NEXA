@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Button } from 'antd';
-import { isFinal, useNodeCatalog, useRun, useRunSteps, useWorkflow, type RunStep } from '@/api/ai';
+import { isFinal, runEndedRejected, useNodeCatalog, useRun, useRunSteps, useWorkflow, type RunStep } from '@/api/ai';
 import type { Graph } from '@/api/builder';
 import { lookOf, TONE_COLOR, type NodeCategory, type NodeRunState } from '@/flow/FlowNode';
 import { Illustration } from '@/flow/Illustration';
@@ -80,11 +80,14 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
   const prev = useRef(status);
   useEffect(() => {
     if (prev.current && status && prev.current !== status && isFinal(status)) {
-      if (status === 'SUCCEEDED') notify.success('자동화 실행이 끝났습니다', wf.data?.name);
+      if (status === 'SUCCEEDED') {
+        if (runEndedRejected(status, steps.data)) notify.info('결재가 반려되어 자동화를 마쳤습니다', wf.data?.name);
+        else notify.success('자동화 실행이 끝났습니다', wf.data?.name);
+      }
       if (status === 'FAILED') notify.info('자동화 실행이 실패했습니다', '실행 화면에서 원인을 확인해 주세요');
     }
     prev.current = status;
-  }, [status, notify, wf.data?.name]);
+  }, [status, notify, wf.data?.name, steps.data]);
 
   // 지금 단계가 보이도록 가로 스크롤을 옮긴다
   const trackRef = useRef<HTMLDivElement>(null);
@@ -94,7 +97,12 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
 
   const nodes = ordered.length ? ordered : list.map((st) => ({ id: st.nodeId, type: st.nodeType, position: { x: 0, y: 0 }, config: {} }));
   const curName = current ? catalog.data?.get(current.nodeType)?.name ?? current.nodeType : '';
-  const tone = status === 'SUCCEEDED' ? 'ok' : status === 'FAILED' ? 'err' : status === 'WAITING' ? 'wait' : 'run';
+  const rejected = runEndedRejected(status, list);
+  // 결재 대기는 결재자를 기다린다: 요청자에게 [확인하기]를 띄우지 않고 결재함으로 안내한다
+  const approvalWait = status === 'WAITING' && run.data?.waitingType === 'approval_wait';
+  const tone = rejected ? 'wait' : status === 'SUCCEEDED' ? 'ok' : status === 'FAILED' ? 'err' : status === 'WAITING' ? 'wait' : 'run';
+  const statusText = rejected ? '반려로 종료' : status === 'SUCCEEDED' ? '완료' : status === 'FAILED' ? '실패'
+    : approvalWait ? '결재 대기' : status === 'WAITING' ? '확인 대기' : status === 'CANCELED' ? '취소됨' : '실행 중';
 
   return (
     <section className={s.mini} role="status" aria-live="polite" aria-label="자동화 진행 상황">
@@ -102,7 +110,7 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
         <span className={`${s.miniDot} ${s[`dot-${tone}`]}`} />
         <div className={s.miniTitle}>
           <strong>{wf.data?.name ?? `워크플로 #${workflowId}`}</strong>
-          <span>run #{runId} · {status === 'SUCCEEDED' ? '완료' : status === 'FAILED' ? '실패' : status === 'WAITING' ? '확인 대기' : status === 'CANCELED' ? '취소됨' : '실행 중'}</span>
+          <span>run #{runId} · {statusText}</span>
         </div>
         <button type="button" className={s.miniBtn} onClick={onExpand} aria-label="실행 화면 크게 보기"><Icon as={Expand} size={16} /></button>
         <button type="button" className={s.miniBtn} onClick={onClose} aria-label="진행 창 닫기"><Icon as={X} size={16} /></button>
@@ -122,7 +130,7 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
                    data-current={st && st.id === current?.id ? 'true' : undefined} title={catalog.data?.get(n.type)?.name ?? n.type}>
                 <span className={s.miniArt}><Illustration kind={look.art} className={s.miniIll} /></span>
                 <span className={s.miniName}>{catalog.data?.get(n.type)?.name ?? n.type}</span>
-                <span className={s.miniState}>{STATE_TEXT[state]}</span>
+                <span className={s.miniState}>{state === 'WAITING' && approvalWait ? '결재 대기' : STATE_TEXT[state]}</span>
                 {state === 'RUNNING' && <span className={s.miniRunLine} />}
               </div>
             </div>
@@ -134,11 +142,11 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
         <div className={s.miniProgress}><span style={{ width: `${pct}%` }} className={status === 'FAILED' ? s.progFail : ''} /></div>
         <span className="nx-num">{done}/{total} · {secs.toFixed(1)}초</span>
       </div>
-      <p className={s.miniLine}>{stepLine(current, curName)}</p>
-      {status === 'WAITING' && (
+      <p className={s.miniLine}>{rejected ? '결재가 반려되어 흐름을 마쳤어요.' : approvalWait ? '결재자의 승인을 기다리고 있어요. 결과가 나오면 이어서 진행해요.' : stepLine(current, curName)}</p>
+      {status === 'WAITING' && !approvalWait && (
         <Button type="primary" block onClick={onExpand}>확인하기</Button>
       )}
-      {final && status !== 'SUCCEEDED' && <Button block onClick={onExpand}>실행 화면에서 보기</Button>}
+      {final && (status !== 'SUCCEEDED' || rejected) && <Button block onClick={onExpand}>실행 화면에서 보기</Button>}
     </section>
   );
 }

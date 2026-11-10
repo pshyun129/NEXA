@@ -49,7 +49,20 @@ export interface RunSummary {
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  /** WAITING일 때 무엇을 기다리는지(runs/models.py Run.waiting_type). 사람 확인 / 결재 대기 */
+  waitingType?: 'human_confirm' | 'approval_wait' | null;
 }
+
+/** 목록 배지 값: 결재 대기는 "확인 대기"와 구분한다(QA C20). 나머지는 실행 상태 그대로 */
+export const runBadgeValue = (r: { status: RunStatus; waitingType?: RunSummary['waitingType'] }) =>
+  r.status === 'WAITING' && r.waitingType === 'approval_wait' ? 'WAITING_APPROVAL' : r.status;
+
+/**
+ * 반려로 끝났는지(QA AUTO-B3). 반려돼도 실행은 SUCCEEDED로 끝나고(요구사항 3.7) 마지막 단계는 업무 완료라
+ * 마지막 단계만 보면 놓친다 → 결재 대기·사람 확인 단계 중 '반려/회수' 결과가 있었는지 본다
+ */
+export const runEndedRejected = (status: RunStatus | undefined, steps: { branch: string | null }[] | undefined) =>
+  status === 'SUCCEEDED' && !!steps?.some((st) => st.branch === '반려' || st.branch === '회수');
 
 /** 실행에 붙은 파일. 서버가 inputs.files에 넣는다(runs/service.py `_file_info`, snake_case). path는 서버 경로라 쓰지 않는다 */
 export interface RunInputFile { file_id: number; name: string; content_type: string | null; size: number }
@@ -143,10 +156,11 @@ export function useMyPendingRuns(enabled = true) {
  * 내 실행 이력(P1, 요구사항 3.7 #7). 서버가 최근 50건만 준다(id 내림차순, runs/service.py list_my_runs).
  * status는 값 하나로만 거른다. 진행 중 실행이 있으면 10초마다 다시 불러온다.
  */
-export function useMyRuns(status: RunStatus | null) {
+export function useMyRuns(status: RunStatus | null, enabled = true) {
   return useQuery({
     queryKey: ['runs', 'me', status ?? 'ALL'] as const,
     queryFn: () => api.get<RunSummary[]>(`${BASE}/runs/me`, { params: status ? { status } : undefined }),
+    enabled,
     placeholderData: keepPreviousData,
     refetchInterval: (q) => (!document.hidden && q.state.data?.some((r) => !isFinal(r.status)) ? 10_000 : false),
     refetchIntervalInBackground: false,
@@ -217,9 +231,15 @@ export function useDeleteRunFile() {
 }
 
 export function useStartRun(workflowId: number) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { inputs: Record<string, unknown>; fileIds: number[] }) =>
       api.post<{ runId: number; status: RunStatus }>(`${BASE}/workflows/${workflowId}/runs`, body),
+    // 실행 직후 다른 화면으로 가도 탑바·홈 숫자가 맞도록(QA AUTO-B5)
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: runKeys.pending });
+      qc.invalidateQueries({ queryKey: ['runs', 'me'] });
+    },
   });
 }
 
@@ -235,9 +255,16 @@ function pollMs(status: RunStatus | undefined, boost = false) {
 
 /** enabled=false면 부르지 않는다(빌더 캔버스가 테스트 실행이 있을 때만 상태를 겹쳐 그린다) */
 export function useRun(id: number, boost = false, enabled = true) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: runKeys.run(id),
-    queryFn: () => api.get<RunDetail>(`${BASE}/runs/${id}`),
+    queryFn: async () => {
+      const prev = qc.getQueryData<RunDetail>(runKeys.run(id))?.status;
+      const run = await api.get<RunDetail>(`${BASE}/runs/${id}`);
+      // 상태가 바뀌면(실행 중 → 확인 대기, 확인 대기 → 완료 등) 확인 대기 숫자를 바로 다시 센다(QA AUTO-B5)
+      if (prev && prev !== run.status) qc.invalidateQueries({ queryKey: runKeys.pending });
+      return run;
+    },
     enabled,
     placeholderData: undefined,
     refetchInterval: (q) => (q.state.data ? pollMs(q.state.data.status, boost) : false),

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Drawer, Input, InputNumber, Modal, Select, Skeleton } from 'antd';
+import { App, Button, Drawer, Input, InputNumber, Modal, Select, Skeleton } from 'antd';
 import {
   Background, BackgroundVariant, MiniMap, ReactFlow, ReactFlowProvider, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
   type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
-  useBuilderWorkflow, useNodeCategories, useNodeDetails, useSaveGraph, useStartTestRun, useValidateGraph,
+  fetchBuilderWorkflow, useBuilderWorkflow, useNodeCategories, useNodeDetails, useSaveGraph, useStartTestRun, useValidateGraph,
   type BuilderWorkflow, type Graph, type NodeDetail, type ValidationIssue,
 } from '@/api/builder';
-import { isFinal, useMyRuns, useRun, useRunSteps, type RunStep, type RunStatus } from '@/api/ai';
+import { isFinal, runBadgeValue, useMyRuns, useRun, useRunSteps, type RunStep, type RunStatus } from '@/api/ai';
 import { TONE_COLOR, lookOf, nodeTypes, type FlowNodeData, type NodeCategory, type NodeRunState } from '@/flow/FlowNode';
 import { edgeTypes, type EdgeRunStatus, type FlowEdgeData } from '@/flow/FlowEdge';
 import { Illustration } from '@/flow/Illustration';
@@ -149,6 +149,7 @@ const SUMMARY: Record<RunStatus | 'none', [string, string?]> = {
 function Editor({ wf, live, catalog, byType, onDirtyChange }:
   { wf: BuilderWorkflow; live: BuilderWorkflow; catalog: NodeDetail[]; byType: Map<string, NodeDetail>; onDirtyChange?: (dirty: boolean) => void }) {
   const notify = useNotify();
+  const { modal } = App.useApp();
   const flow = useReactFlow<BNode, BEdge>();
   const categories = useNodeCategories();
   const save = useSaveGraph(wf.id);
@@ -260,11 +261,18 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
   const addNode = (type: string, position?: { x: number; y: number }) => {
     const d = byType.get(type);
     if (!d) return;
-    const pos = position ?? flow.screenToFlowPosition({ x: window.innerWidth / 2 - 107, y: window.innerHeight / 2 - 100 });
-    setNodes((ns) => [
-      ...ns.map((n) => ({ ...n, selected: false })),
-      { ...toNode({ id: nextId('n', ns.map((n) => n.id)), type, position: { x: pos.x, y: pos.y / Y_SCALE }, config: {} }, byType), selected: true },
-    ]);
+    const base = position ?? flow.screenToFlowPosition({ x: window.innerWidth / 2 - 107, y: window.innerHeight / 2 - 100 });
+    setNodes((ns) => {
+      // 화면 가운데에 이미 노드가 있으면 겹치지 않게 오른쪽 아래로 비켜 놓는다(QA AUTO-C2)
+      const pos = { ...base };
+      for (let i = 0; !position && i < 20 && ns.some((n) => Math.abs(n.position.x - pos.x) < 60 && Math.abs(n.position.y - pos.y) < 60); i++) {
+        pos.x += 48; pos.y += 48;
+      }
+      return [
+        ...ns.map((n) => ({ ...n, selected: false })),
+        { ...toNode({ id: nextId('n', ns.map((n) => n.id)), type, position: { x: pos.x, y: pos.y / Y_SCALE }, config: {} }, byType), selected: true },
+      ];
+    });
     touch();
   };
 
@@ -282,8 +290,22 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
     touch();
   };
 
+  // 마지막으로 불러오거나 저장한 서버 초안. 저장 전에 서버 초안이 이것과 다르면 다른 창에서 바뀐 것이다
+  const syncedGraph = useRef(JSON.stringify(wf.draftGraph));
   const doSave = async () => {
+    const server = await fetchBuilderWorkflow(wf.id);
+    if (JSON.stringify(server.draftGraph) !== syncedGraph.current) {
+      // 검사·테스트 실행 전 자동 저장이 다른 창의 변경을 말없이 덮어쓰던 문제(QA AUTO-C2) → 먼저 묻는다
+      const overwrite = await new Promise<boolean>((resolve) => modal.confirm({
+        title: '다른 창에서 이 초안이 바뀌었습니다',
+        content: `서버 초안이 ${formatTime(serverUtc(server.updatedAt))}에 저장됐습니다. 지금 화면의 그래프로 덮어쓸까요?`,
+        okText: '덮어쓰기', cancelText: '취소', okButtonProps: { danger: true }, zIndex: 1200,
+        onOk: () => resolve(true), onCancel: () => resolve(false),
+      }));
+      if (!overwrite) throw new Error('저장을 취소했습니다');
+    }
     const wf2 = await save.mutateAsync(graph);
+    syncedGraph.current = JSON.stringify(wf2.draftGraph);
     setDirty(false);
     setSavedAt(wf2.updatedAt);
     return wf2;
@@ -488,7 +510,7 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
                       <small>{formatDateTime(serverUtc(r.createdAt), true)}
                         {r.startedAt && r.finishedAt && ` · ${formatElapsed(Date.parse(serverUtc(r.finishedAt)) - Date.parse(serverUtc(r.startedAt)))}`}</small>
                     </span>
-                    <StatusBadge domain="RunStatus" value={r.status} />
+                    <StatusBadge domain="RunStatus" value={runBadgeValue(r)} />
                   </button>
                 ))}
             </div>
@@ -685,7 +707,8 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
 
       {/* ---------- 단계 추가(라이브러리) ---------- */}
       <Modal open={libOpen} onCancel={() => setLibOpen(false)} footer={null} width={640} destroyOnHidden className={s.libModal}
-             afterOpenChange={(o) => { if (o) document.getElementById(PALETTE_SEARCH_ID)?.focus(); }}>
+             // 다시 열면 지난 검색어 없이 전체 목록부터(QA AUTO-C2)
+             afterOpenChange={(o) => { if (o) document.getElementById(PALETTE_SEARCH_ID)?.focus(); else setQ(''); }}>
         <div className={s.libHead}>
           <div className={s.eyebrow}>BUILD YOUR FLOW</div>
           <h2>다음 연결을 선택하세요.</h2>

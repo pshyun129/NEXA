@@ -39,8 +39,15 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
   const [comment, setComment] = useState('');
   const edited = rows.filter((k) => norm(values[k]) !== norm(ai[k]));
 
+  // 숫자 칸을 비우면 화면은 비어 보이는데 서버에는 ""가 저장돼 규정 검토가 보류로 끝났다(QA AUTO-C1) → 확인 전에 막는다
+  const emptyNumbers = rows.filter((k) => NUMERIC_FIELDS.has(k) && (values[k] === '' || values[k] == null));
+
   const submit = (approved: boolean) => {
     if (!canResume || resume.isPending) return;
+    if (approved && emptyNumbers.length) {
+      notify.info(`${emptyNumbers.map((k) => fieldLabel(k)).join(', ')}을(를) 입력해 주세요`, '빈 칸으로는 계속할 수 없습니다');
+      return;
+    }
     const data: Record<string, unknown> = {};
     for (const k of edited) {
       const v = values[k];
@@ -99,8 +106,10 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
                 <td>
                   {NUMERIC_FIELDS.has(k)
                     ? <InputNumber aria-label={`${fieldLabel(k)} 확정값`} disabled={!canResume} style={{ width: 160 }}
+                                   status={emptyNumbers.includes(k) ? 'error' : undefined}
                                    value={values[k] === '' || values[k] == null ? null : Number(values[k])}
-                                   formatter={(v) => (v == null ? '' : Number(v).toLocaleString('ko-KR'))}
+                                   // 지운 칸이 "0"으로 보이지 않게 빈 값은 빈 칸으로 둔다(QA AUTO-C1)
+                                   formatter={(v) => (v == null || String(v) === '' ? '' : Number(v).toLocaleString('ko-KR'))}
                                    parser={(v) => (v ? Number(v.replace(/[^\d.-]/g, '')) : '') as unknown as number}
                                    onChange={(v) => set(k, v ?? '')} />
                     : <Input aria-label={`${fieldLabel(k)} 확정값`} disabled={!canResume} style={{ width: 200 }}
@@ -113,7 +122,7 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
       </table>
       <div className={s.muted}>
         불일치 {mismatch.size} · 일치 {rows.length - mismatch.size}
-        {edited.length > 0 && <> · 직접 수정 {edited.length}</>}
+        {edited.length > 0 && <> (그중 직접 수정 {edited.length})</>}
         {canResume && <> · 추출값을 누르면 확정값으로 복사됩니다</>}
       </div>
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Skeleton } from 'antd';
 import { Link } from 'react-router-dom';
 import {
-  isFinal, runFileDownloadUrl, runInputFiles, useCancelRun, useNodeCatalog, useRun, useRunSteps, useWorkflow,
+  isFinal, runBadgeValue, runEndedRejected, runFileDownloadUrl, runInputFiles, useCancelRun, useNodeCatalog, useRun, useRunSteps, useWorkflow,
   type ApprovalWaiting, type HitlWaiting, type RunDetail, type RunInputFile, type RunStep, type Waiting,
 } from '@/api/ai';
 import { useMyId } from '@/auth/session';
@@ -20,13 +20,10 @@ import s from './automation.module.css';
 
 const ms = (a: string, b: string | null) => (b ? kst(serverUtc(b)).diff(kst(serverUtc(a))) : null);
 
-/** 최종 결과: run 상태 + 마지막 step branch(반려로 끝나도 SUCCEEDED, 요구사항 3.7) */
+/** 최종 결과: 반려로 끝나도 run은 SUCCEEDED라(요구사항 3.7) 결재 대기·사람 확인 단계의 '반려/회수'를 본다 */
 function Outcome({ run, steps }: { run: RunDetail; steps: RunStep[] }) {
-  const last = steps[steps.length - 1];
-  if (run.status === 'SUCCEEDED' && last && (last.branch === '반려' || last.branch === '회수')) {
-    return <StatusBadge domain="RunOutcome" value="ENDED_REJECTED" />;
-  }
-  return <StatusBadge domain="RunStatus" value={run.status} />;
+  if (runEndedRejected(run.status, steps)) return <StatusBadge domain="RunOutcome" value="ENDED_REJECTED" />;
+  return <StatusBadge domain="RunStatus" value={runBadgeValue(run)} />;
 }
 
 /** 실행된 단계 세로 타임라인. RunDetail에 실행 그래프가 없어 초안 그래프 캔버스는 그리지 않는다(gaps B11) */

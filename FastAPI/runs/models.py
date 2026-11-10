@@ -54,6 +54,16 @@ class Run(Base):
         order_by="RunStep.id",
     )
 
+    @property
+    def waiting_type(self) -> str | None:
+        """멈춘 단계가 기다리는 것: human_confirm(사람 확인) / approval_wait(결재 대기). WAITING이 아니면 None"""
+        if self.status != RunStatus.WAITING:
+            return None
+        for step in reversed(self.steps):
+            if step.status == RunStatus.WAITING:
+                return ((step.output or {}).get("waiting_for") or {}).get("type")
+        return None
+
 
 class RunStep(Base):
     __tablename__ = "run_step"

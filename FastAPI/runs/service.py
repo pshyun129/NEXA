@@ -164,7 +164,7 @@ def get_waiting_payload(db: Session, run_id: int) -> dict:
     return ((step.output or {}).get("waiting_for") or {}) if step else {}
 
 
-# 내 확인 대기 목록
+# 내 확인 대기 목록: 내가 처리할 사람 확인만. 결재 대기는 결재자가 처리하므로 빼고 결재함이 맡는다 (QA C34)
 def list_my_pending(db: Session, user_id: str | None) -> list[Run]:
     stmt = (
         select(Run)
@@ -172,7 +172,7 @@ def list_my_pending(db: Session, user_id: str | None) -> list[Run]:
         .where(Run.status == RunStatus.WAITING)
         .order_by(Run.id.desc())
     )
-    return list(db.scalars(stmt).all())
+    return [run for run in db.scalars(stmt).all() if run.waiting_type != "approval_wait"]
 
 
 # 첨부 파일 업로드

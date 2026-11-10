@@ -60,6 +60,9 @@ export function useWorkflowList() {
 }
 
 /** 편집기는 서버 초안을 기준으로 하므로 캐시를 오래 두지 않는다(실행 화면의 useWorkflow와 키는 같다) */
+/** 캐시를 거치지 않고 서버의 지금 초안을 읽는다(저장 전에 다른 창의 변경을 확인할 때) */
+export const fetchBuilderWorkflow = (id: number) => api.get<BuilderWorkflow>(`${BASE}/workflows/${id}`);
+
 export function useBuilderWorkflow(id: number) {
   return useQuery({
     queryKey: builderKeys.detail(id),
@@ -125,9 +128,13 @@ export function useValidateGraph(id: number) {
 
 /** 초안 그래프로 테스트 실행(배포 버전이 아님) */
 export function useStartTestRun(id: number) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { inputs: Record<string, unknown>; fileIds: number[] }) =>
       api.post<{ runId: number; status: string }>(`${BASE}/workflows/${id}/test-runs`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['runs', 'me'] });
+    },
   });
 }
 

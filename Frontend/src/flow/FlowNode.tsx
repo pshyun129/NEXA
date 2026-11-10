@@ -80,7 +80,8 @@ export function FlowNode({ data, selected }: NodeProps<FlowNodeType>) {
   const state = data.state ?? 'idle';
   const branches = data.branches ?? [];
   const look = lookOf(data.nodeType, data.category);
-  const tag = look.tag ?? (branches.length ? 'ROUTER' : CAT_TAG[data.category] ?? 'NODE');
+  // 분기가 있어도 종류 표기를 먼저 쓴다: OCR(AI)·사람 확인이 ROUTER로 보이던 문제(QA AUTO-C3). ROUTER는 규칙 노드
+  const tag = look.tag ?? CAT_TAG[data.category] ?? (branches.length ? 'ROUTER' : 'NODE');
   const cls = [s.node, s[`tone-${look.tone}`], s[`st-${state}`],
     data.issue ? s[`issue-${data.issue}`] : '', selected ? s.selected : ''].join(' ');
   return (

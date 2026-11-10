@@ -75,12 +75,17 @@ export function SchemaForm({ fields, submitting, submitLabel, onSubmit }:
 
   return (
     <Form form={form} layout="vertical" requiredMark onFinish={finish}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.submit(); } }}>
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            if (e.ctrlKey || e.metaKey) { e.preventDefault(); form.submit(); return; }
+            // Enter만 누르면 브라우저가 폼을 바로 제출한다(날짜 칸에서 날짜를 고르다 실행됨, QA AUTO-B4) → 실행은 버튼·Ctrl+Enter로만
+            if (!(e.target instanceof HTMLTextAreaElement)) e.preventDefault();
+          }}>
       {fields.map((f) => {
         const rules = f.required ? [{ required: true, message: `${f.label}을(를) 입력해 주세요` }] : [];
         if (f.type === 'file') {
           return (
-            <Form.Item key={f.key} name={f.key} label={f.label} rules={f.required ? [{ required: true, message: `${f.label} 파일을 올려 주세요` }] : []}>
+            <Form.Item key={f.key} name={f.key} label={f.label} rules={f.required ? [{ required: true, message: `${f.label}을(를) 올려 주세요` }] : []}>
               <Upload.Dragger multiple fileList={files[f.key] ?? []} beforeUpload={beforeUpload(f.key)} onRemove={removeFile(f.key)}>
                 <div className={s.drop}>
                   <b>파일을 끌어 놓거나 눌러서 고르세요</b>

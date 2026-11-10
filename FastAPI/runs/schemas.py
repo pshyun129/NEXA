@@ -30,6 +30,8 @@ class RunSummary(CamelModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # WAITING일 때 무엇을 기다리는지(human_confirm / approval_wait). 화면이 "확인 대기"와 "결재 대기"를 구분한다
+    waiting_type: str | None = None
 
 
 class RunDetail(RunSummary):

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Input, Modal, Skeleton } from 'antd';
 import { useLocation } from 'react-router-dom';
 import {
-  useAvailableWorkflows, useInputForm, useMyPendingRuns, useMyRuns, useStartRun, useWorkflow, useWorkflowNames,
+  runBadgeValue, useAvailableWorkflows, useInputForm, useMyPendingRuns, useMyRuns, useStartRun, useWorkflow, useWorkflowNames,
   type RunStatus, type ScreenCode,
 } from '@/api/ai';
 import { BuilderEditor } from '@/builder/BuilderEditor';
@@ -91,7 +91,10 @@ const HISTORY_FILTERS: { label: string; value: RunStatus | 'ALL' }[] = [
 /** 내 실행 기록(최근 50건) / 확인 대기 */
 function RunsTab({ waitingOnly }: { waitingOnly?: boolean }) {
   const [filter, setFilter] = useState<RunStatus | 'ALL'>('ALL');
-  const runs = useMyRuns(waitingOnly ? 'WAITING' : filter === 'ALL' ? null : filter);
+  // 확인 대기 탭은 탑바 숫자와 같은 목록(내가 처리할 사람 확인만, 결재 대기는 결재함이 맡는다)
+  const mine = useMyRuns(waitingOnly ? null : filter === 'ALL' ? null : filter, !waitingOnly);
+  const pendingRuns = useMyPendingRuns(!!waitingOnly);
+  const runs = waitingOnly ? pendingRuns : mine;
   const names = useWorkflowNames((runs.data ?? []).map((r) => r.workflowId));
   const setView = useAutomationUi((st) => st.setView);
   return (
@@ -119,7 +122,7 @@ function RunsTab({ waitingOnly }: { waitingOnly?: boolean }) {
                     <small className="nx-num">run #{r.id} · {formatDateTime(serverUtc(r.createdAt), true)}
                       {r.startedAt && r.finishedAt && ` · ${formatElapsed(Date.parse(serverUtc(r.finishedAt)) - Date.parse(serverUtc(r.startedAt)))}`}</small>
                   </span>
-                  <StatusBadge domain="RunStatus" value={r.status} />
+                  <StatusBadge domain="RunStatus" value={runBadgeValue(r)} />
                   <Icon as={ArrowUpRight} size={16} className={s.rowGo} />
                 </button>
               </li>
