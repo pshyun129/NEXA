@@ -23,6 +23,7 @@ import com.ssafy.migrationservice.domain.migration.dto.MappingUpdateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateRequest;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationDetailResponse;
+import com.ssafy.migrationservice.domain.migration.dto.MigrationListResponse;
 import com.ssafy.migrationservice.domain.migration.entity.MigrationFile;
 import com.ssafy.migrationservice.domain.migration.entity.MigrationJob;
 import com.ssafy.migrationservice.domain.migration.entity.enums.MigrationEntity;
@@ -41,6 +42,9 @@ import com.ssafy.migrationservice.domain.migration.validation.issue.Severity;
 import com.ssafy.migrationservice.global.exception.BusinessException;
 import com.ssafy.migrationservice.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,6 +80,17 @@ public class MigrationService {
                 .cutoverDate(r.cutoverDate())
                 .build());
         return new MigrationCreateResponse(job.getMigrationId(), job.getStatus());
+    }
+
+    /** 최근 만든 작업부터 */
+    @Transactional(readOnly = true)
+    public MigrationListResponse list(int page, int size) {
+        Page<MigrationJob> jobs = jobRepository.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "migrationId")));
+        List<MigrationListResponse.Item> items = jobs.getContent().stream()
+                .map(j -> MigrationListResponse.Item.of(j, fileRepository.countByMigrationId(j.getMigrationId()),
+                        batchRepository.countByMigrationIdAndStatus(j.getMigrationId(), BatchStatus.LOADED)))
+                .toList();
+        return new MigrationListResponse(items, page, size, jobs.getTotalElements());
     }
 
     @Transactional(readOnly = true)

@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateRequest;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationDetailResponse;
+import com.ssafy.migrationservice.domain.migration.dto.MigrationListResponse;
 import com.ssafy.migrationservice.domain.migration.entity.enums.MigrationEntity;
 import com.ssafy.migrationservice.domain.migration.service.MigrationService;
 import com.ssafy.migrationservice.global.dto.ApiResult;
@@ -60,6 +61,13 @@ public class MigrationAdminController {
     @PostMapping
     public ResponseEntity<ApiResult<MigrationCreateResponse>> create(@Valid @RequestBody MigrationCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResult.success(migrationService.create(request)));
+    }
+
+    /** 작업 목록 (최근 만든 것부터) */
+    @GetMapping
+    public ResponseEntity<ApiResult<MigrationListResponse>> list(@RequestParam(defaultValue = "0") @Min(0) int page,
+                                                                 @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(ApiResult.success(migrationService.list(page, size)));
     }
 
     @GetMapping("/{migrationId}")

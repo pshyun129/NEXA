@@ -74,6 +74,7 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | POST | `/` | 작업 생성 |
+| GET | `/?page=&size=` | 작업 목록 (최근 만든 것부터, 파일 수·적재된 묶음 수) |
 | GET | `/{id}` | 작업 상세 (파일, 적재 묶음) |
 | POST | `/{id}/files?entity=&sheet=` | 업로드 → 읽기·매핑 추천·검증. `sheet` 없으면 entity 필드와 가장 잘 맞는 시트 |
 | GET | `/{id}/files/{fileId}` | 파일 진단, 매핑, 오류 건수 |

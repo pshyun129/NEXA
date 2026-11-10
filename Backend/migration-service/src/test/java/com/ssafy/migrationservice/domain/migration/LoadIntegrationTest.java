@@ -346,4 +346,21 @@ class LoadIntegrationTest extends AbstractIntegrationTest {
                 .containsExactlyInAnyOrder("G3 27호봉", "G2 1호봉");
         assertThat(HR.rows("employees")).allSatisfy(r -> assertThat(r.data().has("gradeStep")).isFalse());
     }
+
+    @Test
+    void 작업_목록은_최근_것부터_파일_수와_적재_묶음_수를_보여준다() throws Exception {
+        long older = createJob();
+        long newer = createJob();
+        upload(newer, "HR_ORG", ORG_CSV);
+        mvc.perform(post(BASE + "/{id}/loads", newer)).andExpect(status().isOk());
+
+        mvc.perform(get(BASE).param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[*].migrationId").value(contains((int) newer, (int) older)))
+                .andExpect(jsonPath("$.data.content[0].name").value("적재 테스트"))
+                .andExpect(jsonPath("$.data.content[0].fileCount").value(1))
+                .andExpect(jsonPath("$.data.content[0].loadedBatches").value(1))
+                .andExpect(jsonPath("$.data.content[1].fileCount").value(0))
+                .andExpect(jsonPath("$.data.size").value(2));
+    }
 }

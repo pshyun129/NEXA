@@ -11,4 +11,6 @@ public interface MigrationFileRepository extends JpaRepository<MigrationFile, Lo
     List<MigrationFile> findByMigrationIdOrderByFileIdAsc(Long migrationId);
 
     Optional<MigrationFile> findByFileIdAndMigrationId(Long fileId, Long migrationId);
+
+    long countByMigrationId(Long migrationId);
 }
