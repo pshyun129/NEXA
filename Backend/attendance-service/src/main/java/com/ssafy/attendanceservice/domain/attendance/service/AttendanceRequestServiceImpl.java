@@ -1,5 +1,7 @@
 package com.ssafy.attendanceservice.domain.attendance.service;
 
+import com.ssafy.attendanceservice.domain.attendance.calculator.ApprovedOvertime;
+import com.ssafy.attendanceservice.domain.attendance.calculator.TimeRange;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkLogEntry;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkTimeCalculator;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkTimeResult;
@@ -40,6 +42,7 @@ import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -266,22 +269,22 @@ public class AttendanceRequestServiceImpl implements AttendanceRequestService {
         LocalDate targetDate = request.targetDate();
         LocalDate substDate = request.substDate();
         if (substDate == null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "substDate는 필수입니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대체일은 필수입니다.");
         }
 
         // 1. 대상일은 휴일 (공휴일 또는 근무 요일 아님)
         if (!processor.isHoliday(empId, targetDate, processor.resolveWorkGroup(empId, targetDate))) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상일(targetDate)은 휴일이어야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대상일은 휴일이어야 합니다.");
         }
 
         // 2. 대체일은 근무일
         if (processor.isHoliday(empId, substDate, processor.resolveWorkGroup(empId, substDate))) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "대체일(substDate)은 근무일이어야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "대체일은 근무일이어야 합니다.");
         }
 
         // 3. 대체일에 이미 휴가(반차 포함)가 있으면 불가
         if (!processor.leavePortions(empId, substDate).isEmpty()) {
-            throw new BusinessException(ErrorCode.LEAVE_DAY_REQUEST, "대체일(substDate)에 이미 휴가가 있습니다.");
+            throw new BusinessException(ErrorCode.LEAVE_DAY_REQUEST, "대체일에 이미 휴가가 있습니다.");
         }
 
         // 4. 같은 휴일이나 같은 대체일로 진행 중/승인된 휴일대체가 있으면 불가
@@ -301,26 +304,33 @@ public class AttendanceRequestServiceImpl implements AttendanceRequestService {
     private AttendanceRequestPreviewResponse previewOvertime(Long empId, AttendanceRequestPreviewRequest request) {
         LocalDate targetDate = request.targetDate();
         if (request.itemsOrEmpty().isEmpty()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무 시간(items)이 없습니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무 시간이 없습니다.");
         }
 
-        // 1. 신청 시간 합계 (항목별 시작 < 종료, 근로 상태)
+        // 1. 신청 시간 합계 (항목별 시작 < 종료 ≤ 근무일 마감, 근로 상태)
         int requestedMin = 0;
         for (AttendanceRequestPreviewRequest.Item item : request.itemsOrEmpty()) {
             validateOvertimeItem(item, targetDate);
             requestedMin += (int) Duration.between(item.startAt(), item.endAt()).toMinutes();
         }
 
+        // 1-1. 구간끼리, 그리고 그날 이미 승인된 초과근무와 겹치면 불가 (같은 시간을 두 번 신청하지 않게)
+        validateNoOverlap(empId, targetDate, request.itemsOrEmpty());
+
         // 2. 그날 근태와 근무그룹
         Optional<AttendanceDaily> daily = attendanceDailyRepository.findByEmpIdAndWorkDate(empId, targetDate);
         WorkGroup workGroup = daily.map(AttendanceDaily::getWorkGroup)
                 .orElseGet(() -> processor.resolveWorkGroup(empId, targetDate));
 
-        // 3. 주간 근로시간: 다른 날 + 그날(이미 일한 초과분 제외) + 신청 시간
-        int targetDayBaseMin = daily
-                .map(d -> d.getTotalMin() - d.getApprovedOtMin() - d.getUnapprovedOtMin())
-                .orElse(0);
-        int weeklyTotalMin = weeklyTotalMinExcept(empId, targetDate) + targetDayBaseMin + requestedMin;
+        // 3. 주간 근로시간: 이번 주 실제 근로 + 신청 시간 + 다른 날 결재 대기 초과근무.
+        //    신청 구간 중 이미 일해서 근로시간에 들어 있는 부분(미승인 초과근로)은 두 번 세지 않는다
+        List<TimeRange> requested = request.itemsOrEmpty().stream()
+                .map(item -> new TimeRange(item.startAt(), item.endAt()))
+                .toList();
+        int targetDayMin = daily.map(AttendanceDaily::getTotalMin).orElse(0)
+                + notYetCountedMin(requested, daily);
+        int weeklyTotalMin = weeklyTotalMinExcept(empId, targetDate) + targetDayMin
+                + pendingOvertimeMinExcept(empId, targetDate);
         int weeklyMaxMin = workGroup.getWeeklyMaxHours() * 60;
 
         // 4. 주 최대 근로시간 초과 불가
@@ -334,17 +344,81 @@ public class AttendanceRequestServiceImpl implements AttendanceRequestService {
 
     private void validateOvertimeItem(AttendanceRequestPreviewRequest.Item item, LocalDate workDate) {
         if (item.endAt() == null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "endAt은 필수입니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "종료 시각은 필수입니다.");
         }
         processor.validateStartAt(workDate, item.startAt());
         if (!item.startAt().isBefore(item.endAt())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무 종료 시각은 시작 시각보다 늦어야 합니다.");
+        }
+        // 근무일은 다음 날 06:00에 마감된다 (퇴근도 그 전까지만 찍힌다)
+        OffsetDateTime cutoff = workDate.plusDays(1).atTime(AttendanceDaily.WORK_DAY_CUTOFF)
+                .atZone(DateTimeUtils.ZONE).toOffsetDateTime();
+        if (item.endAt().isAfter(cutoff)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무는 다음 날 06:00(근무일 마감)까지만 신청할 수 있습니다.");
         }
         WorkStatusCode statusCode = workStatusCodeRepository.findById(String.valueOf(item.statusCode()))
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT, "존재하지 않는 근무 상태입니다."));
         if (!statusCode.getCountAsWork()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무는 근로시간에 포함되는 상태로만 신청할 수 있습니다.");
         }
+    }
+
+    private void validateNoOverlap(Long empId, LocalDate workDate, List<AttendanceRequestPreviewRequest.Item> items) {
+        List<AttendanceRequestPreviewRequest.Item> sorted = items.stream()
+                .sorted(Comparator.comparing(AttendanceRequestPreviewRequest.Item::startAt))
+                .toList();
+        for (int i = 1; i < sorted.size(); i++) {
+            if (sorted.get(i).startAt().isBefore(sorted.get(i - 1).endAt())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "초과근무 구간끼리 겹치면 안 됩니다.");
+            }
+        }
+        for (ApprovedOvertime approved : processor.approvedOvertimes(empId, workDate)) {
+            for (AttendanceRequestPreviewRequest.Item item : sorted) {
+                if (item.startAt().isBefore(approved.endAt()) && approved.startAt().isBefore(item.endAt())) {
+                    throw new BusinessException(ErrorCode.INVALID_INPUT, String.format(
+                            "이미 승인된 초과근무(%s~%s)와 겹칩니다. 겹치지 않는 시간만 신청해 주세요.",
+                            hhmm(approved.startAt()), hhmm(approved.endAt())));
+                }
+            }
+        }
+    }
+
+    /** 신청 구간 중 아직 근로시간에 들어가지 않은 분 (이미 일한 미승인 초과근로와 겹치는 부분은 뺀다) */
+    private int notYetCountedMin(List<TimeRange> requested, Optional<AttendanceDaily> daily) {
+        List<TimeRange> worked = daily.map(processor::unapprovedOtRanges).orElse(List.of());
+        long total = 0;
+        for (TimeRange r : requested) {
+            long overlap = 0;
+            for (TimeRange w : worked) {
+                OffsetDateTime start = r.startAt().isAfter(w.startAt()) ? r.startAt() : w.startAt();
+                OffsetDateTime end = r.endAt().isBefore(w.endAt()) ? r.endAt() : w.endAt();
+                if (start.isBefore(end)) {
+                    overlap += Duration.between(start, end).toMinutes();
+                }
+            }
+            total += Duration.between(r.startAt(), r.endAt()).toMinutes() - overlap;
+        }
+        return (int) total;
+    }
+
+    /** 같은 주 다른 날의 결재 대기 초과근무 중 아직 근로시간에 들어가지 않은 분 (여러 건을 동시에 올려 주 한도를 넘지 않게) */
+    private int pendingOvertimeMinExcept(Long empId, LocalDate targetDate) {
+        LocalDate monday = targetDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        return attendanceRequestRepository.findByEmpIdAndReqTypeAndStatusAndTargetDateBetween(
+                        empId, AttendanceRequestType.OVERTIME, AttendanceRequestStatus.PENDING, monday, monday.plusDays(6))
+                .stream()
+                .filter(pending -> !pending.getTargetDate().equals(targetDate))
+                .mapToInt(pending -> notYetCountedMin(
+                        pending.getItems().stream()
+                                .filter(item -> item.getStartAt() != null && item.getEndAt() != null)
+                                .map(item -> new TimeRange(item.getStartAt(), item.getEndAt()))
+                                .toList(),
+                        attendanceDailyRepository.findByEmpIdAndWorkDate(empId, pending.getTargetDate())))
+                .sum();
+    }
+
+    private static String hhmm(OffsetDateTime at) {
+        return at.atZoneSameInstant(DateTimeUtils.ZONE).toLocalTime().toString().substring(0, 5);
     }
 
     // ===== 근무시간 수정 =====

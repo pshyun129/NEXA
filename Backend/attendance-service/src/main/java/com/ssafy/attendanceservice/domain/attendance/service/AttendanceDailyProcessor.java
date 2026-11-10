@@ -2,6 +2,7 @@ package com.ssafy.attendanceservice.domain.attendance.service;
 
 import com.ssafy.attendanceservice.domain.attendance.calculator.AnomalyJudge;
 import com.ssafy.attendanceservice.domain.attendance.calculator.ApprovedOvertime;
+import com.ssafy.attendanceservice.domain.attendance.calculator.TimeRange;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkLogEntry;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkTimeCalculator;
 import com.ssafy.attendanceservice.domain.attendance.calculator.WorkTimeResult;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -80,11 +82,11 @@ public class AttendanceDailyProcessor {
     /** 로그 시각은 근무일 당일 또는 다음 날(야간 근무 퇴근)만 허용 */
     public void validateStartAt(LocalDate workDate, OffsetDateTime startAt) {
         if (startAt == null) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "startAt은 필수입니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "시작 시각은 필수입니다.");
         }
         LocalDate startDate = startAt.atZoneSameInstant(DateTimeUtils.ZONE).toLocalDate();
         if (!startDate.equals(workDate) && !startDate.equals(workDate.plusDays(1))) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "startAt은 근무일 당일 또는 다음 날이어야 합니다.");
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "시작 시각은 근무일 당일 또는 다음 날이어야 합니다.");
         }
     }
 
@@ -123,6 +125,26 @@ public class AttendanceDailyProcessor {
         return result;
     }
 
+    /** 그 근무일에 미승인 초과근로가 있는 시간 구간 (없으면 빈 목록, 조회 때만 계산하고 저장하지 않음) */
+    public List<TimeRange> unapprovedOtRanges(AttendanceDaily daily) {
+        if (daily.getUnapprovedOtMin() == null || daily.getUnapprovedOtMin() <= 0 || daily.getClockOut() == null) {
+            return List.of();
+        }
+        List<WorkLogEntry> entries = workStatusLogRepository
+                .findByEmpIdAndWorkDateAndIsDeletedFalseOrderByStartAtAscLogIdAsc(daily.getEmpId(), daily.getWorkDate())
+                .stream()
+                .map(log -> new WorkLogEntry(log.getStartAt(), log.getWorkStatusCode().getCountAsWork()))
+                .toList();
+        WorkGroup workGroup = daily.getWorkGroup();
+        return WorkTimeCalculator.unapprovedOtRanges(
+                entries,
+                daily.getClockOut(),
+                workGroup.getDailyStdMinutes(),
+                workGroup.getBreakMinutes(),
+                daily.getIsHoliday(),
+                approvedOvertimes(daily.getEmpId(), daily.getWorkDate()));
+    }
+
     /** 퇴근 판정 근태이상 갱신: 기존 판정분을 지우고, 퇴근 상태면 다시 판정 */
     public void refreshClockOutAnomalies(AttendanceDaily daily, WorkTimeResult workTime) {
         attendanceAnomalyRepository.deleteByAttendanceDailyAndAnomalyTypeIn(daily, AnomalyJudge.clockOutTypes());
@@ -137,6 +159,20 @@ public class AttendanceDailyProcessor {
                 schedule.requiredMin(),
                 daily.getIsHoliday(),
                 workTime));
+    }
+
+    /**
+     * 조회에 내보낼 근태이상. 저장된 판정에 더해, 출근하고 퇴근 없이 근무일 마감이 지난 날은 출퇴근 누락으로 본다
+     * (저장은 다음 출근·재계산 때 하므로 그 전까지는 조회 시점에 판정)
+     */
+    public List<AnomalyType> anomalyTypes(AttendanceDaily daily, List<AttendanceAnomaly> stored, OffsetDateTime now) {
+        List<AnomalyType> types = stored.stream().map(AttendanceAnomaly::getAnomalyType).toList();
+        if (types.contains(AnomalyType.MISSING_CLOCK) || daily.getClockIn() == null || !daily.isUnclosedPastCutoff(now)) {
+            return types;
+        }
+        List<AnomalyType> withMissing = new ArrayList<>(types);
+        withMissing.add(AnomalyType.MISSING_CLOCK);
+        return withMissing;
     }
 
     public void saveAnomalies(AttendanceDaily daily, List<AnomalyType> types) {
@@ -178,9 +214,13 @@ public class AttendanceDailyProcessor {
                     daily.getWorkDate(), clockIn, schedule.startTime(), daily.getIsHoliday()));
         }
 
-        // 4. 출퇴근 누락: 퇴근이 생겼으면 해소
-        if (clockOut != null) {
+        // 4. 출퇴근 누락: 퇴근이 생겼거나 출근 기록까지 없어졌으면 해소,
+        //    출근만 있고 근무일 마감이 지났으면 판정 (지난 날 관리자 등록·결재 반영)
+        if (clockOut != null || clockIn == null) {
             attendanceAnomalyRepository.deleteByAttendanceDailyAndAnomalyTypeIn(daily, List.of(AnomalyType.MISSING_CLOCK));
+        } else if (daily.isPastWorkDayCutoff(DateTimeUtils.now())) {
+            attendanceAnomalyRepository.deleteByAttendanceDailyAndAnomalyTypeIn(daily, List.of(AnomalyType.MISSING_CLOCK));
+            saveAnomalies(daily, List.of(AnomalyType.MISSING_CLOCK));
         }
 
         // 5. 조퇴, 소정근로 미달, 미승인 초과근로

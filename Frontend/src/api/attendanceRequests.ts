@@ -108,6 +108,11 @@ export function useMyRequests(year: number, type?: AttendanceRequestType) {
   useEffect(() => {
     if (prevDone.current !== undefined && done !== undefined && done !== prevDone.current) {
       qc.invalidateQueries({ queryKey: attnKeys.all, predicate: (x) => x.queryKey[1] !== 'requests' });
+      // 결과가 새로 반영된 신청의 상세도 다시 읽는다(열린 Drawer가 "결재 대기"로 남지 않게, QA AR-139)
+      const before = new Set((prevDone.current ?? '').split(',').filter(Boolean));
+      for (const id of done.split(',').filter((x) => x && !before.has(x))) {
+        qc.invalidateQueries({ queryKey: reqKeys.detail(Number(id)) });
+      }
     }
     prevDone.current = done;
   }, [done, qc]);

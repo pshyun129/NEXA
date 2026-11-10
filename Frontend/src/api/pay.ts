@@ -57,6 +57,16 @@ export function useContract() {
   return useQuery({ queryKey: ['pay', 'contract'], queryFn: () => api.get<Contract>(`${BASE}/contract`), retry: false });
 }
 
+/** user-service 직급 목록(GradeResponse). 같은 직급명이 호봉(level)별로 따로 있다 */
+export interface Grade { gradeId: number; name: string; level: number | null }
+
+export function useGrades() {
+  return useQuery({ queryKey: ['grades'], queryFn: () => api.get<Grade[]>('/api/v1/grades'), staleTime: 60 * 60_000 });
+}
+
+/** "G1 2호봉". 호봉이 없으면 직급명만 */
+export const gradeLabel = (g: Grade) => (g.level != null ? `${g.name} ${g.level}호봉` : g.name);
+
 /** 관리자 명세서 생성 결과(AdminPayslipController, ADMIN) */
 export interface PayslipGenerated {
   payslipId: number; empId: number; payYear: number; payMonth: number; payDate: string;

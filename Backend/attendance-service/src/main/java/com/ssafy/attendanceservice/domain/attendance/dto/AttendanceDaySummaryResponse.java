@@ -1,6 +1,6 @@
 package com.ssafy.attendanceservice.domain.attendance.dto;
 
-import com.ssafy.attendanceservice.domain.attendance.entity.AttendanceAnomaly;
+import com.ssafy.attendanceservice.domain.attendance.calculator.TimeRange;
 import com.ssafy.attendanceservice.domain.attendance.entity.AttendanceDaily;
 import com.ssafy.attendanceservice.domain.attendance.entity.enums.AnomalyType;
 import com.ssafy.attendanceservice.global.util.DateTimeUtils;
@@ -19,15 +19,15 @@ public record AttendanceDaySummaryResponse(
         List<AnomalyType> anomalies,    // 근태이상
         List<LeaveResponse> leaves      // 휴가 (오전·오후 반차를 따로 쓰면 두 건)
 ) {
-    public static AttendanceDaySummaryResponse of(AttendanceDaily daily, List<AttendanceAnomaly> anomalies,
-                                                  List<LeaveResponse> leaves) {
+    public static AttendanceDaySummaryResponse of(AttendanceDaily daily, List<AnomalyType> anomalies,
+                                                  List<LeaveResponse> leaves, List<TimeRange> unapprovedOtRanges) {
         return new AttendanceDaySummaryResponse(
                 daily.getWorkDate(),
                 daily.getIsHoliday(),
                 DateTimeUtils.toSeoul(daily.getClockIn()),
                 DateTimeUtils.toSeoul(daily.getClockOut()),
-                WorkTimeResponse.from(daily),
-                anomalies.stream().map(AttendanceAnomaly::getAnomalyType).toList(),
+                WorkTimeResponse.from(daily, unapprovedOtRanges),
+                anomalies,
                 leaves
         );
     }

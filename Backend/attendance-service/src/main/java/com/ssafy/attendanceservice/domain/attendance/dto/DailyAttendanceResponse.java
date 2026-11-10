@@ -1,6 +1,6 @@
 package com.ssafy.attendanceservice.domain.attendance.dto;
 
-import com.ssafy.attendanceservice.domain.attendance.entity.AttendanceAnomaly;
+import com.ssafy.attendanceservice.domain.attendance.calculator.TimeRange;
 import com.ssafy.attendanceservice.domain.attendance.entity.AttendanceDaily;
 import com.ssafy.attendanceservice.domain.attendance.entity.WorkStatusLog;
 import com.ssafy.attendanceservice.domain.attendance.entity.enums.AnomalyType;
@@ -23,16 +23,17 @@ public record DailyAttendanceResponse(
 ) {
     public static DailyAttendanceResponse of(AttendanceDaily daily,
                                              List<WorkStatusLog> logs,
-                                             List<AttendanceAnomaly> anomalies) {
+                                             List<AnomalyType> anomalies,
+                                             List<TimeRange> unapprovedOtRanges) {
         return new DailyAttendanceResponse(
                 daily.getWorkDate(),
                 daily.getWorkGroup().getName(),
                 daily.getIsHoliday(),
                 DateTimeUtils.toSeoul(daily.getClockIn()),
                 DateTimeUtils.toSeoul(daily.getClockOut()),
-                WorkTimeResponse.from(daily),
+                WorkTimeResponse.from(daily, unapprovedOtRanges),
                 logs.stream().map(WorkStatusRecordResponse::from).toList(),
-                anomalies.stream().map(AttendanceAnomaly::getAnomalyType).toList()
+                anomalies
         );
     }
 

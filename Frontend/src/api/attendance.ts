@@ -35,6 +35,11 @@ export interface WorkTime {
   unapprovedOtMin: number;
 }
 
+/** 일간·주간·월간 조회의 근로시간: 숫자 칸 + 미승인 초과근로가 있는 시간 구간(초과근무 신청을 미리 채울 때 쓴다) */
+export interface DayWorkTime extends WorkTime {
+  unapprovedOtRanges?: { startAt: string; endAt: string }[];
+}
+
 export type AnomalyType =
   | 'LATE' | 'EARLY_LEAVE' | 'MISSING_CLOCK' | 'UNDER_STD_HOURS' | 'UNAPPROVED_OT' | 'SHORT_BREAK' | 'WORK_ON_LEAVE';
 
@@ -51,7 +56,7 @@ export interface DailyAttendance {
   isHoliday: boolean;
   clockIn: string | null;
   clockOut: string | null;
-  workTime: WorkTime;
+  workTime: DayWorkTime;
   records: WorkStatusRecord[];
   anomalies: AnomalyType[];
 }
@@ -67,7 +72,7 @@ export interface AttendanceDaySummary {
   isHoliday: boolean;
   clockIn: string | null;
   clockOut: string | null;
-  workTime: WorkTime;
+  workTime: DayWorkTime;
   anomalies: AnomalyType[];
   leaves: DayLeave[];
 }

@@ -174,4 +174,30 @@ class WorkTimeCalculatorTest {
         assertEquals(0, r.approvedOtMin());
         assertEquals(180, r.unapprovedOtMin());
     }
+
+    @Test
+    @DisplayName("미승인 구간: 09~21시, 19~20시만 승인 → 18~19시와 20~21시 (QA F24: 퇴근 직전 2시간 19~21시가 아님)")
+    void unapprovedRangesSkipApprovedPart() {
+        List<WorkLogEntry> logs = List.of(work(at(21, 9, 0)));
+        List<ApprovedOvertime> approved = List.of(new ApprovedOvertime(at(21, 19, 0), at(21, 20, 0)));
+
+        List<TimeRange> ranges = WorkTimeCalculator.unapprovedOtRanges(logs, at(21, 21, 0), DAILY_STD, BREAK, false, approved);
+        WorkTimeResult r = WorkTimeCalculator.calculate(logs, at(21, 21, 0), DAILY_STD, BREAK, false, approved);
+
+        assertEquals(List.of(new TimeRange(at(21, 18, 0), at(21, 19, 0)), new TimeRange(at(21, 20, 0), at(21, 21, 0))), ranges);
+        // 구간 합 = 집계의 미승인 분
+        assertEquals(r.unapprovedOtMin(), ranges.stream()
+                .mapToLong(x -> java.time.Duration.between(x.startAt(), x.endAt()).toMinutes()).sum());
+    }
+
+    @Test
+    @DisplayName("미승인 구간: 승인 없음 → 소정 다음부터 퇴근까지 한 구간, 미승인 없으면 빈 목록")
+    void unapprovedRangesWholeOrNone() {
+        List<WorkLogEntry> logs = List.of(work(at(21, 9, 0)));
+
+        assertEquals(List.of(new TimeRange(at(21, 18, 0), at(21, 21, 0))),
+                WorkTimeCalculator.unapprovedOtRanges(logs, at(21, 21, 0), DAILY_STD, BREAK, false, List.of()));
+        assertEquals(List.of(),
+                WorkTimeCalculator.unapprovedOtRanges(logs, at(21, 18, 0), DAILY_STD, BREAK, false, List.of()));
+    }
 }

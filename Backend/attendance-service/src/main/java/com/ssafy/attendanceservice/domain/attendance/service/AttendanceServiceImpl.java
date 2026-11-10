@@ -281,7 +281,10 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .map(daily -> DailyAttendanceResponse.of(
                         daily,
                         workStatusLogRepository.findByEmpIdAndWorkDateAndIsDeletedFalseOrderByStartAtAscLogIdAsc(empId, date),
-                        attendanceAnomalyRepository.findByAttendanceDailyOrderByAnomalyIdAsc(daily)))
+                        processor.anomalyTypes(daily,
+                                attendanceAnomalyRepository.findByAttendanceDailyOrderByAnomalyIdAsc(daily),
+                                DateTimeUtils.now()),
+                        processor.unapprovedOtRanges(daily)))
                 .orElseGet(() -> {
                     // 기록이 없는 날: 그날 적용될 근무그룹과 휴일 여부만 채움
                     WorkGroup workGroup = processor.resolveWorkGroup(empId, date);
@@ -402,13 +405,17 @@ public class AttendanceServiceImpl implements AttendanceService {
                 .collect(Collectors.groupingBy(EmployeeLeave::getLeaveDate,
                         Collectors.mapping(LeaveResponse::from, Collectors.toList())));
 
+        OffsetDateTime now = DateTimeUtils.now();
         return from.datesUntil(to.plusDays(1))
                 .map(date -> {
                     List<LeaveResponse> leaves = leavesByDate.getOrDefault(date, List.of());
                     AttendanceDaily daily = dailyByDate.get(date);
                     if (daily != null) {
                         return AttendanceDaySummaryResponse.of(
-                                daily, anomaliesByAttId.getOrDefault(daily.getAttId(), List.of()), leaves);
+                                daily,
+                                processor.anomalyTypes(daily, anomaliesByAttId.getOrDefault(daily.getAttId(), List.of()), now),
+                                leaves,
+                                processor.unapprovedOtRanges(daily));
                     }
                     WorkGroup workGroup = processor.resolveWorkGroup(empId, date);
                     return AttendanceDaySummaryResponse.empty(date, processor.isHoliday(empId, date, workGroup), leaves);

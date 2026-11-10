@@ -15,16 +15,24 @@ export function timeFromIso(workDate: string, iso: string | null | undefined): T
   return { time: d.format('HH:mm'), nextDay: d.format('YYYY-MM-DD') !== workDate };
 }
 
+/** URL 날짜 파라미터(YYYY-MM-DD)를 검사한다. 형식이 틀리거나 없는 날짜면 null */
+export function dateParam(v: string | null): string | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  return dayjs(v, 'YYYY-MM-DD', true).isValid() ? v : null;
+}
+
 /** TimeVal → 서울 오프셋 ISO. 시각이 없으면 undefined */
 export function timeToIso(workDate: string, v: TimeVal): string | undefined {
   if (!v.time) return undefined;
   const [h, m] = v.time.split(':').map(Number);
+  if (!Number.isInteger(h) || !Number.isInteger(m)) return undefined;
   const d = kst(`${workDate}T00:00:00+09:00`).add(v.nextDay ? 1 : 0, 'day').hour(h).minute(m).second(0);
   return toOffsetIso(d);
 }
 
 export function TimeField({ value, onChange, label, disabled }:
   { value: TimeVal; onChange: (v: TimeVal) => void; label: string; disabled?: boolean }) {
+  const parsed = value.time ? dayjs(value.time, 'HH:mm', true) : null;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       <TimePicker
@@ -34,7 +42,7 @@ export function TimeField({ value, onChange, label, disabled }:
         aria-label={label}
         placeholder="시:분"
         style={{ width: 104 }}
-        value={value.time ? dayjs(value.time, 'HH:mm') : null}
+        value={parsed?.isValid() ? parsed : null}
         onChange={(t) => onChange({ ...value, time: t ? t.format('HH:mm') : null })}
       />
       <Checkbox checked={value.nextDay} disabled={disabled} onChange={(e) => onChange({ ...value, nextDay: e.target.checked })}>

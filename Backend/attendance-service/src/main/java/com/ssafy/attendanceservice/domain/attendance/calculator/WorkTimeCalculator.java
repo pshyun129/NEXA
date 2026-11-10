@@ -48,34 +48,11 @@ public final class WorkTimeCalculator {
             return WorkTimeResult.empty();
         }
 
-        // 1. 근무 구간을 1분 단위로 펼치고, 미포함 시간은 따로 센다
-        List<OffsetDateTime> workMinutes = new ArrayList<>();
-        int excludedMin = 0;
-
-        List<WorkLogEntry> sorted = logs.stream()
-                .sorted(Comparator.comparing(WorkLogEntry::startAt))
-                .toList();
-        OffsetDateTime end = toMinute(clockOut);
-
-        for (int i = 0; i < sorted.size(); i++) {
-            OffsetDateTime from = toMinute(sorted.get(i).startAt());
-            OffsetDateTime to = (i + 1 < sorted.size()) ? toMinute(sorted.get(i + 1).startAt()) : end;
-            if (to.isAfter(end)) {
-                to = end;
-            }
-            for (OffsetDateTime t = from; t.isBefore(to); t = t.plusMinutes(1)) {
-                if (sorted.get(i).countAsWork()) {
-                    workMinutes.add(t);
-                } else {
-                    excludedMin++;
-                }
-            }
-        }
-
-        // 2. 휴게 차감: 필요한 휴게 - 이미 쉰 시간(미포함)
-        int requiredBreak = requiredBreak(workMinutes.size(), breakMinutes);
-        int breakMin = Math.max(0, requiredBreak - excludedMin);
-        List<OffsetDateTime> counted = removeBreak(workMinutes, breakMin);
+        // 1·2. 근무 구간을 1분 단위로 펼치고 휴게를 뺀다
+        CountedMinutes cm = countMinutes(logs, clockOut, breakMinutes);
+        List<OffsetDateTime> counted = cm.counted();
+        int excludedMin = cm.excludedMin();
+        int breakMin = cm.breakMin();
         int totalMin = counted.size();
 
         // 3. 소정/초과/야간/휴일 분류. 초과근로는 승인 구간 안이면 승인으로 센다
@@ -109,6 +86,76 @@ public final class WorkTimeCalculator {
 
         return new WorkTimeResult(totalMin, regularMin, breakMin, excludedMin,
                 nightMin, otExtendedMin, otNightMin, otHolidayMin, approvedOtMin, unapprovedOtMin);
+    }
+
+    /**
+     * 미승인 초과근로가 실제로 있는 시간 구간 [시작, 끝). calculate()와 같은 기준(휴게 차감, 소정 다음부터 초과)으로 센다.
+     * 초과근무 신청을 미리 채울 때 쓴다 (퇴근 직전으로만 계산하면 이미 승인된 구간과 겹친다)
+     */
+    public static List<TimeRange> unapprovedOtRanges(List<WorkLogEntry> logs, OffsetDateTime clockOut,
+                                                     int dailyStdMinutes, int breakMinutes, boolean isHoliday,
+                                                     List<ApprovedOvertime> approvedOvertimes) {
+        if (logs.isEmpty() || clockOut == null) {
+            return List.of();
+        }
+        List<OffsetDateTime> counted = countMinutes(logs, clockOut, breakMinutes).counted();
+
+        List<TimeRange> ranges = new ArrayList<>();
+        OffsetDateTime rangeStart = null;
+        OffsetDateTime prev = null;
+        for (int i = 0; i < counted.size(); i++) {
+            OffsetDateTime t = counted.get(i);
+            boolean overtime = isHoliday || i >= dailyStdMinutes;
+            boolean unapproved = overtime && !isApproved(t, approvedOvertimes);
+            boolean continues = prev != null && t.equals(prev.plusMinutes(1));
+            if (rangeStart != null && (!unapproved || !continues)) {
+                ranges.add(new TimeRange(rangeStart, prev.plusMinutes(1)));
+                rangeStart = null;
+            }
+            if (unapproved && rangeStart == null) {
+                rangeStart = t;
+            }
+            prev = t;
+        }
+        if (rangeStart != null) {
+            ranges.add(new TimeRange(rangeStart, prev.plusMinutes(1)));
+        }
+        return ranges;
+    }
+
+    /** 1분 단위로 펼친 근로 시각(휴게 차감 후)과 미포함·휴게 분 */
+    private record CountedMinutes(List<OffsetDateTime> counted, int excludedMin, int breakMin) {
+    }
+
+    private static CountedMinutes countMinutes(List<WorkLogEntry> logs, OffsetDateTime clockOut, int breakMinutes) {
+        // 1. 근무 구간을 1분 단위로 펼치고, 미포함 시간은 따로 센다
+        List<OffsetDateTime> workMinutes = new ArrayList<>();
+        int excludedMin = 0;
+
+        List<WorkLogEntry> sorted = logs.stream()
+                .sorted(Comparator.comparing(WorkLogEntry::startAt))
+                .toList();
+        OffsetDateTime end = toMinute(clockOut);
+
+        for (int i = 0; i < sorted.size(); i++) {
+            OffsetDateTime from = toMinute(sorted.get(i).startAt());
+            OffsetDateTime to = (i + 1 < sorted.size()) ? toMinute(sorted.get(i + 1).startAt()) : end;
+            if (to.isAfter(end)) {
+                to = end;
+            }
+            for (OffsetDateTime t = from; t.isBefore(to); t = t.plusMinutes(1)) {
+                if (sorted.get(i).countAsWork()) {
+                    workMinutes.add(t);
+                } else {
+                    excludedMin++;
+                }
+            }
+        }
+
+        // 2. 휴게 차감: 필요한 휴게 - 이미 쉰 시간(미포함)
+        int requiredBreak = requiredBreak(workMinutes.size(), breakMinutes);
+        int breakMin = Math.max(0, requiredBreak - excludedMin);
+        return new CountedMinutes(removeBreak(workMinutes, breakMin), excludedMin, breakMin);
     }
 
     /** 근무 시간에 따라 필요한 휴게시간 (근로기준법: 4시간 30분, 8시간 1시간) */

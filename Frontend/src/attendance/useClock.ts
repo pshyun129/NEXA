@@ -28,7 +28,10 @@ export function useClock() {
 
   const t = today.data;
   const phase = clockPhase(t);
-  const elapsedMin = t?.clockIn ? Math.max(0, (t.clockOut ? kst(t.clockOut) : nowKst()).diff(kst(t.clockIn), 'minute')) : 0;
+  // 서버 근로시간 계산처럼 분 단위로 자른 시각끼리 뺀다(15:51:50~15:54:19 → 3분, 하루 근태 "총"과 같게)
+  const elapsedMin = t?.clockIn
+    ? Math.max(0, (t.clockOut ? kst(t.clockOut) : nowKst()).startOf('minute').diff(kst(t.clockIn).startOf('minute'), 'minute'))
+    : 0;
   // 퇴근 후 ableStatusList에 WORKING이 있으면 퇴근 취소 가능(퇴근 후 2시간 이내)
   const canUndoClockOut = phase === 'after' && !!t?.ableStatusList.some((s) => s.statusCode === 'WORKING');
   // 근무 중 전환 버튼: 현재 상태는 제외

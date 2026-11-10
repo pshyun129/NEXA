@@ -21,7 +21,9 @@ function toSpans(d: DailyAttendance): Span[] {
     const open = !next && endAll == null;
     const end = next ? min(next.startAt) : endAll ?? (isToday ? nowKst().diff(base, 'minute') : start);
     return { start, end: Math.max(start, end), code: r.statusCode, name: r.statusName, work: r.countAsWork, open };
-  });
+  })
+    // 퇴근취소는 취소된 퇴근 기록이라 구간으로 그리지 않는다(다음 상태까지는 빈칸, 서버도 근로에서 뺌)
+    .filter((sp) => sp.code !== 'CLOCK_OUT_CANCEL');
 }
 
 function spanColor(sp: Span) {
@@ -57,7 +59,9 @@ function Timeline({ d }: { d: DailyAttendance }) {
           <li key={i}>
             <span className="nx-num">{formatTime(r.startAt)}</span>
             <span>{r.statusName}</span>
-            {!r.countAsWork && r.statusCode !== 'CLOCK_OUT' && <span className={s.muted}>근로 미포함</span>}
+            {r.statusCode === 'CLOCK_OUT_CANCEL'
+              ? <span className={s.muted}>취소된 퇴근</span>
+              : !r.countAsWork && r.statusCode !== 'CLOCK_OUT' && <span className={s.muted}>근로 미포함</span>}
           </li>
         ))}
       </ol>
