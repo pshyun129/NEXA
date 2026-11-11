@@ -41,7 +41,8 @@ public class SecurityConfig {
                         ServerWebExchangeMatchers.matchers(
                                 ServerWebExchangeMatchers.pathMatchers(
                                         HttpMethod.GET,
-                                        "/actuator/health"
+                                        "/actuator/health",
+                                        "/actuator/prometheus"
                                 ),
                                 ServerWebExchangeMatchers.pathMatchers(
                                         HttpMethod.POST,
