@@ -88,12 +88,12 @@ function Body({ kind, blob, url }: { kind: Kind; blob: Blob; url: string }) {
  * 결과·원본 파일 미리보기 창: 엑셀(xlsx)·CSV는 표로, PDF는 브라우저 PDF 보기로, 이미지는 그대로 보여 주고
  * 확인한 뒤 [내려받기]. 파일은 다운로드 주소(요청자만, 쿠키 인증)에서 한 번 받아 미리보기와 내려받기에 같이 쓴다.
  */
-export function FilePreview({ target, onClose }: { target: PreviewTarget | null; onClose: () => void }) {
+export function FilePreview({ target, onClose, documentId }: { target: PreviewTarget | null; onClose: () => void; documentId?: number }) {
   const file = useQuery({
     queryKey: ['runFile', target?.fileId, target?.localUrl ?? 'server'],
     queryFn: async () => (target!.localUrl
       ? fetch(target!.localUrl).then((r) => r.blob())
-      : (await http.get<Blob>(runFileDownloadUrl(target!.fileId), { responseType: 'blob' })).data),
+      : (await http.get<Blob>(runFileDownloadUrl(target!.fileId, documentId), { responseType: 'blob' })).data),
     enabled: target != null,
     staleTime: 5 * 60_000,
     retry: false,
@@ -109,7 +109,7 @@ export function FilePreview({ target, onClose }: { target: PreviewTarget | null;
            footer={[
              <Button key="close" onClick={onClose}>닫기</Button>,
              // 이미 받은 파일을 그대로 저장한다(다시 요청하지 않음). 못 받았으면 서버 주소로 내려받는다
-             <a key="dl" href={url ?? (target ? runFileDownloadUrl(target.fileId) : undefined)} download={target?.name}>
+             <a key="dl" href={url ?? (target ? runFileDownloadUrl(target.fileId, documentId) : undefined)} download={target?.name}>
                <Button type="primary" icon={<Icon as={Upload} size={16} style={{ transform: 'rotate(180deg)' }} />}>내려받기</Button>
              </a>,
            ]}>

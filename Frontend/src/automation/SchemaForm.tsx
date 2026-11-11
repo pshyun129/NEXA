@@ -6,6 +6,7 @@ import { useDeleteRunFile, useUploadRunFile, type FormField } from '@/api/ai';
 import { useNotify } from '@/ui/useNotify';
 import { Kbd, modKey } from '@/ui/primitives';
 import { usePreviewStore } from './previewStore';
+import { PURPOSES, ReceiptFactsTable, receiptRows, type ReceiptFactRow } from './ReceiptFactsTable';
 import s from './automation.module.css';
 
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -19,14 +20,20 @@ const ACCEPT: Record<string, { exts: string; hint: string }> = {
 
 /**
  * 첨부가 필요한 흐름이면 파일 칸을 반드시 넣고 필수로 만든다(서버 workflows/service.py effective_input_form과 같은 규칙).
+ * 영수증 규정 검토가 있으면 첨부 칸 뒤에 '영수증별 정보' 표를 넣는다.
  * 사원 실행 폼은 서버가 이미 넣어 주고, 빌더 테스트 실행 폼(초안 그래프)이 이걸 쓴다
  */
-export function withFileField(fields: FormField[], accepts: string[]): FormField[] {
+export function withFileField(fields: FormField[], accepts: string[], receiptReview = false): FormField[] {
   if (accepts.length === 0) return fields;
-  if (!fields.some((f) => f.type === 'file')) {
-    return [{ key: 'files', label: '첨부 파일', type: 'file', required: true, options: accepts, prefill: null }, ...fields];
+  let out = fields.some((f) => f.type === 'file')
+    ? fields.map((f) => (f.type === 'file' ? { ...f, required: true, options: f.options.length ? f.options : accepts } : f))
+    : [{ key: 'files', label: '첨부 파일', type: 'file' as const, required: true, options: accepts, prefill: null }, ...fields];
+  if (receiptReview && !out.some((f) => f.type === 'receipt_facts')) {
+    const at = out.map((f) => f.type).lastIndexOf('file') + 1;
+    out = [...out.slice(0, at), { key: 'receipts', label: '영수증별 정보', type: 'receipt_facts', required: false, options: PURPOSES, prefill: null },
+      ...out.slice(at)];
   }
-  return fields.map((f) => (f.type === 'file' ? { ...f, required: true, options: f.options.length ? f.options : accepts } : f));
+  return out;
 }
 
 export interface SchemaFormValue { inputs: Record<string, unknown>; fileIds: number[] }
@@ -46,11 +53,20 @@ export function SchemaForm({ fields, submitting, submitLabel, onSubmit }:
   // 필드 key → 올린 파일들(uid, fileId)
   const [files, setFiles] = useState<Record<string, (UploadFile & { fileId?: number })[]>>({});
   const uploading = Object.values(files).flat().some((f) => f.status === 'uploading');
+  // 영수증별 정보 표: 파일 uid → 줄, 그리고 모든 장 공통 값
+  const [factRows, setFactRows] = useState<Record<string, ReceiptFactRow>>({});
+  const [factCommon, setFactCommon] = useState<ReceiptFactRow>({});
+  const allFiles = Object.values(files).flat().filter((f) => f.status !== 'error');
 
   const finish = (values: Record<string, unknown>) => {
     const inputs: Record<string, unknown> = {};
     for (const f of fields) {
       if (f.type === 'file') continue;
+      if (f.type === 'receipt_facts') {
+        const rows = receiptRows(allFiles.filter((x) => x.fileId != null).map((x) => ({ uid: x.uid, name: x.name, fileId: x.fileId })), factRows, factCommon);
+        if (rows) inputs[f.key] = rows;
+        continue;
+      }
       const v = values[f.key];
       if (v == null || v === '') continue;
       inputs[f.key] = f.type === 'date' && dayjs.isDayjs(v) ? v.format('YYYY-MM-DD') : v;
@@ -64,21 +80,23 @@ export function SchemaForm({ fields, submitting, submitLabel, onSubmit }:
       notify.info('20MB 이하 파일만 올릴 수 있습니다', file.name);
       return Upload.LIST_IGNORE;
     }
-    const uid = `${Date.now()}-${file.name}`;
+    const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${file.name}`;
     const item: UploadFile & { fileId?: number } = { uid, name: file.name, status: 'uploading' };
     setFiles((m) => ({ ...m, [key]: [...(m[key] ?? []), item] }));
-    upload.mutate(file, {
-      onSuccess: (res) => {
+    // mutate(…, { onSuccess })는 같은 mutation을 연달아 부르면 마지막 호출의 콜백만 불린다(TanStack Query) →
+    // 여러 장을 한 번에 고르면 앞 파일들이 '올리는 중'에 머물러 실행 버튼이 안 켜졌다. 파일마다 promise로 받는다
+    upload.mutateAsync(file).then(
+      (res) => {
         addPreview(res.id, file);
         setFiles((m) => ({ ...m, [key]: (m[key] ?? []).map((x) => (x.uid === uid ? { ...x, status: 'done', fileId: res.id } : x)) }));
         form.setFieldValue(key, true);
         form.validateFields([key]).catch(() => undefined);
       },
-      onError: (e) => {
+      (e: unknown) => {
         notify.error(e, '파일을 올리지 못했습니다');
         setFiles((m) => ({ ...m, [key]: (m[key] ?? []).filter((x) => x.uid !== uid) }));
       },
-    });
+    );
     return false; // 업로드는 위 mutation으로 직접 한다
   };
 
@@ -102,6 +120,14 @@ export function SchemaForm({ fields, submitting, submitLabel, onSubmit }:
           }}>
       {fields.map((f) => {
         const rules = f.required ? [{ required: true, message: `${f.label}을(를) 입력해 주세요` }] : [];
+        if (f.type === 'receipt_facts') {
+          return (
+            <Form.Item key={f.key} label={<>{f.label}<span className={s.optional}>선택</span></>}>
+              <ReceiptFactsTable files={allFiles.map((x) => ({ uid: x.uid, name: x.name, fileId: x.fileId }))} purposes={f.options}
+                                 rows={factRows} common={factCommon} onRows={setFactRows} onCommon={setFactCommon} />
+            </Form.Item>
+          );
+        }
         if (f.type === 'file') {
           // 허용 형식이 정해져 있으면 파일 고르기 창도 그 형식만 보여 준다(서버가 실행 시작 때 다시 검사한다)
           const kinds = f.options.filter((o) => ACCEPT[o]);

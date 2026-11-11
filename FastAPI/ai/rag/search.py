@@ -12,11 +12,13 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 import numpy as np
 
 from ai.rag.index import RegulationIndex, embed, get_index, rerank
 from ai.rag.parse import Clause
+from core.metrics import RETRIEVAL_CACHE
 
 CANDIDATES = 15     # 1차에서 넘길 후보 수 (조항이 적어서 넉넉하게)
 MIN_REL = 0.30      # 재정렬 관련도가 이보다 낮으면 '관련 규정 없음'으로 기권 (평가셋으로 조정)
@@ -92,7 +94,23 @@ def candidates(query: str, index: RegulationIndex, allowed: np.ndarray, n: int) 
 
 def retrieve(query: str, doc_codes: list[str] | None = None, k: int = 5,
              index: RegulationIndex | None = None, min_rel: float = MIN_REL) -> Retrieval:
-    index = index or get_index()
+    """같은 질문·같은 색인이면 결과가 항상 같다(질문은 템플릿) → 운영 색인은 캐시에서 꺼낸다.
+    시간 대부분이 CPU 재정렬이라, 고정 질문(주말·야간, 주류, 정산 기한 등)을 영수증마다 다시 채점하지 않게 한다.
+    색인 버전이 키에 들어가므로 규정을 다시 색인하면 자연히 새로 계산한다. 반환값은 읽기 전용으로 쓸 것."""
+    if index is not None:                                   # 평가용 별도 색인은 캐시하지 않음
+        return _retrieve(query, doc_codes, k, index, min_rel)
+    before = _retrieve_cached.cache_info().hits
+    r = _retrieve_cached(query, tuple(doc_codes) if doc_codes else None, k, min_rel, get_index().version)
+    RETRIEVAL_CACHE.labels("hit" if _retrieve_cached.cache_info().hits > before else "miss").inc()
+    return r
+
+
+@lru_cache(maxsize=2048)
+def _retrieve_cached(query: str, doc_codes: tuple[str, ...] | None, k: int, min_rel: float, version: str) -> Retrieval:
+    return _retrieve(query, list(doc_codes) if doc_codes else None, k, get_index(), min_rel)
+
+
+def _retrieve(query: str, doc_codes: list[str] | None, k: int, index: RegulationIndex, min_rel: float) -> Retrieval:
     allowed = np.array([doc_codes is None or c.doc_code in doc_codes for c in index.clauses])
     if not allowed.any():
         return Retrieval([], 0.0, True, index.version, {"reason": "해당 규정 없음"})

@@ -1,5 +1,6 @@
 """DSPy용 LM 설정: 로컬 vLLM을 먼저 쓰고, 실패하면 GMS로 다시 실행."""
 import logging
+import threading
 
 import dspy
 # DSPy는 LiteLLM 에러를 자기 에러로 감싸서 던지므로 DSPy 에러로 잡아야 함
@@ -54,8 +55,17 @@ def get_gms_lm() -> dspy.LM:
 _FALLBACK_ERRORS = (LMTransportError, LMTimeoutError, LMServerError)
 
 
+_slots = threading.BoundedSemaphore(max(1, settings.llm_max_concurrency))
+
+
 def run_with_fallback(module: dspy.Module, **inputs):
-    """DSPy 모듈을 로컬 LM으로 실행하고, 연결 실패나 서버 오류면 GMS LM으로 다시 실행한다."""
+    """DSPy 모듈을 로컬 LM으로 실행하고, 연결 실패나 서버 오류면 GMS LM으로 다시 실행한다.
+    동시에 settings.llm_max_concurrency개까지만 (넘으면 자리가 날 때까지 기다림)"""
+    with _slots:
+        return _run(module, **inputs)
+
+
+def _run(module: dspy.Module, **inputs):
     if _local_enabled():
         try:
             # dspy.context: 이 블록 안에서만 해당 LM 사용 (요청마다 독립, 스레드 안전)

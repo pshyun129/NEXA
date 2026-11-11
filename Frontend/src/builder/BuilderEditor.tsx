@@ -186,6 +186,8 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
     const ups = graph.nodes.filter((n) => n.type === 'file_upload').map((n) => String(n.config.accept ?? '')).filter(Boolean);
     return ups.length ? [...new Set(ups)] : fileNode ? ['이미지'] : [];
   }, [graph, fileNode]);
+  // 영수증 규정 검토가 있으면 테스트 실행 폼에도 영수증별 정보 표 (서버 effective_input_form과 같은 규칙)
+  const receiptReview = graph.nodes.some((n) => n.type === 'policy_check' && String(n.config.doc_type ?? '영수증') === '영수증');
   const warnings = useMemo(() => orderWarnings(graph, catalog), [graph, catalog]);
   const selectedNode = nodes.find((n) => n.selected);
   const selectedEdge = edges.find((e) => e.selected);
@@ -742,7 +744,7 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
         {drawer === 'monitor' && testRunId ? <RunMonitor runId={testRunId} canvas={false} /> : (
           <div className={s.testForm}>
             <p className={s.muted} style={{ marginTop: 0 }}>저장한 초안 그래프로 실행합니다. 시작하면 진행 상황이 캔버스와 아래 실행 모니터에 그려져요.</p>
-            <SchemaForm fields={withFileField(live.inputForm, fileAccepts)} submitting={startTest.isPending} submitLabel="테스트 실행"
+            <SchemaForm fields={withFileField(live.inputForm, fileAccepts, receiptReview)} submitting={startTest.isPending} submitLabel="테스트 실행"
                         onSubmit={(v) => startTest.mutate(v, {
                           onSuccess: (r) => { setTestRunId(r.runId); setDrawer(null); setExecTab('logs'); setView('editor'); },
                           onError: (e) => notify.error(e, '테스트 실행을 시작하지 못했습니다'),

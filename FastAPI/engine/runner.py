@@ -134,7 +134,9 @@ def _run_graph(run_id: int, graph_json: dict, thread_id: str, graph_input) -> No
         # 결재 대기: 멈추는 사이에 결과가 이미 도착했을 수 있음 → 한 번 더 확인
         # (노드가 보관함을 본 직후, WAITING이 되기 직전에 이벤트가 온 경우)
         if isinstance(payload, dict) and payload.get("type") == "approval_wait":
-            resume_if_ready(payload["request_key"])
+            for key in payload.get("request_keys") or [payload["request_key"]]:
+                if resume_if_ready(key):        # 하나라도 재개하면 그 실행이 나머지도 다시 확인함
+                    break
         return
 
     _finish(run_id, RunStatus.SUCCEEDED, outputs=result["outputs"])

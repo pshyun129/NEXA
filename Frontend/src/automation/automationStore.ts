@@ -5,7 +5,8 @@ export type HubView =
   | { kind: 'home'; tab?: HubTab }
   | { kind: 'start'; workflowId: number }
   | { kind: 'builder'; workflowId: number }
-  | { kind: 'run'; runId: number };
+  // documentId: 결재자가 결재 문서에서 연 실행 (읽기 전용)
+  | { kind: 'run'; runId: number; documentId?: number };
 export type HubTab = 'run' | 'mine' | 'history' | 'waiting';
 
 interface AutomationUi {

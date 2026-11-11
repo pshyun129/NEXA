@@ -30,6 +30,9 @@ OCR_ERRORS = Counter("ai_ocr_errors_total", "OCR 실패 수")
 
 # 검증 결과. route = auto(자동 확정) / human(사람 확인) → 모델 버전별 자동화율
 VERIFY = Counter("ai_verify_total", "검증 결과", ["doc_type", "model_version", "route"])
+# GMS 교차 추출 호출. purpose = ambiguous(싼 검증에 걸린 장) / audit(통과한 장 표본 감사), result = agree / disagree
+#   audit의 disagree 비율 = 싼 검증이 놓치는 비율
+VERIFY_GMS = Counter("ai_verify_gms_total", "자동 검증의 GMS 호출", ["purpose", "result"])
 
 # Kafka 결재 결과 구독 상태: 1 = 연결, 0 = 끊김
 # 끊기면 결재 결과가 안 와서 wait_approval 노드가 계속 대기
@@ -37,5 +40,14 @@ KAFKA_UP = Gauge("ai_kafka_consumer_up", "Kafka 결재 결과 구독 상태 (1 �
 
 # 규정 검토 결과. verdict = 준수 / 위반 / 확인 필요 → 판정 모델 버전별 자동 통과율
 POLICY_CHECKS = Counter("ai_policy_check_total", "규정 검토 결과", ["doc_type", "verdict", "judge_version"])
+
+# 규정 검토 단계별 시간. phase = retrieval(검색·재정렬, CPU) / judge(조항 판정, LLM) / total
+POLICY_SECONDS = Histogram(
+    "ai_policy_check_seconds", "규정 검토 단계별 시간", ["phase"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60),
+)
+# 규정 검색 캐시. result = hit(같은 질문 재사용) / miss(검색·재정렬 실행)
+JUDGE_CACHE = Counter("ai_policy_judge_cache_total", "규정 판정 캐시 (같은 조항·같은 사실)", ["result"])
+RETRIEVAL_CACHE = Counter("ai_policy_retrieval_cache_total", "규정 검색 캐시", ["result"])
 
 GOLDEN_SYNC = Counter("ai_golden_sync_total", "골든셋 MLflow 전송 결과", ["outcome"])  # pushed/unchanged/empty/error

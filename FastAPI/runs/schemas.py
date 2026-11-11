@@ -12,6 +12,13 @@ class ResumeRequest(CamelModel):
     approved: bool                  # 확인(True) / 반려(False)
     comment: str | None = None      # 의견
     data: dict | None = None        # 사람이 고친 값 (human_confirm용, 고친 필드만 보내도 됨)
+    # 영수증 여러 장: 장마다 [{index, data(고친 값), facts(사용 목적·참석 인원 …), include, note}]
+    receipts: list[dict] | None = None
+
+
+class PolicyPreviewRequest(CamelModel):
+    """사람 확인 화면의 [다시 검토]: 고친 값·사실로 규정 검토만 미리 돌려 봄 (실행은 그대로 대기)"""
+    receipts: list[dict]            # [{index, data, facts}]
 
 
 class RunCreated(CamelModel):

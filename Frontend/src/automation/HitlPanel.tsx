@@ -6,6 +6,7 @@ import { AiMark, Kbd, modKey } from '@/ui/primitives';
 import { Icon } from '@/ui/Icon';
 import { TriangleAlert, Check, Pencil } from '@/ui/icons';
 import { fieldLabel, NUMERIC_FIELDS } from './fieldLabels';
+import { HitlReceipts } from './HitlReceipts';
 import s from './automation.module.css';
 
 const norm = (v: unknown) => String(v ?? '').replace(/\s+/g, '');
@@ -18,7 +19,13 @@ const MISMATCH = /^GMS와 불일치:\s*(\S+)/;
  * 사람 확인(설계 6.5 HitlFieldDiff). 불일치 칸만 강조하고, 추출값을 누르면 확정값으로 복사한다.
  * resume.data에는 고친 필드만 담는다. 요청자가 아니면 읽기 전용.
  */
-export function HitlPanel({ runId, waiting, canResume, onResumed }:
+export function HitlPanel(props: { runId: number; waiting: HitlWaiting; canResume: boolean; onResumed: () => void; documentId?: number }) {
+  // 영수증 여러 장이면 장별 확인 화면 (한 장이면 예전 칸별 비교 화면)
+  if ((props.waiting.receipts?.length ?? 0) > 1) return <HitlReceipts {...props} />;
+  return <SingleHitl {...props} />;
+}
+
+function SingleHitl({ runId, waiting, canResume, onResumed }:
   { runId: number; waiting: HitlWaiting; canResume: boolean; onResumed: () => void }) {
   const resume = useResumeRun(runId);
   const notify = useNotify();

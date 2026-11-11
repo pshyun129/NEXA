@@ -1,7 +1,7 @@
 """골든셋 모으기: 사람이 확정한 결과(run_feedback, label_source=human) → 평가셋 행.
 
 mlops/export_golden.py(파일로 내보내기)와 runs/golden_sync.py(MLflow로 자동 전송)가 같이 씀.
-llm_agree(로컬·GMS 일치 자동 확정)는 넣지 않음 → 두 모델이 같이 틀린 걸 정답으로 굳히면 안 되니까.
+llm_agree(로컬·GMS 일치)·rule_agree(원문 대조 통과) 자동 확정은 넣지 않음 → 두 모델이 같이 틀린 걸 정답으로 굳히면 안 되니까.
 """
 import hashlib
 import json
@@ -57,12 +57,17 @@ def collect_golden(db, doc_type: str = "영수증", masked: bool = False) -> tup
 
     for fb in feedbacks:
         ocr = step_output(db, fb.run_id, "ocr_extract")
+        # 영수증 여러 장 실행: 라벨에 장 정보(_receipt)가 있으면 그 장의 OCR 텍스트·신뢰도만
+        receipt = (fb.final_output or {}).get("_receipt") or {}
+        if receipt.get("file_id") is not None and len(ocr.get("pages") or []) > 1:
+            page = next((p for p in ocr["pages"] if p.get("file_id") == receipt["file_id"]), None)
+            ocr = {"text": page.get("text"), "confidence": page.get("confidence")} if page else {}
         if not ocr.get("text"):                # 입력 텍스트가 없으면 다시 돌려볼 수 없음
             skipped += 1
             continue
         label = {k: fb.final_output.get(k) for k in FIELDS}
         records.append({
-            "id": f"g{fb.id:05d}",
+            "id": f"g{fb.id:05d}",                 # 피드백 행마다 하나 → 여러 장 실행도 장마다 다른 id
             "split": "test",
             "text": mask_text(ocr["text"]) if masked else ocr["text"],
             "confidence": ocr.get("confidence"),
@@ -73,9 +78,12 @@ def collect_golden(db, doc_type: str = "영수증", masked: bool = False) -> tup
         })
         # 사람이 상호명을 고쳤다 = OCR이 틀렸을 가능성 → 원본 파일과 함께 파인튜닝 후보로
         if "store" in (fb.edited_fields or []):
+            files = step_output(db, fb.run_id, "file_upload").get("files", [])
+            if receipt.get("file_id") is not None:     # 여러 장: 고친 그 장의 원본만
+                files = [f for f in files if f.get("file_id") == receipt["file_id"]] or files
             corrections.append({
                 "run_id": fb.run_id,
-                "files": step_output(db, fb.run_id, "file_upload").get("files", []),
+                "files": files,
                 "model_store": fb.model_output.get("store"),
                 "correct_store": label["store"],
             })

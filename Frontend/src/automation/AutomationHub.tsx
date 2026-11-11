@@ -248,7 +248,7 @@ export function AutomationHub() {
               : <RunsTab waitingOnly />
           )}
           {view.kind === 'start' && <StartView key={view.workflowId} workflowId={view.workflowId} screen={screen.code} />}
-          {view.kind === 'run' && <div className={s.runView}><RunMonitor key={view.runId} runId={view.runId} /></div>}
+          {view.kind === 'run' && <div className={s.runView}><RunMonitor key={view.runId} runId={view.runId} documentId={view.documentId} /></div>}
           {view.kind === 'builder' && (
             band !== 'wide'
               ? <EmptyState icon={Sparkles} title="1280px 이상 화면에서 열립니다" description="창을 넓히거나 브라우저 확대를 100%로 맞춰 주세요(Ctrl+0)." />

@@ -6,7 +6,7 @@
 """
 import logging
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from core.database import SessionLocal
@@ -42,12 +42,15 @@ def get_result(request_key: str) -> dict | None:
 
 
 def _find_waiting_run(request_key: str) -> int | None:
-    """이 requestKey의 결재를 기다리며 멈춰 있는 실행 (대기 단계 출력의 waiting_for에 키가 있음)"""
+    """이 requestKey의 결재를 기다리며 멈춰 있는 실행 (대기 단계 출력의 waiting_for에 키가 있음)
+    문서 여러 건을 기다리면 waiting_for.request_keys 목록에 들어 있음"""
+    waiting = RunStep.output["waiting_for"]
     with SessionLocal() as db:
         step = db.scalars(
             select(RunStep).where(
                 RunStep.status == RunStatus.WAITING,
-                RunStep.output["waiting_for"]["request_key"].astext == request_key,
+                or_(waiting["request_key"].astext == request_key,
+                    waiting["request_keys"].contains([request_key])),
             )
         ).first()
         return step.run_id if step else None
@@ -76,8 +79,14 @@ def delete_results_for_run(run_id: int) -> None:
     """
     with SessionLocal() as db:
         steps = db.scalars(select(RunStep).where(RunStep.run_id == run_id)).all()
-        keys = [s.output["request_key"] for s in steps
-                if isinstance(s.output, dict) and s.output.get("request_key")]
+        keys = []
+        for s in steps:
+            if not isinstance(s.output, dict):
+                continue
+            keys += s.output.get("request_keys") or []           # 문서 여러 건
+            if s.output.get("request_key"):
+                keys.append(s.output["request_key"])
+        keys = list(dict.fromkeys(keys))
         if keys:
             db.execute(delete(ApprovalResult).where(ApprovalResult.request_key.in_(keys)))
             db.commit()

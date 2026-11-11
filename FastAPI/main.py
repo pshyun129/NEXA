@@ -18,7 +18,7 @@ from nodes.routers import router as nodes_router
 from runs.routers import router as runs_router
 from workflows.routers import router as workflows_router
 from ai.routers import router as ai_router
-from ai.rag.index import warm_up as warm_up_rag
+from ai.rag.policy import warm_up as warm_up_rag   # 모델 + 고정 질문 검색 결과 미리 계산
 from runs import golden_sync
 from runs.service import fail_interrupted_runs
 

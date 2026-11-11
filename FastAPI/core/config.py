@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     local_llm_api_key: str = ""
     local_llm_model: str = "qwen3.8-27b"
     local_llm_timeout: float = 60.0
+    # 프로세스 전체 LLM 동시 호출 상한 (영수증 수백 장 실행이 겹쳐도 vLLM·GMS를 몰아치지 않게)
+    llm_max_concurrency: int = 16
 
     # OCR 서버 (GPU 서버 PyTriton, Tailscale 경유)
     ocr_base_url: str = ""          # "호스트:포트" 형식, http:// 없이 (예: 100.x.x.x:18100)

@@ -2,7 +2,11 @@
 from pathlib import Path
 
 from ai.ocr import ocr_image
-from nodes.base import BaseNode, NodeContext, NodeResult
+from concurrent.futures import ThreadPoolExecutor
+
+from nodes.base import BaseNode, NodeContext, NodeResult, Progress
+
+OCR_WORKERS = 4         # GPU 서버 OCR 동시 호출 수 (Triton이 묶어서 처리)
 
 # OCR 대상 확장자 (PDF는 나중에 페이지를 이미지로 바꿔서 지원)
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -31,11 +35,22 @@ class OcrExtractNode(BaseNode):
         if not files:
             raise ValueError("OCR할 이미지 파일이 없습니다")
 
-        pages, scores = [], []
-        for f in files:
+        progress = Progress(ctx, len(files), "글자 인식")
+
+        def read(f: dict):
             result = ocr_image(Path(f["path"]).read_bytes())          # GPU 서버 OCR 호출
-            pages.append({"file_id": f["file_id"], "name": f["name"], "text": result.text})
-            scores += [item.score for item in result.items]           # 글자 덩어리별 신뢰도
+            progress.tick()
+            return result
+
+        with ThreadPoolExecutor(max_workers=OCR_WORKERS) as pool:     # 순서는 첨부 순서 그대로
+            results = list(pool.map(read, files))
+        pages, scores = [], []
+        for f, result in zip(files, results):
+            page_scores = [item.score for item in result.items]       # 글자 덩어리별 신뢰도
+            pages.append({"file_id": f["file_id"], "name": f["name"], "text": result.text,
+                          # 장별 신뢰도: 여러 장일 때 교차 검증이 장마다 기준을 적용 (흐린 한 장만 사람 확인)
+                          "confidence": round(sum(page_scores) / len(page_scores), 4) if page_scores else 0.0})
+            scores += page_scores
 
         # 평균 신뢰도가 기준 미만이면 "확인 필요" 분기 (흐리거나 잘린 사진)
         confidence = round(sum(scores) / len(scores), 4) if scores else 0.0

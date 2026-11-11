@@ -34,7 +34,7 @@ class Graph(CamelModel):
 class FormField(CamelModel):
     key: str
     label: str
-    type: Literal["text", "number", "date", "select", "file"]
+    type: Literal["text", "number", "date", "select", "file", "receipt_facts"]  # receipt_facts: 영수증별 정보 표 (자동 추가)
     required: bool = False
     options: list[str] = []
     prefill: str | None = None  # 화면 데이터에서 자동으로 채울 항목 (예: "employee.name")

@@ -26,7 +26,7 @@ export interface WorkflowSummary {
 export interface FormField {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'file';
+  type: 'text' | 'number' | 'date' | 'select' | 'file' | 'receipt_facts';   // receipt_facts: 영수증별 정보 표(서버가 자동으로 넣음)
   required: boolean;
   options: string[];
   prefill: string | null;
@@ -75,9 +75,10 @@ export function runInputFiles(run: RunDetail): RunInputFile[] {
 
 /**
  * 원본 내려받기(GET /runs/files/{id}/download, origin/develop e712f8e). 쿠키 인증이라 <img src>·링크로 바로 쓴다.
- * 업로드한 사람·실행 요청자만 받을 수 있다(그 외 RUN_FORBIDDEN) → 결재자는 볼 수 없다.
+ * 업로드한 사람·실행 요청자, 그리고 그 실행이 올린 결재 문서의 결재자(documentId를 같이 보냄, 읽기 전용)가 받을 수 있다.
  */
-export const runFileDownloadUrl = (fileId: number) => `${BASE}/runs/files/${fileId}/download`;
+export const runFileDownloadUrl = (fileId: number, documentId?: number) =>
+  `${BASE}/runs/files/${fileId}/download${documentId ? `?document_id=${documentId}` : ''}`;
 
 export interface RunDetail extends RunSummary {
   inputs: Record<string, unknown>;
@@ -117,6 +118,29 @@ export interface NodeSummary {
   description: string;
 }
 
+/** 영수증 한 장의 확인 정보(FastAPI nodes/impl/human_confirm.py compact) */
+export interface HitlReceipt {
+  index: number;
+  file_id: number | null;
+  name: string | null;
+  fields: Record<string, unknown>;
+  /** 사람이 봐야 하는 장(자동 검증에서 걸렸거나 규정 검토가 준수가 아님) */
+  flagged: boolean;
+  reasons: string[];
+  include: boolean;
+  note: string | null;
+  items: { name: string; quantity: number | null; amount: number | null; kind: string | null }[];
+  headcount: { printed: number | null; estimate: { min: number; max: number; basis: string } | null } | null;
+  evidence_kind: string | null;
+  facts: { purpose?: string; headcount?: number | string; attendees?: string; reason?: string; pay_method?: string; pay_time?: string };
+  /** 규정 검토 뒤의 확인이면 판정(준수/위반/확인 필요) */
+  verdict: '준수' | '위반' | '확인 필요' | null;
+  /** 규정 검토가 더 알아야 하는 사실(규정 용어: 사용 목적·참석 인원·참석자 이름·사용 사유 …) */
+  needed_facts: string[];
+  gms_fields: Record<string, unknown> | null;
+  duplicate_of: number | null;
+}
+
 /** 사람 확인(human_confirm) 대기 내용 */
 export interface HitlWaiting {
   type: 'human_confirm';
@@ -124,7 +148,22 @@ export interface HitlWaiting {
   fields: Record<string, unknown>;
   reasons: string[];
   gms_fields: Record<string, unknown> | null;
+  /** 영수증 여러 장: 장마다 확인(extraction: 읽은 값 / policy: 규정 검토 결과) */
+  mode?: 'extraction' | 'policy';
+  receipts?: HitlReceipt[];
 }
+
+/** 사람 확인 응답에서 장 하나(바뀐 것만) */
+export interface HitlReceiptAnswer {
+  index: number;
+  data?: Record<string, unknown>;
+  facts?: { purpose?: string; headcount?: number; attendees?: string; reason?: string };
+  include?: boolean;
+  note?: string;
+}
+
+/** [다시 검토] 결과 */
+export interface PolicyPreview { index: number; verdict: '준수' | '위반' | '확인 필요'; reasons: string[]; needed_facts: string[] }
 
 /** 결재 결과 대기(wait_approval). 수동 재개 불가(RUN_006), Kafka 결과로만 재개 */
 export interface ApprovalWaiting {
@@ -133,6 +172,8 @@ export interface ApprovalWaiting {
   request_key: string;
   document_id: number;
   doc_no: string;
+  /** 문서 여러 건을 기다릴 때(영수증 여러 장): 문서별 상태 */
+  documents?: { document_id: number; doc_no: string; title: string; kind: string; status: string | null }[];
 }
 
 export type Waiting = HitlWaiting | ApprovalWaiting;
@@ -257,13 +298,16 @@ function pollMs(status: RunStatus | undefined, boost = false) {
 }
 
 /** enabled=false면 부르지 않는다(빌더 캔버스가 테스트 실행이 있을 때만 상태를 겹쳐 그린다) */
-export function useRun(id: number, boost = false, enabled = true) {
+/** documentId: 결재자가 결재 문서에서 열 때(읽기 전용, 서버가 결재 서비스로 권한을 확인) */
+const docParams = (documentId?: number) => (documentId ? { params: { document_id: documentId } } : undefined);
+
+export function useRun(id: number, boost = false, enabled = true, documentId?: number) {
   const qc = useQueryClient();
   return useQuery({
     queryKey: runKeys.run(id),
     queryFn: async () => {
       const prev = qc.getQueryData<RunDetail>(runKeys.run(id))?.status;
-      const run = await api.get<RunDetail>(`${BASE}/runs/${id}`);
+      const run = await api.get<RunDetail>(`${BASE}/runs/${id}`, docParams(documentId));
       // 상태가 바뀌면(실행 중 → 확인 대기, 확인 대기 → 완료 등) 확인 대기 숫자를 바로 다시 센다(QA AUTO-B5)
       if (prev && prev !== run.status) qc.invalidateQueries({ queryKey: runKeys.pending });
       return run;
@@ -276,10 +320,10 @@ export function useRun(id: number, boost = false, enabled = true) {
 }
 
 /** steps는 실행과 같은 주기로 함께 부른다(요구사항 3.7). 실행 상태를 받아 주기를 맞춘다 */
-export function useRunSteps(id: number, status: RunStatus | undefined, boost = false, enabled = true) {
+export function useRunSteps(id: number, status: RunStatus | undefined, boost = false, enabled = true, documentId?: number) {
   return useQuery({
     queryKey: runKeys.steps(id),
-    queryFn: () => api.get<RunStep[]>(`${BASE}/runs/${id}/steps`),
+    queryFn: () => api.get<RunStep[]>(`${BASE}/runs/${id}/steps`, docParams(documentId)),
     enabled,
     placeholderData: undefined,
     refetchInterval: () => pollMs(status, boost),
@@ -300,9 +344,17 @@ function useInvalidateRun(id: number) {
 export function useResumeRun(id: number) {
   const refresh = useInvalidateRun(id);
   return useMutation({
-    mutationFn: (body: { approved: boolean; comment?: string; data?: Record<string, unknown> }) =>
+    mutationFn: (body: { approved: boolean; comment?: string; data?: Record<string, unknown>; receipts?: HitlReceiptAnswer[] }) =>
       api.post<{ runId: number; status: RunStatus }>(`${BASE}/runs/${id}/resume`, body),
     onSettled: refresh,
+  });
+}
+
+/** 사람 확인 화면의 [다시 검토]: 고친 값·사실로 규정 검토만 미리 돌려 본다(실행은 계속 대기) */
+export function usePolicyPreview(id: number) {
+  return useMutation({
+    mutationFn: (receipts: HitlReceiptAnswer[]) =>
+      api.post<PolicyPreview[]>(`${BASE}/runs/${id}/policy-preview`, { receipts }, { timeout: 120_000 }),
   });
 }
 

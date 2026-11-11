@@ -106,7 +106,7 @@ class RunFeedback(Base):
     model_output: Mapped[dict] = mapped_column(JSONB)                 # AI가 낸 값
     final_output: Mapped[dict] = mapped_column(JSONB)                 # 확정된 값 (= 라벨)
     edited_fields: Mapped[list] = mapped_column(JSONB)                # 바뀐 필드 목록
-    label_source: Mapped[str] = mapped_column(String(20))             # human: 사람 확정 / llm_agree: 로컬·GMS 일치로 자동 확정
+    label_source: Mapped[str] = mapped_column(String(20))             # human: 사람 확정 / llm_agree: 로컬·GMS 일치로 자동 확정 / rule_agree: 원문 대조(싼 검증) 통과로 자동 확정
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
