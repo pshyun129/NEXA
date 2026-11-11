@@ -89,7 +89,8 @@ def guessed_over(known: dict, checks: list[dict]) -> str | None:
         return None
     x, total = xs[0], known.get("결제 금액")
     need = math.ceil(total / x["limit"]) if isinstance(total, int) and x["limit"] else None
-    return (f"품목 기준 최소 {known.get('참석 인원')}명으로 나누면 1인당 {x['value']:,}원 > 한도 {x['limit']:,}원"
+    where = "품목 기준 최소" if str(known.get("참석 인원 근거", "")).startswith("품목") else "영수증 메모에서 읽은"
+    return (f"{where} {known.get('참석 인원')}명으로 나누면 1인당 {x['value']:,}원 > 한도 {x['limit']:,}원"
             + (f" → {need}명 이상이면 한도 안" if need else "") + " (참석 인원을 적어 주세요)")
 
 

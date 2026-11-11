@@ -72,6 +72,7 @@ class ReceiptDetails:
     vat: Found | None = None               # 부가세
     printed_headcount: Found | None = None # 영수증에 찍힌 인원(고객수·PAX)
     memo_attendees: Found | None = None    # 메모에 적은 참석자 이름 목록
+    memo_uncertain: Found | None = None    # 이름 줄을 다 못 나눔 (OCR이 띄어쓰기·쉼표를 빼먹어 붙은 글자) → 이름 수를 인원으로 안 씀
     memo_headcount: Found | None = None    # 메모에 적은 인원 ('총 5명', '김민준 외 3명' → 4)
     memo_purpose: Found | None = None      # 메모의 목적 → 경비 사용 목적 이름 (회의·야근 …)
     memo_reason: Found | None = None       # 메모의 사유 (야간·주말 사용 사유)
@@ -163,15 +164,37 @@ def parse_details(text: str, date_iso: str | None = None) -> ReceiptDetails:
     return out
 
 
+def split_names(text: str) -> tuple[list[str], bool]:
+    """참석자 줄 → (이름 목록, 다 못 나눴는지).
+    OCR이 손글씨 이름 사이 쉼표·띄어쓰기를 빼먹어 '김민준이서연박지훈'처럼 붙기 쉬움 (2026-11-11 실서버 10장 E2E)
+    → 한국 이름은 대부분 3글자라 3의 배수 길이 덩어리는 3글자씩 나눔. 그 밖의 길이(글자가 빠진 '김민준이연')는 불확실"""
+    names, uncertain = [], False
+    for tok in re.split(r"[,，.·/、\s]+", text):
+        t = re.sub(r"[^가-힣]", "", tok)            # 자모 낙서('ㄴ')·기호는 버림
+        if len(t) <= 1 or t in NOT_NAME:
+            continue
+        if NAME.match(t) and len(t) <= 3:
+            names.append(t)
+        elif len(t) % 3 == 0 and len(t) <= 30:
+            names += [t[i:i + 3] for i in range(0, len(t), 3)]
+        elif NAME.match(t):                          # 4글자: 남궁민수 같은 이름일 수도, 붙은 두 이름일 수도
+            names.append(t)
+            uncertain = True
+        else:
+            uncertain = True
+    return [n for n in names if n not in NOT_NAME], uncertain
+
+
 def _parse_memo(lines: list[str], out: ReceiptDetails) -> None:
     """손으로 적은 메모: 참석자·인원·목적·사유"""
     for ln in lines:
         if out.memo_attendees is None and (m := MEMO_ATTENDEES.search(ln)) and not TOTAL_LABEL.search(ln):
             text = m.group(2)
-            names = [t for t in re.split(r"[,，·/、\s]+", re.sub(r"(총|외)\s*\d+\s*명|\d+\s*명", " ", text))
-                     if NAME.match(t) and t not in NOT_NAME]
+            names, uncertain = split_names(re.sub(r"(총|외)\s*\d+\s*명|\d+\s*명", " ", text))
             if names:
                 out.memo_attendees = Found(names, ln)
+            if uncertain:
+                out.memo_uncertain = Found(text.strip(), ln)
             c = MEMO_COUNT.search(text)
             if c:
                 n = int(c.group(2) or c.group(3))

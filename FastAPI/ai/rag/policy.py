@@ -56,6 +56,8 @@ JUDGE_CACHE_SIZE = 4096                         # (조항, 사실) → 판정 �
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 DERIVED_FROM = {"1인당 금액": "참석 인원"}         # 계산된 사실이 없을 때 사용자에게 물어볼 원래 사실
 ESTIMATED = "품목 기준 최소 추정"                 # 참석 인원 근거가 품목 추정이면 이 말로 시작 (한도 초과는 위반 대신 확인 필요)
+FROM_MEMO = "영수증 메모"                         # 손글씨를 OCR로 읽은 인원도 빠뜨렸을 수 있어 같은 취급
+UNSURE_HEADCOUNT = (ESTIMATED, FROM_MEMO)
 MIN_HIT_REL = MIN_REL                           # 판정 대상 조항도 같은 기준 (관련 없는 조항이 끼면 과잉 신중·거짓 위반이 생김)
 KR_HOLIDAYS = holidays.KR()
 Verdict = Literal["준수", "위반", "해당 없음", "확인 필요"]
@@ -158,13 +160,16 @@ def receipt_facts(fields: dict, extra: dict, today: date, receipt: dict | None =
 
     # 사용자가 알려줘야만 아는 사실
     # 사람이 적은 값이 없으면 영수증에 손으로 적은 메모 (참석: … / 목적: … / 사유: …)
-    memo = {k: _details_value(receipt, f"memo_{k}") for k in ("purpose", "attendees", "headcount", "reason")}
+    memo = {k: _details_value(receipt, f"memo_{k}") for k in ("purpose", "attendees", "headcount", "reason", "uncertain")}
     if not extra.get("사용 목적") and memo["purpose"]:
         extra = {**extra, "사용 목적": memo["purpose"]}
         known["사용 목적 근거"] = "영수증 메모"
-    if not extra.get("참석자") and memo["attendees"]:
-        extra = {**extra, "참석자": memo["attendees"]}
-        known["참석자 근거"] = "영수증 메모"
+    names_from_memo = False
+    if not extra.get("참석자") and (memo["attendees"] or memo["uncertain"]):
+        # 다 못 나눈 이름 줄은 적힌 그대로를 참석자로 남김 (제8조④ 이름 기재는 충족, 인원 수로는 안 씀)
+        extra = {**extra, "참석자": [memo["uncertain"]] if memo["uncertain"] else memo["attendees"]}
+        known["참석자 근거"] = "영수증 메모" + (" (손글씨 판독 불확실)" if memo["uncertain"] else "")
+        names_from_memo = True
     if not extra.get("사용 사유") and memo["reason"]:
         extra = {**extra, "사용 사유": memo["reason"]}
     purpose = extra.get("사용 목적")
@@ -182,9 +187,10 @@ def receipt_facts(fields: dict, extra: dict, today: date, receipt: dict | None =
     elif printed:
         people, known["참석 인원 근거"] = printed, "영수증에 찍힌 인원"
     elif memo["headcount"]:
-        people, known["참석 인원 근거"] = memo["headcount"], "영수증 메모"
-    elif names:
-        people, known["참석 인원 근거"] = len(names), "참석자 이름 수"
+        people, known["참석 인원 근거"] = memo["headcount"], f"{FROM_MEMO} ('외 N명'·'총 N명')"
+    elif names and not (names_from_memo and memo["uncertain"]):
+        people = len(names)
+        known["참석 인원 근거"] = f"{FROM_MEMO} 이름 수" if names_from_memo else "참석자 이름 수"
     elif estimate and estimate.get("min"):
         people = estimate["min"]
         known["참석 인원 근거"] = f"{ESTIMATED} ({estimate['min']}~{estimate['max']}명, {estimate.get('basis', '')})"
@@ -303,8 +309,10 @@ def numeric_checks(clause: Clause, known: dict) -> tuple[list[dict], list[str]]:
             missing.append(DERIVED_FROM.get(fact, fact))
             continue
         over = value > limit
-        estimated = fact == "1인당 금액" and str(known.get("참석 인원 근거", "")).startswith(ESTIMATED)
-        text = f"{fact} {value:,} {'>' if over else '≤'} {kind} {limit:,}" + (" (품목 기준 최소 인원으로 계산)" if estimated else "")
+        basis = str(known.get("참석 인원 근거", ""))
+        estimated = fact == "1인당 금액" and basis.startswith(UNSURE_HEADCOUNT)
+        note = " (품목 기준 최소 인원으로 계산)" if basis.startswith(ESTIMATED) else " (영수증 손글씨에서 읽은 인원)" if estimated else ""
+        text = f"{fact} {value:,} {'>' if over else '≤'} {kind} {limit:,}" + note
         results.append({"kind": kind, "fact": fact, "value": value, "limit": limit, "over": over, "text": text,
                         "estimated": estimated})
     return results, missing
