@@ -36,6 +36,9 @@ def _facts(r: dict) -> dict:
         v = (r.get("facts") or {}).get(key)
         if v in (None, "", []):
             v = known.get(KNOWN_NAMES[key])
+            # 품목으로 추정한 인원은 사람이 적은 값처럼 칸에 채우지 않음 (화면은 추정 범위를 도움말로 보여 줌)
+            if key == "headcount" and str(known.get("참석 인원 근거", "")).startswith("품목 기준"):
+                v = None
         if v not in (None, "", []):
             out[key] = ", ".join(v) if isinstance(v, list) else v
     return out

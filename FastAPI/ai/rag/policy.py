@@ -55,6 +55,7 @@ CARD_PAYMENTS = {"법인카드", "개인카드", "카드"}  # 신용카드 매�
 JUDGE_CACHE_SIZE = 4096                         # (조항, 사실) → 판정 재사용 개수
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 DERIVED_FROM = {"1인당 금액": "참석 인원"}         # 계산된 사실이 없을 때 사용자에게 물어볼 원래 사실
+ESTIMATED = "품목 기준 최소 추정"                 # 참석 인원 근거가 품목 추정이면 이 말로 시작 (한도 초과는 위반 대신 확인 필요)
 MIN_HIT_REL = MIN_REL                           # 판정 대상 조항도 같은 기준 (관련 없는 조항이 끼면 과잉 신중·거짓 위반이 생김)
 KR_HOLIDAYS = holidays.KR()
 Verdict = Literal["준수", "위반", "해당 없음", "확인 필요"]
@@ -156,17 +157,38 @@ def receipt_facts(fields: dict, extra: dict, today: date, receipt: dict | None =
         unknown.append("결제 수단")
 
     # 사용자가 알려줘야만 아는 사실
+    # 사람이 적은 값이 없으면 영수증에 손으로 적은 메모 (참석: … / 목적: … / 사유: …)
+    memo = {k: _details_value(receipt, f"memo_{k}") for k in ("purpose", "attendees", "headcount", "reason")}
+    if not extra.get("사용 목적") and memo["purpose"]:
+        extra = {**extra, "사용 목적": memo["purpose"]}
+        known["사용 목적 근거"] = "영수증 메모"
+    if not extra.get("참석자") and memo["attendees"]:
+        extra = {**extra, "참석자": memo["attendees"]}
+        known["참석자 근거"] = "영수증 메모"
+    if not extra.get("사용 사유") and memo["reason"]:
+        extra = {**extra, "사용 사유": memo["reason"]}
     purpose = extra.get("사용 목적")
     if purpose and purpose not in PURPOSES:
         raise ValueError(f"사용 목적 '{purpose}'는 {PURPOSES} 중 하나여야 합니다")
     put("사용 목적", purpose)
-    # 참석 인원: 사용자 입력 → 영수증에 찍힌 인원(고객수·PAX) 순. 품목으로 추정한 인원은 판정에 쓰지 않음
-    printed = ((receipt or {}).get("headcount") or {}).get("printed")
+    # 참석 인원: 사용자 입력 → 영수증에 찍힌 인원(고객수·PAX) → 메모의 인원('외 2명') → 참석자 이름 수 → 품목 추정 범위의 최솟값
+    #   최솟값으로 나누면 1인당 금액이 가장 크게 나옴 → 그래도 한도 안이면 실제 인원이 더 많아도 준수 (부풀림에 안 속음)
+    #   한도를 넘으면 안 시킨 사람이 있었을 수 있어 위반 대신 '확인 필요' (numeric_checks의 estimated)
+    head = (receipt or {}).get("headcount") or {}
+    printed, estimate, names = head.get("printed"), head.get("estimate"), extra.get("참석자")
+    people = None
     if extra.get("참석 인원"):
-        known["참석 인원 근거"] = "사용자 입력"
+        people, known["참석 인원 근거"] = extra["참석 인원"], "사용자 입력"
     elif printed:
-        known["참석 인원 근거"] = "영수증에 찍힌 인원"
-    put("참석 인원", extra.get("참석 인원") or printed)
+        people, known["참석 인원 근거"] = printed, "영수증에 찍힌 인원"
+    elif memo["headcount"]:
+        people, known["참석 인원 근거"] = memo["headcount"], "영수증 메모"
+    elif names:
+        people, known["참석 인원 근거"] = len(names), "참석자 이름 수"
+    elif estimate and estimate.get("min"):
+        people = estimate["min"]
+        known["참석 인원 근거"] = f"{ESTIMATED} ({estimate['min']}~{estimate['max']}명, {estimate.get('basis', '')})"
+    put("참석 인원", people)
     put("참석자 이름", extra.get("참석자"))                 # 경비 규정 제8조④
     put("구매 품목", item_names(receipt, extra)["labels"])
     put("사용 사유", extra.get("사용 사유"))                 # 경비 규정 제7조① (야간·주말·공휴일 사용 시)
@@ -281,8 +303,10 @@ def numeric_checks(clause: Clause, known: dict) -> tuple[list[dict], list[str]]:
             missing.append(DERIVED_FROM.get(fact, fact))
             continue
         over = value > limit
-        text = f"{fact} {value:,} {'>' if over else '≤'} {kind} {limit:,}"
-        results.append({"kind": kind, "fact": fact, "value": value, "limit": limit, "over": over, "text": text})
+        estimated = fact == "1인당 금액" and str(known.get("참석 인원 근거", "")).startswith(ESTIMATED)
+        text = f"{fact} {value:,} {'>' if over else '≤'} {kind} {limit:,}" + (" (품목 기준 최소 인원으로 계산)" if estimated else "")
+        results.append({"kind": kind, "fact": fact, "value": value, "limit": limit, "over": over, "text": text,
+                        "estimated": estimated})
     return results, missing
 
 
@@ -294,7 +318,12 @@ def decide(clause: Clause, j: Judgment, checks: list[dict], num_missing: list[st
         verdict = "확인 필요"
         notes.append("인용 문장이 조항 원문에 없음")
 
-    exceeded = [c for c in checks if c["kind"] == "최대" and c["over"]]
+    guessed = [c for c in checks if c["kind"] == "최대" and c["over"] and c.get("estimated")]
+    exceeded = [c for c in checks if c["kind"] == "최대" and c["over"] and not c.get("estimated")]
+    if guessed and not exceeded and verdict != "위반":        # 추정 인원으로만 넘음 → 인원을 물어봄
+        verdict = "확인 필요"
+        notes.append(f"품목 기준 최소 인원으로는 한도 초과: {', '.join(c['text'] for c in guessed)} → 참석 인원 확인")
+        num_missing = [*num_missing, "참석 인원"]
     if exceeded:                                              # 한도 초과는 다른 조건과 상관없이 위반 (초과분 불인정)
         if verdict != "위반":
             notes.append(f"코드 계산으로 위반: {', '.join(c['text'] for c in exceeded)}")

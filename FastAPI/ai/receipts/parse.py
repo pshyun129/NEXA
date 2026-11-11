@@ -27,6 +27,19 @@ NOT_PAYMENT = re.compile(r"포\s*인\s*트|멤\s*버\s*십|적\s*립|쿠\s*폰|�
 EASY_PAY = re.compile(r"카\s*카\s*오\s*페\s*이|네\s*이\s*버\s*페\s*이|페\s*이\s*코|PAYCO|삼\s*성\s*페\s*이|토\s*스\s*페\s*이|제\s*로\s*페\s*이|애\s*플\s*페\s*이|간\s*편\s*결\s*제")
 CASH_RECEIPT = re.compile(r"현\s*금\s*영\s*수\s*증|지\s*출\s*증\s*빙")
 CASH = re.compile(r"현\s*금")
+# 영수증에 손으로 적은 메모 (회사에서 흔히 '참석: 김민준, 이서연 / 목적: 회의'를 적어 냄)
+#   표시(참석·목적·사유)가 붙은 줄만 읽는다 → '대표 홍길동' 같은 인쇄된 이름을 참석자로 착각하지 않음
+MEMO_ATTENDEES = re.compile(r"(참\s*석\s*자?|참\s*가\s*자?|동\s*석\s*자?)\s*[:：\-]?\s*(.+)")
+MEMO_PURPOSE = re.compile(r"(사\s*용\s*)?(목\s*적|용\s*도)\s*[:：\-]\s*(.+)")
+MEMO_REASON = re.compile(r"사\s*유\s*[:：\-]\s*(.+)")
+MEMO_COUNT = re.compile(r"(총|외)\s*(\d{1,3})\s*명|(?<![\d,])(\d{1,3})\s*명")
+NAME = re.compile(r"^[가-힣]{2,4}$")
+NOT_NAME = {"외", "명", "등", "팀", "팀원", "포함", "직원", "전원", "참석", "목적", "회의", "회식"}
+# 메모의 목적 말 → 경비 사용 목적 (ai/rag/policy.py PURPOSES와 같은 이름). 위에서부터 먼저 맞는 것
+PURPOSE_WORDS = [("주말근무", r"주말|휴일\s*근무|특근"), ("야근", r"야근|야식|야간\s*근무|초과\s*근무"),
+                 ("회식", r"회식"), ("접대", r"접대|고객|거래처"), ("회의", r"회의|미팅|워크숍|세미나"),
+                 ("교통", r"택시|교통"), ("소모품", r"소모품|비품|사무용품")]
+
 # 합계 다음에 나오는 차감 줄 (포인트 사용·쿠폰·할인) → 실제 결제 금액은 그 아래의 마지막 합계 금액
 DEDUCTION = re.compile(r"포\s*인\s*트\s*(사\s*용|차\s*감|결\s*제)|쿠\s*폰\s*(사\s*용|할\s*인)|할\s*인|상\s*품\s*권\s*사\s*용")
 
@@ -58,6 +71,10 @@ class ReceiptDetails:
     supply: Found | None = None            # 공급가액(과세물품가액)
     vat: Found | None = None               # 부가세
     printed_headcount: Found | None = None # 영수증에 찍힌 인원(고객수·PAX)
+    memo_attendees: Found | None = None    # 메모에 적은 참석자 이름 목록
+    memo_headcount: Found | None = None    # 메모에 적은 인원 ('총 5명', '김민준 외 3명' → 4)
+    memo_purpose: Found | None = None      # 메모의 목적 → 경비 사용 목적 이름 (회의·야근 …)
+    memo_reason: Found | None = None       # 메모의 사유 (야간·주말 사용 사유)
     total_candidates: list[int] = field(default_factory=list)   # 합계로 보이는 금액들(두 번째 의견, 나온 순서)
     deduction_after_total: bool = False    # 첫 합계 뒤에 포인트·쿠폰 차감이 있음 → 결제 금액은 마지막 후보
 
@@ -132,6 +149,8 @@ def parse_details(text: str, date_iso: str | None = None) -> ReceiptDetails:
         elif out.total_candidates and DEDUCTION.search(ln):
             out.deduction_after_total = True
 
+    _parse_memo(lines, out)
+
     # 결제 수단: 법인카드 > 카드 > 현금영수증 > 현금 (근거 줄과 함께). 못 찾으면 None
     pay_lines = [x for x in lines if not NOT_PAYMENT.search(x)]
     for pattern, kind in ((CORP_CARD, "법인카드"), (CASH_RECEIPT, "현금영수증"), (CARD, "카드"),
@@ -142,6 +161,32 @@ def parse_details(text: str, date_iso: str | None = None) -> ReceiptDetails:
             out.pay_method = Found(kind, ln)
             break
     return out
+
+
+def _parse_memo(lines: list[str], out: ReceiptDetails) -> None:
+    """손으로 적은 메모: 참석자·인원·목적·사유"""
+    for ln in lines:
+        if out.memo_attendees is None and (m := MEMO_ATTENDEES.search(ln)) and not TOTAL_LABEL.search(ln):
+            text = m.group(2)
+            names = [t for t in re.split(r"[,，·/、\s]+", re.sub(r"(총|외)\s*\d+\s*명|\d+\s*명", " ", text))
+                     if NAME.match(t) and t not in NOT_NAME]
+            if names:
+                out.memo_attendees = Found(names, ln)
+            c = MEMO_COUNT.search(text)
+            if c:
+                n = int(c.group(2) or c.group(3))
+                n = len(names) + n if c.group(1) == "외" else n
+                if 1 <= n <= 200:
+                    out.memo_headcount = Found(n, ln)
+        if out.memo_purpose is None and (m := MEMO_PURPOSE.search(ln)):
+            text = m.group(3)
+            purpose = next((p for p, pat in PURPOSE_WORDS if re.search(pat, text)), None)
+            if purpose:
+                out.memo_purpose = Found(purpose, ln)
+            if out.memo_reason is None and len(text.strip()) >= 2:
+                out.memo_reason = Found(text.strip(), ln)       # 목적 문장은 사용 사유로도 씀 ('주말 장애 대응 회의')
+        if (m := MEMO_REASON.search(ln)):
+            out.memo_reason = Found(m.group(1).strip(), ln)      # '사유:'가 따로 있으면 그것
 
 
 # 결제 수단 → 증빙 구분 (경비 규정 제3조③: 신용카드 매출전표·지출증빙용 현금영수증 = 적격증빙)

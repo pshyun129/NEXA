@@ -12,6 +12,7 @@
 판정의 인용 문장은 조항 원문의 줄을 그대로 쓴다 (인용 검증을 항상 통과).
 조항 ID는 규정 문서(DOCS/regulations/expense.md)의 조번호다. 조번호가 바뀌면 여기도 바꿔야 한다.
 """
+import math
 import re
 
 from ai.rag.parse import Clause
@@ -81,12 +82,29 @@ def exp7(c, known, items, checks):
     return _finding(c, "확인 필요", quote, f"{', '.join(flags)} 사용 → 사용 사유를 적어야 함", ["사용 사유"])
 
 
-def _limits(c, checks, num_missing, verdict, reasons, missing):
+def guessed_over(known: dict, checks: list[dict]) -> str | None:
+    """품목으로 추정한 최소 인원으로만 한도를 넘었을 때 안내 문구 (아니면 None) → 위반 대신 확인 필요"""
+    xs = [x for x in checks if x["kind"] == "최대" and x["over"] and x.get("estimated")]
+    if not xs:
+        return None
+    x, total = xs[0], known.get("결제 금액")
+    need = math.ceil(total / x["limit"]) if isinstance(total, int) and x["limit"] else None
+    return (f"품목 기준 최소 {known.get('참석 인원')}명으로 나누면 1인당 {x['value']:,}원 > 한도 {x['limit']:,}원"
+            + (f" → {need}명 이상이면 한도 안" if need else "") + " (참석 인원을 적어 주세요)")
+
+
+def _limits(c, checks, num_missing, verdict, reasons, missing, known=None):
     """수치 기준(1인당 한도 등) 결과를 판정에 반영"""
-    over = [x for x in checks if x["kind"] == "최대" and x["over"]]
+    over = [x for x in checks if x["kind"] == "최대" and x["over"] and not x.get("estimated")]
     if over:
         reasons.append(f"한도 초과: {', '.join(x['text'] for x in over)}")
         return "위반"
+    guess = guessed_over(known or {}, checks)
+    if guess:
+        reasons.append(guess)
+        if "참석 인원" not in missing:
+            missing.append("참석 인원")
+        return "확인 필요"
     for x in checks:
         if x["kind"] == "최대":
             reasons.append(x["text"])
@@ -119,14 +137,14 @@ def exp8(c, known, items, checks, num_missing):
             reasons.append(f"평일({known.get('요일', '?')}요일) 거래인데 사용 목적이 주말근무")
     elif purpose == "회식":
         quote = _line(c, "회식비")
-    verdict = _worse(verdict, _limits(c, checks, num_missing, verdict, reasons, missing))
+    verdict = _worse(verdict, _limits(c, checks, num_missing, verdict, reasons, missing, known))
     # 제8조④ 참석자 이름과 인원
     need = [m for m in ("참석자 이름", "참석 인원") if m not in known and m not in missing]
     if need:
         verdict = _worse(verdict, "확인 필요")
         missing += need
         reasons.append(f"식대 정산에는 {'·'.join(need)}이 필요 (제8조④)")
-    if verdict == "위반" and any("한도 초과" in r for r in reasons):
+    if verdict != "준수" and any("한도" in r for r in reasons):
         quote = next((_line(c, f"{x['limit']:,}") for x in checks if x["over"]), quote)
     return _finding(c, verdict, quote, "; ".join(reasons) or "기준 충족", missing, [x["text"] for x in checks])
 
@@ -148,7 +166,7 @@ def exp9(c, known, items, checks):
 
 def exp10(c, known, items, checks, num_missing):
     verdict, reasons, missing = "준수", [], []
-    verdict = _limits(c, checks, num_missing, verdict, reasons, missing)
+    verdict = _limits(c, checks, num_missing, verdict, reasons, missing, known)
     if missing and verdict == "준수":
         verdict = "확인 필요"
         reasons.append("1인당 금액을 계산할 참석 인원이 없음")
@@ -157,7 +175,10 @@ def exp10(c, known, items, checks, num_missing):
 
 def exp11(c, known, items, checks, num_missing):
     """접대비: 숫자로 정해지는 경우만 코드 (1인당 한도 초과 → 위반, 30만 원 넘음 → 사전 승인 확인). 나머지(상대방 정보 등)는 LLM"""
-    over = [x for x in checks if x["kind"] == "최대" and x["over"]]
+    over = [x for x in checks if x["kind"] == "최대" and x["over"] and not x.get("estimated")]
+    guess = guessed_over(known, checks)
+    if guess and not over:
+        return _finding(c, "확인 필요", _line(c, "50,000원까지"), guess, ["참석 인원"], [x["text"] for x in checks])
     if over:
         return _finding(c, "위반", _line(c, "50,000원까지"), f"한도 초과: {', '.join(x['text'] for x in over)}",
                         numeric=[x["text"] for x in checks])

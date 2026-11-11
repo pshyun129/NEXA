@@ -59,17 +59,27 @@ def _convert(value, kind: str):
     return str(value).strip()
 
 
+def memo_facts(receipt: dict | None) -> set[str]:
+    """영수증에 손으로 적은 메모가 있는 사실 (규정 용어 이름)"""
+    details = (receipt or {}).get("details") or {}
+    has = lambda k: isinstance(details.get(k), dict) and details[k].get("value") not in (None, "", [])
+    names = {"memo_purpose": "사용 목적", "memo_attendees": "참석자", "memo_reason": "사용 사유", "memo_headcount": "참석 인원"}
+    return {name for k, name in names.items() if has(k)}
+
+
 def collect_facts(config: dict, inputs: dict, attendance: dict | None = None, receipt_date: str | None = None,
-                  per_receipt: dict | None = None) -> dict:
-    """그 장에 적은 값 → 노드 설정 → 실행 입력 순서로 추가 사실을 모음 (규정 용어 이름을 키로)
+                  per_receipt: dict | None = None, memo: set[str] | None = None) -> dict:
+    """그 장에 적은 값 → 노드 설정 → (영수증 손글씨 메모) → 실행 입력의 공통 값 순서로 추가 사실을 모음 (규정 용어 이름을 키로)
+    memo: 그 장의 메모에 있는 사실 → 공통 값으로 덮지 않음 (메모는 receipt_facts가 '영수증 메모' 근거로 채움)
     attendance: 근태 조회 노드 출력. 영수증 날짜와 같은 날의 기록만 사용 (다른 날 기록으로 판정하면 안 됨)"""
     extra = {}
     per_receipt = per_receipt or {}
+    memo = memo or set()
     for key, name, kind, _ in FACTS:
         raw = per_receipt.get(key, per_receipt.get(name))
         if raw in (None, "", []):
             raw = config.get(key)
-        if raw in (None, ""):
+        if raw in (None, "") and name not in memo:
             raw = inputs.get(key, inputs.get(name))
         value = _convert(raw, kind)
         if value is not None:
@@ -141,7 +151,7 @@ def review_receipts(doc_type: str, receipts: list[dict], config: dict, inputs: d
     def check_one(r: dict) -> dict:
         fields = r["fields"]
         per = {**receipt_inputs(inputs, r), **(r.get("facts") or {})}     # 사람 확인에서 고친 값이 마지막
-        facts = collect_facts(config, inputs, attendance, fields.get("date"), per)
+        facts = collect_facts(config, inputs, attendance, fields.get("date"), per, memo_facts(r))
         result = checker(fields, facts, receipt=r)
         POLICY_CHECKS.labels(doc_type, result["verdict"], result["judge_version"]).inc()
         if progress:
