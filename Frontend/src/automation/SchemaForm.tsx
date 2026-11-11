@@ -10,6 +10,25 @@ import s from './automation.module.css';
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
+/** 파일 업로드 노드의 허용 형식(FastAPI nodes/impl/file_upload.py ACCEPT_EXTS와 같은 값) */
+const ACCEPT: Record<string, { exts: string; hint: string }> = {
+  이미지: { exts: '.jpg,.jpeg,.png,.bmp,.webp', hint: '이미지(jpg·png·bmp·webp)' },
+  PDF: { exts: '.pdf', hint: 'PDF' },
+  엑셀: { exts: '.xlsx,.xls,.csv', hint: '엑셀(xlsx·xls·csv)' },
+};
+
+/**
+ * 첨부가 필요한 흐름이면 파일 칸을 반드시 넣고 필수로 만든다(서버 workflows/service.py effective_input_form과 같은 규칙).
+ * 사원 실행 폼은 서버가 이미 넣어 주고, 빌더 테스트 실행 폼(초안 그래프)이 이걸 쓴다
+ */
+export function withFileField(fields: FormField[], accepts: string[]): FormField[] {
+  if (accepts.length === 0) return fields;
+  if (!fields.some((f) => f.type === 'file')) {
+    return [{ key: 'files', label: '첨부 파일', type: 'file', required: true, options: accepts, prefill: null }, ...fields];
+  }
+  return fields.map((f) => (f.type === 'file' ? { ...f, required: true, options: f.options.length ? f.options : accepts } : f));
+}
+
 export interface SchemaFormValue { inputs: Record<string, unknown>; fileIds: number[] }
 
 /**
@@ -84,12 +103,17 @@ export function SchemaForm({ fields, submitting, submitLabel, onSubmit }:
       {fields.map((f) => {
         const rules = f.required ? [{ required: true, message: `${f.label}을(를) 입력해 주세요` }] : [];
         if (f.type === 'file') {
+          // 허용 형식이 정해져 있으면 파일 고르기 창도 그 형식만 보여 준다(서버가 실행 시작 때 다시 검사한다)
+          const kinds = f.options.filter((o) => ACCEPT[o]);
           return (
             <Form.Item key={f.key} name={f.key} label={f.label} rules={f.required ? [{ required: true, message: `${f.label}을(를) 올려 주세요` }] : []}>
-              <Upload.Dragger multiple fileList={files[f.key] ?? []} beforeUpload={beforeUpload(f.key)} onRemove={removeFile(f.key)}>
+              <Upload.Dragger multiple fileList={files[f.key] ?? []} beforeUpload={beforeUpload(f.key)} onRemove={removeFile(f.key)}
+                              accept={kinds.length ? kinds.map((k) => ACCEPT[k].exts).join(',') : undefined}>
                 <div className={s.drop}>
-                  <b>파일을 끌어 놓거나 눌러서 고르세요</b>
-                  <span className={s.muted}>20MB 이하 · 이미지(jpg·png·bmp·webp)는 글자 인식에 쓰입니다</span>
+                  <b>{kinds.includes('이미지') ? '영수증·증빙 사진을 끌어 놓거나 눌러서 고르세요' : '파일을 끌어 놓거나 눌러서 고르세요'}</b>
+                  <span className={s.muted}>
+                    {kinds.length ? `${kinds.map((k) => ACCEPT[k].hint).join(' · ')} · ` : ''}20MB 이하{f.required ? ' · 첨부해야 실행할 수 있어요' : ''}
+                  </span>
                 </div>
               </Upload.Dragger>
             </Form.Item>

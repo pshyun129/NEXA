@@ -48,7 +48,7 @@ export function DeployControls({ workflowId, blockedReason, warningCount, expose
       >
         <p>저장된 초안을 v{next}로 배포합니다. 이후 시작하는 실행부터 이 버전이 쓰이고, 이미 시작된 실행은 원래 버전으로 계속 진행됩니다.</p>
         {warningCount > 0 && <p className={s.muted}>경고 {warningCount}건이 남아 있습니다(서버 검사는 통과).</p>}
-        {fileMissing && <p className={s.muted}>⚠ 사원 입력 폼에 파일 칸이 없어 사원이 파일을 올릴 수 없습니다. [입력 폼]에서 추가해 주세요.</p>}
+        {fileMissing && <p className={s.muted}>입력 폼에 파일 칸이 없어 사원 실행 화면에 '첨부 파일(필수)' 칸이 자동으로 붙습니다.</p>}
         {!exposed && <p className={s.muted}>[사원에게 노출]이 꺼져 있어 배포해도 사원 업무 자동화 목록에는 보이지 않습니다.</p>}
       </ConfirmAction>
       <Drawer open={open} onClose={() => setOpen(false)} width={420} title="배포 버전">

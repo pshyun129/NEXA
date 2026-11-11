@@ -63,8 +63,8 @@ export function InputFormEditor({ workflowId, fields, open, setOpen, needsFile }
         <div className={s.formEditor}>
           <p className={s.muted}>사원이 [실행]을 누르면 이 칸들을 채웁니다. 저장하면 배포 없이 바로 반영됩니다.</p>
           {fileMissing && (
-            <Alert type="warning" showIcon message="첨부 파일을 읽는 노드(파일 업로드·OCR)가 있는데 파일 칸이 없습니다"
-                   description="파일 칸이 없으면 사원이 파일을 올릴 수 없어 실행이 실패합니다."
+            <Alert type="info" showIcon message="첨부 파일을 읽는 노드(파일 업로드·OCR)가 있어 실행 화면에 '첨부 파일(필수)' 칸이 자동으로 붙습니다"
+                   description="칸 이름이나 위치를 정하려면 직접 추가하세요. 첨부 없이는 실행이 시작되지 않습니다."
                    action={<Button size="small" onClick={() => setDraft([DEFAULT_FILE_FIELD, ...draft])}>파일 칸 추가</Button>} />
           )}
           {draft.length === 0 && <p className={s.muted}>입력 칸이 없습니다. 사원은 아무것도 입력하지 않고 실행합니다.</p>}

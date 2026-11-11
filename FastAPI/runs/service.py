@@ -11,6 +11,7 @@ from runs.models import FINISHED_STATUSES, Run, RunFile, RunStatus, RunStep
 from runs.schemas import RunCreateRequest
 from workflows.models import Workflow
 from workflows.validator import validate_graph
+from nodes.impl.file_upload import ACCEPT_HINT, file_requirements
 
 
 def _get(db: Session, run_id: int) -> Run:
@@ -64,6 +65,20 @@ def _check_required_inputs(workflow: Workflow, inputs: dict, file_ids: list[int]
             raise BusinessException(ErrorCode.RUN_MISSING_INPUT, f"'{field['label']}' 값이 비어 있습니다.")
 
 
+def _check_files(graph: dict, run_files: list[RunFile]) -> None:
+    """첨부가 필요한 워크플로는 허용 형식 파일이 최소 개수만큼 있어야 실행을 받는다.
+    입력 폼 설정과 상관없이 그래프 기준으로 막는다 → 첨부 없이 시작해 첫 노드에서 실패하던 실행이 생기지 않는다"""
+    for req in file_requirements(graph):
+        exts = req["exts"]
+        got = [f for f in run_files if exts is None or files.file_path(f.stored_name).suffix.lower() in exts]
+        if len(got) < req["min_count"]:
+            kind = f"{req['accept']}({ACCEPT_HINT[req['accept']]})" if exts else ""
+            raise BusinessException(
+                ErrorCode.RUN_MISSING_INPUT,
+                f"{kind} 파일을 {req['min_count']}개 이상 첨부해야 실행할 수 있습니다 (맞는 형식으로 첨부한 파일: {len(got)}개).".lstrip(),
+            )
+
+
 def create_run(db: Session, workflow_id: int, req: RunCreateRequest, user_id: str | None) -> Run:
     workflow = _get_workflow(db, workflow_id)
     if workflow.deployed_version is None:
@@ -72,6 +87,7 @@ def create_run(db: Session, workflow_id: int, req: RunCreateRequest, user_id: st
     version = next(v for v in workflow.versions if v.version == workflow.deployed_version)
     _check_required_inputs(workflow, req.inputs, req.file_ids)
     run_files = _take_files(db, req.file_ids)
+    _check_files(version.graph, run_files)
 
     run = Run(
         workflow_id=workflow.id,
@@ -97,6 +113,7 @@ def create_test_run(db: Session, workflow_id: int, req: RunCreateRequest, user_i
         raise BusinessException(ErrorCode.WF_INVALID_GRAPH, issues[0]["message"])
 
     run_files = _take_files(db, req.file_ids)
+    _check_files(workflow.draft_graph, run_files)
     run = Run(
         workflow_id=workflow.id,
         version=None,

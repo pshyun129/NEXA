@@ -14,7 +14,7 @@ import { TONE_COLOR, lookOf, nodeTypes, type FlowNodeData, type NodeCategory, ty
 import { edgeTypes, type EdgeRunStatus, type FlowEdgeData } from '@/flow/FlowEdge';
 import { Illustration } from '@/flow/Illustration';
 import { RunMonitor } from '@/automation/RunMonitor';
-import { SchemaForm } from '@/automation/SchemaForm';
+import { SchemaForm, withFileField } from '@/automation/SchemaForm';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { Icon } from '@/ui/Icon';
@@ -184,12 +184,12 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
   const fileNode = graph.nodes.find((n) => n.type === 'file_upload'
     || (n.type === 'ocr_extract' && !String(n.config.files ?? '').trim()));
   const fileMissing = !!fileNode && !live.inputForm.some((f) => f.type === 'file');
-  const warnings = useMemo(() => [
-    ...orderWarnings(graph, catalog),
-    ...(fileNode && fileMissing
-      ? [{ nodeId: fileNode.id, message: `'${byType.get(fileNode.type)?.name ?? fileNode.type}'가 첨부 파일을 읽는데 사원 입력 폼에 파일 칸이 없습니다(사원이 파일을 올릴 수 없음)` }]
-      : []),
-  ], [graph, catalog, fileNode, fileMissing, byType]);
+  // 파일 칸이 없어도 실행 화면에는 '첨부 파일(필수)' 칸이 자동으로 붙고 서버가 첨부 없는 실행을 거절한다 → 경고가 아니라 안내
+  const fileAccepts = useMemo(() => {
+    const ups = graph.nodes.filter((n) => n.type === 'file_upload').map((n) => String(n.config.accept ?? '')).filter(Boolean);
+    return ups.length ? [...new Set(ups)] : fileNode ? ['이미지'] : [];
+  }, [graph, fileNode]);
+  const warnings = useMemo(() => orderWarnings(graph, catalog), [graph, catalog]);
   const selectedNode = nodes.find((n) => n.selected);
   const selectedEdge = edges.find((e) => e.selected);
 
@@ -601,9 +601,6 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
                     <Icon as={TriangleAlert} size={16} className={s.warnIcon} />
                     <span className={s.issueText}>{w.message}</span>
                     <Button size="small" type="link" onClick={() => focusNode(w.nodeId)}>노드로 이동</Button>
-                    {fileMissing && w.nodeId === fileNode?.id && w.message.includes('입력 폼') && (
-                      <Button size="small" type="link" onClick={() => setFormOpen(true)}>입력 폼 열기</Button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -748,7 +745,7 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
         {drawer === 'monitor' && testRunId ? <RunMonitor runId={testRunId} /> : (
           <div className={s.testForm}>
             <p className={s.muted} style={{ marginTop: 0 }}>저장한 초안 그래프로 실행합니다. 시작하면 진행 상황이 캔버스와 아래 실행 모니터에 그려져요.</p>
-            <SchemaForm fields={live.inputForm} submitting={startTest.isPending} submitLabel="테스트 실행"
+            <SchemaForm fields={withFileField(live.inputForm, fileAccepts)} submitting={startTest.isPending} submitLabel="테스트 실행"
                         onSubmit={(v) => startTest.mutate(v, {
                           onSuccess: (r) => { setTestRunId(r.runId); setDrawer(null); setExecTab('logs'); setView('editor'); },
                           onError: (e) => notify.error(e, '테스트 실행을 시작하지 못했습니다'),

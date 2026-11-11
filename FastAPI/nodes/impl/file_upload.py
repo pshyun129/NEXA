@@ -8,6 +8,32 @@ ACCEPT_EXTS = {
     "PDF": {".pdf"},
     "엑셀": {".xlsx", ".xls", ".csv"},
 }
+# 실행 폼·오류 문구에 보여 줄 형식 설명
+ACCEPT_HINT = {"이미지": "jpg·png·bmp·webp", "PDF": "pdf", "엑셀": "xlsx·xls·csv"}
+
+
+def file_requirements(graph: dict | None) -> list[dict]:
+    """그래프의 파일 업로드 노드가 요구하는 첨부 [{node_id, accept, exts, min_count}].
+    실행 폼(첨부 칸 자동 추가)과 실행 시작 검사(첨부 없으면 거절)가 같이 쓴다"""
+    reqs = []
+    for node in (graph or {}).get("nodes", []):
+        if node.get("type") != "file_upload":
+            continue
+        config = node.get("config") or {}
+        accept = config.get("accept")
+        reqs.append({
+            "node_id": node.get("id"),
+            "accept": accept,
+            "exts": ACCEPT_EXTS.get(accept),          # 형식을 아직 안 고른 초안이면 None = 형식 무관
+            "min_count": int(config.get("min_count") or 1),
+        })
+    # 'OCR할 파일'을 비운 OCR 노드도 실행 첨부 파일을 직접 읽는다 (빌더 화면의 fileNode와 같은 기준)
+    if not reqs:
+        for node in (graph or {}).get("nodes", []):
+            if node.get("type") == "ocr_extract" and not str((node.get("config") or {}).get("files") or "").strip():
+                reqs.append({"node_id": node.get("id"), "accept": "이미지", "exts": ACCEPT_EXTS["이미지"], "min_count": 1})
+                break
+    return reqs
 
 
 class FileUploadNode(BaseNode):

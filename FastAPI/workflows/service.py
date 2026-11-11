@@ -14,6 +14,7 @@ from workflows.schemas import (
     WorkflowUpdateRequest,
 )
 from workflows.validator import validate_graph
+from nodes.impl.file_upload import file_requirements
 
 
 def _get(db: Session, workflow_id: int) -> Workflow:
@@ -127,16 +128,35 @@ def list_available(db: Session, screen: str) -> list[Workflow]:
     return list(db.scalars(stmt).all())
 
 
+def effective_input_form(input_form: list[dict], graph: dict | None) -> list[dict]:
+    """실제로 보여 줄 입력 폼: 그래프에 파일 업로드 노드가 있으면 첨부 칸을 반드시 넣고 필수로 만든다.
+    관리자가 [입력 폼]에 파일 칸을 빼먹으면 첨부할 곳이 없어 실행이 항상 실패했다 (QA AUTO-B1)"""
+    reqs = file_requirements(graph)
+    if not reqs:
+        return input_form
+    accepts = sorted({r["accept"] for r in reqs if r["accept"]})
+    form = copy.deepcopy(input_form)
+    file_fields = [f for f in form if f.get("type") == "file"]
+    if not file_fields:
+        return [{"key": "files", "label": "첨부 파일", "type": "file", "required": True,
+                 "options": accepts, "prefill": None}, *form]
+    for f in file_fields:
+        f["required"] = True
+        f["options"] = f.get("options") or accepts      # 허용 형식 (화면이 파일 고르기 창을 거른다)
+    return form
+
+
 # 10-2. 입력 폼 조회 (실행 직전)
 def get_input_form(db: Session, workflow_id: int, screen: str | None, record_id: str | None) -> dict:
     workflow = _get(db, workflow_id)
     if workflow.deployed_version is None:
         raise BusinessException(ErrorCode.WF_NOT_DEPLOYED)
+    version = next(v for v in workflow.versions if v.version == workflow.deployed_version)
 
     # TODO: screen + record_id로 ERP 데이터를 조회해서 prefill 항목 채우기 (clients/에서 구현)
     values: dict = {}
 
-    return {"workflow_id": workflow.id, "fields": workflow.input_form, "values": values}
+    return {"workflow_id": workflow.id, "fields": effective_input_form(workflow.input_form, version.graph), "values": values}
 
 
 # 11-1. 복제
