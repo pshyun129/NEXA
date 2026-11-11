@@ -101,20 +101,26 @@ class ExcelWriteNode(BaseNode):
         {"key": "total", "label": "정산 합계 (정산서)", "type": "number"},
     ]
 
+    @staticmethod
+    def _upstream_receipts(ctx: NodeContext) -> list[dict] | None:
+        """앞 단계의 가장 최근 장별 결과 (결재 대기 뒤면 승인 여부까지 붙은 것)"""
+        return (latest_output(ctx.outputs, "receipts") or {}).get("receipts")
+
     def _receipts(self, ctx: NodeContext) -> list[dict] | None:
-        """정산서로 만들 장 목록: 데이터에 receipts가 있으면 그것, 없으면 가장 최근 장별 결과"""
+        """정산서로 만들 장 목록: 데이터에 receipts가 있으면 그것, 없으면 가장 최근 장별 결과.
+        한 장 시절 워크플로처럼 데이터가 첫 장 값({{n5.fields}})에 묶여 있어도 앞에 여러 장 결과가 있으면 장 전체로
+        (2026-11-11 10장 E2E에서 엑셀에 첫 장만 1줄 적힌 문제)"""
         template = ctx.config.get("template") or TEMPLATES[0]
         if template == TEMPLATES[1]:
             return None
         data = ctx.config.get("data")
+        upstream = self._upstream_receipts(ctx) or []
         if isinstance(data, dict) and isinstance(data.get("receipts"), list):
             rs = data["receipts"]
         elif isinstance(data, list) and data and all(isinstance(x, dict) and "fields" in x for x in data):
             rs = data
-        elif data is None or template == TEMPLATES[2]:
-            rs = (latest_output(ctx.outputs, "receipts") or {}).get("receipts")
-        else:
-            rs = None
+        elif data is None or template == TEMPLATES[2] or (isinstance(data, dict) and len(upstream) > 1):
+            rs = upstream
         if template == TEMPLATES[2] and not rs:
             raise ValueError("정산서로 만들 영수증 목록(receipts)이 없습니다")
         return rs if rs and (template == TEMPLATES[2] or len(rs) > 1) else None
@@ -131,6 +137,10 @@ class ExcelWriteNode(BaseNode):
             rows = receipts
         else:
             data = ctx.config.get("data") or (latest_output(ctx.outputs, "fields") or {}).get("fields")
+            upstream = self._upstream_receipts(ctx) or []
+            if isinstance(data, dict) and len(upstream) > 1:
+                # '표 (열 지정)'인데 데이터가 첫 장 값이면: 장마다 한 줄 (정산에서 뺀 장 제외)
+                data = [r["fields"] for r in upstream if r.get("include", True)]
             rows = _rows(data)
             columns = _columns(ctx.config.get("columns"), rows)
             name = _safe_name(ctx.config.get("file_name") or f"결과_{datetime.now():%Y%m%d_%H%M}")
