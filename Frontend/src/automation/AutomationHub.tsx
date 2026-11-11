@@ -181,7 +181,7 @@ const TABS: { key: HubTab; label: string }[] = [
  * 실행하기 · 내 워크플로(만들기·고치기) · 실행 기록 · 확인 대기를 모두 처리한다. 빌더는 모든 사원이 쓴다.
  */
 export function AutomationHub() {
-  const { open, view, setView, close, openHub } = useAutomationUi();
+  const { open, view, setView, close, openHub, origin } = useAutomationUi();
   const location = useLocation();
   const { pathname } = location;
   const { band } = useViewport();
@@ -211,6 +211,8 @@ export function AutomationHub() {
   return (
     <Modal open={open} onCancel={onClose} footer={null} closable={false} destroyOnHidden centered
            width="min(1680px, 96vw)" className={s.hub} keyboard={view.kind !== 'builder'} maskClosable={false}
+           // 작은 진행 창에서 열면 그 자리에서 커지고 닫으면 그 자리로 줄어든다(origin 없으면 antd 기본 확대)
+           transitionName={origin ? 'nx-morph' : undefined} mousePosition={origin ?? undefined}
            styles={{ body: { padding: 0 } }} aria-labelledby="nx-hub-title">
       <div className={s.hubInner}>
         <header className={s.hubHead}>

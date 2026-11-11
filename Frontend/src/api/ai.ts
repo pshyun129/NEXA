@@ -1,5 +1,6 @@
 import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
+import type { Graph } from './builder';
 
 // FastAPI ai-service (origin/develop f4725fd 기준). 바깥 필드는 camelCase, inputs·outputs·step output 안쪽은 snake_case.
 // 시각은 오프셋 없는 UTC라 화면에서는 serverUtc()를 거쳐 쓴다(frontend-backend-gaps.md B13).
@@ -82,6 +83,8 @@ export interface RunDetail extends RunSummary {
   inputs: Record<string, unknown>;
   outputs: Record<string, unknown> | null;
   error: string | null;
+  /** 실행 당시 그래프(runs/schemas.py RunDetail.graph). 예전 서버면 없어서 화면은 워크플로 초안으로 대신 그린다 */
+  graph?: Graph;
 }
 
 export interface RunStep {

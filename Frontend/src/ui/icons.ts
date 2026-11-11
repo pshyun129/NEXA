@@ -8,4 +8,4 @@ export { Check, X, CircleDot, Undo2, PenLine, Circle, SkipForward, FileText, Pal
          // v2: 런처·빌더 목록·노드 카드
          Search, ArrowUpRight, ArrowLeft, Play, Plus, Trash2, CopyPlus, RotateCcw, Zap, GitBranch, Square,
          MoreHorizontal, ScanText, Stamp, Sheet, Mail, Bell, Database, Calculator, Upload, Settings2,
-         Minus, Expand, Link2, SlidersHorizontal, Receipt, SquareArrowOutUpRight, Grip, History, ChevronDown } from 'lucide-react';
+         Minus, Expand, Link2, SlidersHorizontal, Receipt, SquareArrowOutUpRight, Grip, History, ChevronDown, Eye } from 'lucide-react';

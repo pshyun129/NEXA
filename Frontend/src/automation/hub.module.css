@@ -225,3 +225,51 @@
   .runCard, .wfCard, .runList li, .mini, .notice { animation: none; }
   .miniNode, .miniNode * { animation: none !important; }
 }
+
+/* ---------- 실행 화면 큰 캔버스 ---------- */
+.runCanvas { position: relative; height: clamp(360px, 46vh, 560px); }
+.runCanvasNote { position: absolute; top: 12px; left: 12px; padding: 4px 10px; border-radius: 6px; font-size: 11px;
+                 background: var(--nx-warning-bg); border: 1px solid var(--nx-warning-bd); color: var(--nx-warning-fg); }
+
+/* ---------- 파일 미리보기 ---------- */
+.previewTitle { display: inline-flex; align-items: center; gap: 8px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.previewImgWrap { display: grid; place-items: center; max-height: 72vh; overflow: auto; background: #f6f7f9; border-radius: 8px; }
+.previewImgWrap img { max-width: 100%; max-height: 72vh; object-fit: contain; }
+.previewPdf { width: 100%; height: 72vh; border: 0; border-radius: 8px; background: #f6f7f9; }
+.previewNone { padding: 48px 24px; text-align: center; color: var(--nx-n-500); border: 1px dashed #e1e5ec; border-radius: 8px; }
+.previewText { margin: 0; max-height: 70vh; overflow: auto; padding: 16px; border-radius: 8px; background: #f6f7f9; font-size: 12px; white-space: pre-wrap; }
+.previewSheets { display: flex; flex-direction: column; gap: 12px; }
+.sheetWrap { max-height: 66vh; overflow: auto; border: 1px solid #e3e6ea; border-radius: 8px; }
+.sheet { border-collapse: separate; border-spacing: 0; font-size: 12px; min-width: 100%; }
+.sheet th, .sheet td { padding: 6px 12px; border-right: 1px solid #eef0f3; border-bottom: 1px solid #eef0f3; white-space: nowrap; text-align: left; }
+.sheet thead th { position: sticky; top: 0; z-index: 1; background: #ddebf7; font-weight: 600; color: #2c323b; }
+.sheet tbody tr:nth-child(even) td { background: #fafbfc; }
+.sheet .sheetNo { position: sticky; left: 0; background: #f3f4f6; color: #9aa1ab; text-align: center; width: 36px; font-variant-numeric: tabular-nums; }
+.sheet thead .sheetNo { z-index: 2; background: #e6ebf2; }
+.sheet .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sheetWrap + .muted, .sheetWrap .muted { padding: 8px 12px; }
+
+/* ---------- 작은 진행 창 → 큰 창 확대(antd Modal transitionName="nx-morph", 시작점 = 작은 창 가운데) ---------- */
+:global(.nx-morph-enter), :global(.nx-morph-appear) {
+  transform: scale(0.2); opacity: 0; border-radius: 18px;
+  animation-duration: .46s; animation-fill-mode: both; animation-play-state: paused; animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+}
+/* 시작점 계산(측정) 때는 변형 없이 */
+:global(.nx-morph-enter-prepare), :global(.nx-morph-appear-prepare) { transform: none; }
+:global(.nx-morph-leave) {
+  animation-duration: .32s; animation-fill-mode: both; animation-play-state: paused; animation-timing-function: cubic-bezier(.55, 0, .7, .2);
+}
+:global(.nx-morph-enter.nx-morph-enter-active), :global(.nx-morph-appear.nx-morph-appear-active) { animation-name: nxMorphIn; animation-play-state: running; }
+:global(.nx-morph-leave.nx-morph-leave-active) { animation-name: nxMorphOut; animation-play-state: running; pointer-events: none; }
+@keyframes nxMorphIn {
+  0% { transform: scale(0.2); opacity: 0; filter: blur(2px); }
+  35% { opacity: 1; filter: blur(0); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes nxMorphOut {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.2); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :global(.nx-morph-enter), :global(.nx-morph-appear), :global(.nx-morph-leave) { animation-duration: .01s; }
+}

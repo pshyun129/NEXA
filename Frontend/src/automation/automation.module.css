@@ -93,3 +93,22 @@
 .stEdited { display: inline-flex; align-items: center; gap: 4px; color: var(--nx-brand-700); font-weight: 600; white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) { .wfCard, .panel, .step, .docCard, .st-WAITING .stepDot { animation: none; } }
+
+/* ---------- 실행 화면 큰 캔버스(진행을 노드 애니메이션으로) ---------- */
+.stage { position: relative; border: 1px solid var(--nx-border); border-radius: 12px; background: #fbfcfd; overflow: hidden;
+         box-shadow: var(--nx-sh-card); animation: nx-rise .5s var(--nx-ease) both; }
+.stageBar { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; align-items: center; gap: 12px;
+            padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,.92); border: 1px solid #e6e9ee;
+            font-size: 12px; color: #6f7680; backdrop-filter: blur(4px); }
+.stageProgress { flex: 1; height: 4px; border-radius: 2px; background: #eef0f3; overflow: hidden; }
+.stageProgress span { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, #7c98cc, #67ac97); transition: width .6s var(--nx-ease); }
+.stageProgress .stageFail { background: var(--nx-danger-fg); }
+
+/* ---------- 결과 파일·원본 파일 줄 ---------- */
+.results { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.resultFile { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #dbe9e2; border-radius: 10px; background: #f6fbf8; }
+.resultIcon { flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: #e5f3ec; color: #3f8a71; }
+.resultMain { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.resultMain b { font-size: 13px; font-weight: 600; color: var(--nx-n-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fileRow { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--nx-border); border-radius: 8px; color: var(--nx-n-600); }
+.fileName { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

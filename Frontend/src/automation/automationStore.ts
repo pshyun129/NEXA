@@ -14,7 +14,11 @@ interface AutomationUi {
   view: HubView;
   /** 오른쪽 위 작은 진행 창에 보여 주는 실행 */
   mini: { runId: number; workflowId: number } | null;
+  /** 작은 진행 창에서 크게 열었을 때 그 창의 가운데(화면 좌표). 큰 창이 여기서 커지고, 닫으면 여기로 줄어든다 */
+  origin: { x: number; y: number } | null;
   openHub: (view?: HubView) => void;
+  /** 작은 진행 창 → 큰 실행 화면(확대 애니메이션) */
+  expandRun: (runId: number, origin: { x: number; y: number }) => void;
   setView: (view: HubView) => void;
   close: () => void;
   /** 실행을 시작하면 큰 모달을 닫고 작은 진행 창으로 바꾼다 */
@@ -30,7 +34,9 @@ export const useAutomationUi = create<AutomationUi>((set) => ({
   open: false,
   view: { kind: 'home' },
   mini: null,
-  openHub: (view) => set({ open: true, view: view ?? { kind: 'home' } }),
+  origin: null,
+  openHub: (view) => set({ open: true, view: view ?? { kind: 'home' }, origin: null }),
+  expandRun: (runId, origin) => set({ open: true, view: { kind: 'run', runId }, origin }),
   setView: (view) => set({ view }),
   close: () => set({ open: false }),
   minimize: (runId, workflowId) => set({ open: false, mini: { runId, workflowId } }),

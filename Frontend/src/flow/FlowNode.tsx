@@ -7,6 +7,11 @@ import s from './flow.module.css';
 
 /** 서버 노드 카테고리 code(FastAPI registry.py) 5종 */
 export type NodeCategory = 'input' | 'ai' | 'rule' | 'human' | 'output';
+/**
+ * 화면 좌표 = 저장 좌표 × (1, GRAPH_Y_SCALE). 노드 카드(214 × 200)가 시드 배치(행 간격 160)보다 커서 세로만 넓혀 그린다.
+ * 빌더 캔버스와 실행 화면 캔버스가 같은 값을 쓴다
+ */
+export const GRAPH_Y_SCALE = 1.45;
 export type NodeRunState = 'idle' | 'QUEUED' | 'RUNNING' | 'WAITING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED';
 
 export type FlowNodeData = {

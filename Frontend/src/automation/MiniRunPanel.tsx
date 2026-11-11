@@ -50,19 +50,24 @@ function stepLine(st: RunStep | undefined, name: string) {
 export function MiniRunPanel() {
   const mini = useAutomationUi((st) => st.mini);
   const closeMini = useAutomationUi((st) => st.closeMini);
-  const openHub = useAutomationUi((st) => st.openHub);
-  if (!mini) return null;
-  return <Panel key={mini.runId} runId={mini.runId} workflowId={mini.workflowId}
-                onClose={closeMini} onExpand={() => openHub({ kind: 'run', runId: mini.runId })} />;
+  const expandRun = useAutomationUi((st) => st.expandRun);
+  // 큰 창이 떠 있는 동안은 숨긴다(크게 보기를 누르면 이 창이 큰 창으로 바뀌는 것처럼 보이게). 닫으면 다시 나타난다
+  const hubOpen = useAutomationUi((st) => st.open);
+  if (!mini || hubOpen) return null;
+  return <Panel key={mini.runId} runId={mini.runId} workflowId={mini.workflowId} onClose={closeMini}
+                onExpand={(r) => expandRun(mini.runId, { x: r.left + r.width / 2, y: r.top + r.height / 2 })} />;
 }
 
-function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workflowId: number; onClose: () => void; onExpand: () => void }) {
+function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workflowId: number; onClose: () => void; onExpand: (rect: DOMRect) => void }) {
+  const boxRef = useRef<HTMLElement>(null);
+  const expand = () => { if (boxRef.current) onExpand(boxRef.current.getBoundingClientRect()); };
   const run = useRun(runId);
   const steps = useRunSteps(runId, run.data?.status);
   const wf = useWorkflow(workflowId);
   const catalog = useNodeCatalog();
   const notify = useNotify();
-  const graph = (wf.data as { draftGraph?: Graph } | undefined)?.draftGraph;
+  // 실행 당시 그래프(서버가 내려 줌) → 없으면 워크플로 초안
+  const graph = run.data?.graph ?? (wf.data as { draftGraph?: Graph } | undefined)?.draftGraph;
   const ordered = useMemo(() => orderNodes(graph), [graph]);
   const byNode = useMemo(() => new Map((steps.data ?? []).map((st) => [st.nodeId, st])), [steps.data]);
   const status = run.data?.status;
@@ -105,14 +110,14 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
     : approvalWait ? '결재 대기' : status === 'WAITING' ? '확인 대기' : status === 'CANCELED' ? '취소됨' : '실행 중';
 
   return (
-    <section className={s.mini} role="status" aria-live="polite" aria-label="자동화 진행 상황">
+    <section ref={boxRef} className={s.mini} role="status" aria-live="polite" aria-label="자동화 진행 상황">
       <div className={s.miniHead}>
         <span className={`${s.miniDot} ${s[`dot-${tone}`]}`} />
         <div className={s.miniTitle}>
           <strong>{wf.data?.name ?? `워크플로 #${workflowId}`}</strong>
           <span>run #{runId} · {statusText}</span>
         </div>
-        <button type="button" className={s.miniBtn} onClick={onExpand} aria-label="실행 화면 크게 보기"><Icon as={Expand} size={16} /></button>
+        <button type="button" className={s.miniBtn} onClick={expand} aria-label="실행 화면 크게 보기"><Icon as={Expand} size={16} /></button>
         <button type="button" className={s.miniBtn} onClick={onClose} aria-label="진행 창 닫기"><Icon as={X} size={16} /></button>
       </div>
 
@@ -144,9 +149,9 @@ function Panel({ runId, workflowId, onClose, onExpand }: { runId: number; workfl
       </div>
       <p className={s.miniLine}>{rejected ? '결재가 반려되어 흐름을 마쳤어요.' : approvalWait ? '결재자의 승인을 기다리고 있어요. 결과가 나오면 이어서 진행해요.' : stepLine(current, curName)}</p>
       {status === 'WAITING' && !approvalWait && (
-        <Button type="primary" block onClick={onExpand}>확인하기</Button>
+        <Button type="primary" block onClick={expand}>확인하기</Button>
       )}
-      {final && (status !== 'SUCCEEDED' || rejected) && <Button block onClick={onExpand}>실행 화면에서 보기</Button>}
+      {final && (status !== 'SUCCEEDED' || rejected) && <Button block onClick={expand}>실행 화면에서 보기</Button>}
     </section>
   );
 }

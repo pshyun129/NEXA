@@ -10,7 +10,7 @@ import {
   type BuilderWorkflow, type Graph, type NodeDetail, type ValidationIssue,
 } from '@/api/builder';
 import { isFinal, runBadgeValue, useMyRuns, useRun, useRunSteps, type RunStep, type RunStatus } from '@/api/ai';
-import { TONE_COLOR, lookOf, nodeTypes, type FlowNodeData, type NodeCategory, type NodeRunState } from '@/flow/FlowNode';
+import { GRAPH_Y_SCALE, TONE_COLOR, lookOf, nodeTypes, type FlowNodeData, type NodeCategory, type NodeRunState } from '@/flow/FlowNode';
 import { edgeTypes, type EdgeRunStatus, type FlowEdgeData } from '@/flow/FlowEdge';
 import { Illustration } from '@/flow/Illustration';
 import { RunMonitor } from '@/automation/RunMonitor';
@@ -37,11 +37,8 @@ type BNode = Node<BuilderNodeData, 'nexa'>;
 type BEdge = Edge<FlowEdgeData, 'flow'>;
 
 const PALETTE_SEARCH_ID = 'nx-builder-node-search';
-/**
- * 화면 좌표 = 저장 좌표 × (1, Y_SCALE). 노드 카드(214 × 200)가 시드 배치(행 간격 160)보다 커서 세로만 넓혀 그린다.
- * 저장할 때는 다시 나눠 서버 그래프 좌표는 그대로 둔다.
- */
-const Y_SCALE = 1.45;
+/** 저장할 때는 다시 나눠 서버 그래프 좌표는 그대로 둔다(flow/FlowNode GRAPH_Y_SCALE) */
+const Y_SCALE = GRAPH_Y_SCALE;
 
 /**
  * 노드 부제(AI 노드는 FlowNode가 "AI · "를 붙인다).
@@ -742,7 +739,7 @@ function Editor({ wf, live, catalog, byType, onDirtyChange }:
       {/* ---------- 테스트 실행: 입력 폼 / 실행 화면. 오른쪽 패널이라 캔버스(겹쳐 그린 상태)를 가리지 않는다 ---------- */}
       <Drawer open={drawer !== null} onClose={() => setDrawer(null)} placement="right" width={drawer === 'monitor' ? 620 : 480} mask={false} destroyOnHidden
               title={drawer === 'monitor' && testRunId ? `테스트 실행 · run #${testRunId}` : '테스트 실행 (초안 그래프)'}>
-        {drawer === 'monitor' && testRunId ? <RunMonitor runId={testRunId} /> : (
+        {drawer === 'monitor' && testRunId ? <RunMonitor runId={testRunId} canvas={false} /> : (
           <div className={s.testForm}>
             <p className={s.muted} style={{ marginTop: 0 }}>저장한 초안 그래프로 실행합니다. 시작하면 진행 상황이 캔버스와 아래 실행 모니터에 그려져요.</p>
             <SchemaForm fields={withFileField(live.inputForm, fileAccepts)} submitting={startTest.isPending} submitLabel="테스트 실행"

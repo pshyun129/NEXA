@@ -38,6 +38,9 @@ class RunDetail(RunSummary):
     inputs: dict
     outputs: dict | None
     error: str | None
+    # 실행 당시 그래프(배포 버전 또는 테스트 실행 초안의 사본). 화면이 이 그래프로 진행 캔버스를 그린다
+    # → 실행 뒤 초안을 고쳐도 예전 실행은 그때 모양 그대로 보인다 (조회는 요청자·관리자만)
+    graph: dict
 
 
 class RunStepResponse(CamelModel):
