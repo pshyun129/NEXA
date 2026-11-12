@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -107,6 +107,28 @@ class RunFeedback(Base):
     final_output: Mapped[dict] = mapped_column(JSONB)                 # 확정된 값 (= 라벨)
     edited_fields: Mapped[list] = mapped_column(JSONB)                # 바뀐 필드 목록
     label_source: Mapped[str] = mapped_column(String(20))             # human: 사람 확정 / llm_agree: 로컬·GMS 일치로 자동 확정 / rule_agree: 원문 대조(싼 검증) 통과로 자동 확정
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ReceiptKey(Base):
+    """영수증 한 장의 '같은 영수증인지' 판단용 키 (실행끼리 중복 검사용 색인, runs/duplicates.py).
+
+    실행 단계 출력(JSONB)을 다 펼쳐 찾으면 데이터가 쌓일수록 느려짐 → 항목 추출 때 키만 따로 한 줄씩 저장하고
+    (거래일, 금액)·승인번호 인덱스로 후보만 꺼낸다. 그 장이 결국 어떻게 됐는지(승인·반려·제외)는 후보가 생겼을 때만
+    그 실행의 단계 출력에서 확인한다 (상태를 이 표에 따로 들고 있지 않아 어긋날 일이 없음).
+    """
+    __tablename__ = "receipt_key"
+    __table_args__ = (Index("ix_receipt_key_date_total", "date", "total"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    receipt_index: Mapped[int] = mapped_column(Integer)                  # 그 실행 안의 장 번호
+    date: Mapped[str] = mapped_column(String(10))                       # 거래일 YYYY-MM-DD
+    total: Mapped[int] = mapped_column(BigInteger)
+    approval_no: Mapped[str | None] = mapped_column(String(20), index=True)   # 카드 승인번호
+    biz_no: Mapped[str | None] = mapped_column(String(20))
+    pay_time: Mapped[str | None] = mapped_column(String(5))
+    store: Mapped[str | None] = mapped_column(String(100))              # 상호 (띄어쓰기 뺀 것)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

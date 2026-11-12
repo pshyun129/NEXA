@@ -117,7 +117,9 @@ def build_settlement(receipts: list[dict], employee: dict | None, dept_name: str
         again = (f"다시 검토: {policy['previous_verdict']} → {policy.get('verdict')}"
                  if policy.get("rechecked") and policy.get("previous_verdict") != policy.get("verdict") else None)
         note = [x for x in [r.get("requester_note"), again, "정산에서 뺌" if not r.get("include", True) else None,
-                            f"No.{r['duplicate_of'] + 1}과 중복 결제" if r.get("duplicate_of") is not None else None] if x]
+                            f"No.{r['duplicate_of'] + 1}과 중복 결제" if r.get("duplicate_of") is not None else None,
+                            f"실행 #{r['duplicate_prev']['run_id']}에서 이미 청구({r['duplicate_prev'].get('state')})"
+                            if r.get("duplicate_prev") else None] if x]
         rows.append([n, f.get("date"), account_of(r), _summary(r), f.get("store"), _dv(r, "biz_no"), _dv(r, "supply"),
                      _dv(r, "vat"), amount, r.get("evidence_kind") or "확인 필요", _dv(r, "pay_method"), _dv(r, "approval_no"),
                      people, src, attendees_of(r), amount // people if people else None, verdict_of(r),

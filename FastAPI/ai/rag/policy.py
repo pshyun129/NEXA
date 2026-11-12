@@ -458,6 +458,16 @@ def check_receipt(fields: dict, extra: dict | None = None, today: date | None = 
                                    "llm_verdict": None, "quote": "", "reason": issue, "missing_facts": [],
                                    "numeric": [], "checks": [], "by": "code"})
 
+    # 중복 영수증: 같은 실행 안 / 다른 실행에서 이미 청구 → 위반 (돈이 두 번 나가지 않게, 사람이 보고 빼거나 설명)
+    dup_of, dup_prev = (receipt or {}).get("duplicate_of"), (receipt or {}).get("duplicate_prev")
+    if dup_of is not None or dup_prev:
+        why = (f"이번에 올린 No.{dup_of + 1}과 같은 결제" if dup_of is not None else
+               f"실행 #{dup_prev['run_id']}에서 이미 정산 신청 ({dup_prev.get('state')}"
+               + (f", 문서 {dup_prev['doc_no']}" if dup_prev.get("doc_no") else "") + ")")
+        extra_findings.append({"clause_id": "CHK-2", "label": "중복 영수증 (이중 청구)", "verdict": "위반",
+                               "llm_verdict": None, "quote": "", "reason": why + " → 같은 영수증이면 정산에서 빼 주세요",
+                               "missing_facts": [], "numeric": [], "checks": [], "by": "code"})
+
     if not ai_clauses and not extra_findings:                 # ② 판정할 근거가 없으면 LLM을 부르지 않음
         return {"verdict": "확인 필요", "findings": [], "needed_facts": needed,
                 "reason": "판정할 수 있는 규정을 찾지 못했습니다", **base}

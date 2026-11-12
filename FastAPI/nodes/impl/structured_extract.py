@@ -5,6 +5,7 @@
             + 인원 추정 범위 + 중복 영수증 표시
   - 호환: fields·problems·model_version은 1장일 때와 같은 모양(첫 장 기준). 1장 워크플로·기존 참조({{n3.fields}})는 그대로 동작
 """
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
@@ -12,7 +13,12 @@ from datetime import date
 from ai.modules.receipt import CORE_FIELDS, RECEIPT_VERSION, extract_receipt
 from ai.receipts.headcount import estimate_headcount
 from ai.receipts.parse import EVIDENCE_KIND, parse_details
+from core.config import settings
+from core.database import SessionLocal
 from nodes.base import BaseNode, NodeContext, NodeResult, Progress, latest_output
+from runs.duplicates import find_prior_claims, save_keys
+
+log = logging.getLogger(__name__)
 
 # 문서 종류 -> (추출 함수, 모델 버전)
 # 새 문서 종류는 DSPy 모듈을 만들고 여기에 한 줄 추가
@@ -129,6 +135,7 @@ class StructuredExtractNode(BaseNode):
             excluded = []
 
         # 같은 영수증이 두 번 들어왔으면 뒤의 것을 표시 (이중 청구 방지)
+        #   ① 이 실행 안에서 ② 다른 실행에서 이미 청구한 것 (runs/duplicates.py)
         seen: dict[tuple, int] = {}
         for r in receipts:
             key = _dup_key(r) if doc_type == "영수증" else None
@@ -137,6 +144,20 @@ class StructuredExtractNode(BaseNode):
                 r["problems"].append("duplicate")
             elif key:
                 seen[key] = r["index"]
+        if doc_type == "영수증" and settings.receipt_duplicate_check:
+            try:
+                with SessionLocal() as db:
+                    prior = find_prior_claims(db, ctx.run_id, receipts)
+                    save_keys(db, ctx.run_id, receipts)     # 다음 실행의 검사를 위해 이 실행의 장 키 저장 (인덱스로 찾음)
+                    db.commit()
+            except Exception:               # 검사 실패로 실행을 멈추지는 않음 (기록만)
+                log.exception("다른 실행 중복 영수증 검사 실패 run=%s", ctx.run_id)
+                prior = {}
+            for r in receipts:
+                if r["index"] in prior:
+                    r["duplicate_prev"] = prior[r["index"]]
+                    if "duplicate" not in r["problems"]:
+                        r["problems"].append("duplicate")
 
         first = receipts[0]
         single = len(receipts) == 1

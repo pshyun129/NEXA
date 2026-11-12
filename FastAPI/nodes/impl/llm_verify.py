@@ -94,12 +94,20 @@ def gms_compare(doc_type: str, text: str, fields: dict) -> tuple[dict | None, li
     return gms, [f"GMS와 불일치: {k}" for k in keys if _norm(fields.get(k)) != _norm(gms.get(k))]
 
 
+def prior_claim_text(p: dict) -> str:
+    """다른 실행에서 이미 청구한 영수증 안내 문구"""
+    doc = f", 문서 {p['doc_no']}" if p.get("doc_no") else ""
+    return f"이미 정산 신청한 영수증: 실행 #{p['run_id']} ({p.get('state')}{doc})"
+
+
 def pre_checks(r: dict, doc_type: str, ocr_conf, threshold: float, max_age: int) -> tuple[list[str], list[str]]:
     """GMS 전에 하는 검사 → (확정 사유: 바로 사람 확인, 애매 사유: GMS로 한 번 더)"""
     fields, text = r["fields"], r.get("text") or ""
     hard = [f"규칙 위반: {p}" for p in r.get("problems", []) if p != "duplicate"]
     if r.get("duplicate_of") is not None:
         hard.append(f"중복 영수증: No.{r['duplicate_of'] + 1}과 같은 결제")
+    if r.get("duplicate_prev"):
+        hard.append(prior_claim_text(r["duplicate_prev"]))
     if fields.get("date"):
         hard += date_problems(fields["date"], text, max_age)
     if ocr_conf is not None and ocr_conf < threshold:

@@ -139,6 +139,8 @@ export interface HitlReceipt {
   needed_facts: string[];
   gms_fields: Record<string, unknown> | null;
   duplicate_of: number | null;
+  /** 다른 실행에서 이미 정산 신청한 영수증(FastAPI runs/duplicates.py): 그 실행·상태·결재 문서 번호 */
+  duplicate_prev?: { run_id: number; state: string; doc_no: string | null; approval_status: string | null } | null;
 }
 
 /** 사람 확인(human_confirm) 대기 내용 */

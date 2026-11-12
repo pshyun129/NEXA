@@ -95,6 +95,11 @@ function ReceiptCard({ r, d, mode, open, canEdit, preview, documentId, onToggle,
         <div className={s.rcBody}>
           {reasons.length > 0 && <ul className={s.reasons}>{reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
           {r.duplicate_of != null && <Alert type="warning" showIcon message={`No.${r.duplicate_of + 1}과 같은 결제로 보여요. 중복이면 정산에서 빼 주세요.`} />}
+          {r.duplicate_prev && (
+            <Alert type="error" showIcon
+                   message={`이미 정산 신청한 영수증이에요 (실행 #${r.duplicate_prev.run_id} · ${r.duplicate_prev.state}${r.duplicate_prev.doc_no ? ` · ${r.duplicate_prev.doc_no}` : ''})`}
+                   description="같은 영수증이면 [정산에 포함]을 꺼 주세요. 다른 결제라면 결재자에게 남길 설명에 이유를 적어 주세요." />
+          )}
           <div className={s.rcGrid}>
             {imgUrl && (
               <button type="button" className={s.rcThumb} title="원본 크게 보기"

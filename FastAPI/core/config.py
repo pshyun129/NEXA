@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     local_llm_timeout: float = 60.0
     # 프로세스 전체 LLM 동시 호출 상한 (영수증 수백 장 실행이 겹쳐도 vLLM·GMS를 몰아치지 않게)
     llm_max_concurrency: int = 16
+    # 다른 실행에서 이미 정산 신청한 영수증 찾기 (이중 청구 방지). 같은 영수증으로 E2E를 반복하는 개발 PC는 .env에서 false
+    receipt_duplicate_check: bool = True
 
     # OCR 서버 (GPU 서버 PyTriton, Tailscale 경유)
     ocr_base_url: str = ""          # "호스트:포트" 형식, http:// 없이 (예: 100.x.x.x:18100)

@@ -61,6 +61,7 @@ def compact(r: dict) -> dict:
         "needed_facts": (policy or {}).get("needed_facts") or [],
         "gms_fields": (r.get("verify") or {}).get("gms_fields"),
         "duplicate_of": r.get("duplicate_of"),
+        "duplicate_prev": r.get("duplicate_prev"),          # 다른 실행에서 이미 청구 {run_id, state, doc_no}
     }
 
 

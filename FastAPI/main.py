@@ -20,6 +20,7 @@ from workflows.routers import router as workflows_router
 from ai.routers import router as ai_router
 from ai.rag.policy import warm_up as warm_up_rag   # 모델 + 고정 질문 검색 결과 미리 계산
 from runs import golden_sync
+from runs.duplicates import backfill_keys
 from runs.service import fail_interrupted_runs
 
 
@@ -32,6 +33,16 @@ SERVICE_NAME = "ai-service"
 
 
 @asynccontextmanager
+def _backfill_receipt_keys() -> None:
+    try:
+        with SessionLocal() as db:
+            n = backfill_keys(db)
+        if n:
+            logging.getLogger(__name__).info("중복 영수증 색인 %d줄 채움", n)
+    except Exception:
+        logging.getLogger(__name__).exception("중복 영수증 색인 채우기 실패")
+
+
 async def lifespan(app: FastAPI):
     # 서버 켤 때
     Base.metadata.create_all(engine)
@@ -40,6 +51,8 @@ async def lifespan(app: FastAPI):
         interrupted = fail_interrupted_runs(db)
     if interrupted:
         logging.getLogger(__name__).warning("서버 재시작으로 중단된 실행 %d개를 실패 처리", interrupted)
+    # 실행끼리 중복 영수증 색인(receipt_key)이 비어 있으면 지난 실행에서 한 번 채움 (오래 걸릴 수 있어 백그라운드)
+    threading.Thread(target=_backfill_receipt_keys, name="receipt-key-backfill", daemon=True).start()
     init_checkpointer()
     approval_consumer.start()          # 결재 결과 구독 시작 (KAFKA_BOOTSTRAP_SERVERS 없으면 건너뜀)
     # 규정 RAG 모델 미리 불러오기: 수 초~수십 초 걸려서 백그라운드로 (헬스체크·다른 요청을 막지 않게)
