@@ -50,6 +50,27 @@ echo "로그 확인: tail -f ~/ai/logs/*-$(date +%F).log"
 # cron 아님: 오늘 하루만 예약 (서버가 매일 재시작되므로 매일 아침 이 스크립트로 다시 예약)
 # 데이터: NIGHT_DATA가 없으면 ~/ai/sft에서 가장 최근에 올린 jsonl / 이미 학습한 데이터면 night_job이 그냥 끝냄
 if [[ -n "${NIGHT_AT:-}" ]]; then
-  NIGHT_DATA="${NIGHT_DATA:-$(ls -t "$HOME"/ai/sft/*.jsonl 2>/dev/null | head -1)}"
-  START_AT="$NIGHT_AT" bash "$SCRIPT_DIR/start_night.sh" "${NIGHT_NAME:-receipt-qlora-$(date +%Y%m%d)}" "$NIGHT_DATA" || true
+  NIGHT_DATA="${NIGHT_DATA:-$(ls -t "$HOME"/ai/sft/*.jsonl 2>/dev/null | head -1 || true)}"
+  if [[ -z "$NIGHT_DATA" || ! -f "$NIGHT_DATA" ]]; then
+    echo "⚠ [night] 밤 학습 예약 안 됨: 학습 데이터가 없습니다 (${NIGHT_DATA:-~/ai/sft/*.jsonl})"
+  else
+    SHA=$(sha256sum "$NIGHT_DATA" | cut -c1-12)
+    # 예약 실패를 삼키지 않고 결과를 항상 보여 줌 (2026-11-09~12 예약이 조용히 거절된 문제)
+    set +e
+    START_AT="$NIGHT_AT" bash "$SCRIPT_DIR/start_night.sh" "${NIGHT_NAME:-receipt-qlora-$(date +%Y%m%d)}" "$NIGHT_DATA"
+    RC=$?
+    set -e
+    if [[ $RC == 0 ]]; then
+      echo "[night] 밤 학습 예약됨: $NIGHT_AT / $(basename "$NIGHT_DATA") (sha $SHA)"
+      if grep -qlx "$SHA" "$HOME"/ai/adapters/*/data.sha 2>/dev/null; then
+        echo "        이 데이터는 이미 학습했음 → $NIGHT_AT에 확인만 하고 건너뜀 (다시 학습: FORCE=1)"
+      fi
+    elif [[ $RC == 2 ]]; then
+      echo "[night] 기존 예약·학습을 그대로 둠 (tail -n 3 ~/ai/logs/night-$(date +%F).log)"
+    else
+      echo "⚠ [night] 밤 학습 예약 안 됨 (위 메시지 확인). 직접 걸기: START_AT=$NIGHT_AT bash scripts/start_night.sh <이름> $NIGHT_DATA"
+    fi
+  fi
+else
+  echo "[night] 밤 학습 예약 없음 (예약하려면 앞에 NIGHT_AT=20:00 을 붙여 실행)"
 fi
