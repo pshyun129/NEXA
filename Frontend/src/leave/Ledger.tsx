@@ -1,27 +1,35 @@
 import { Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { UseQueryResult } from '@tanstack/react-query';
 import { useLeaveGrants, useLeaveLedger, type LeaveGrant, type LeaveLedgerEntry } from '@/api/leave';
 import { Card } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
-import { formatDate, formatDateTime, formatLeaveDays, kst, serverUtc } from '@/format';
+import { formatDate, formatDateTime, formatLeaveAmount, kst, serverUtc } from '@/format';
 import { leaveGrantKindLabel, leaveLedgerLabel } from '@/status/labels';
 import s from './leave.module.css';
 
 /** 증감 표시. 0이면 비운다 */
 function Delta({ v }: { v: number }) {
   if (v === 0) return null;
-  return <span className={`${s.delta} ${v > 0 ? s.plus : s.minus} nx-num`}>{v > 0 ? '+' : ''}{formatLeaveDays(v)}</span>;
+  return <span className={`${s.delta} ${v > 0 ? s.plus : s.minus} nx-num`}>{v > 0 ? '+' : ''}{formatLeaveAmount(v)}</span>;
 }
 
 /** 발생 내역 + 변동 원장(P1, 설계 9장 "휴가 잔여·신청·내역") */
 export function LeaveLedger({ onOpenRequest }: { onOpenRequest: (id: number) => void }) {
   const grants = useLeaveGrants();
   const ledger = useLeaveLedger();
+  return <LedgerTables grants={grants} ledger={ledger} onOpenRequest={onOpenRequest} />;
+}
+
+/** 발생 내역 + 변동 내역 표. 내 휴가와 관리자 사원별 휴가가 같이 쓴다(신청 링크는 onOpenRequest가 있을 때만) */
+export function LedgerTables({ grants, ledger, onOpenRequest }: {
+  grants: UseQueryResult<LeaveGrant[]>; ledger: UseQueryResult<LeaveLedgerEntry[]>; onOpenRequest?: (id: number) => void;
+}) {
 
   const grantCols: ColumnsType<LeaveGrant> = [
     { title: '유형', dataIndex: 'balanceTypeName', width: 110 },
     { title: '구분', dataIndex: 'grantKind', width: 110, render: (v: string) => leaveGrantKindLabel(v) },
-    { title: '발생', dataIndex: 'originalMinutes', width: 100, align: 'right', render: (v: number) => <span className="nx-num">{formatLeaveDays(v)}</span> },
+    { title: '발생', dataIndex: 'originalMinutes', width: 100, align: 'right', render: (v: number) => <span className="nx-num">{formatLeaveAmount(v)}</span> },
     { title: '유효 기간', key: 'valid',
       // expiresOn은 만료 시각(그 시각부터 무효)이라 하루 전 날짜까지 쓸 수 있다
       render: (_, g) => (
@@ -39,10 +47,11 @@ export function LeaveLedger({ onOpenRequest }: { onOpenRequest: (id: number) => 
     { title: '내용', key: 'reason', render: (_, e) => (
       <span>
         {e.reason}
-        {e.leaveReqId != null && (
+        {e.leaveReqId != null && onOpenRequest && (
           <> · <a role="button" tabIndex={0} onClick={() => onOpenRequest(e.leaveReqId!)}
                  onKeyDown={(k) => { if (k.key === 'Enter') onOpenRequest(e.leaveReqId!); }}>신청 #{e.leaveReqId}</a></>
         )}
+        {e.leaveReqId != null && !onOpenRequest && <span className="nx-num"> · 신청 #{e.leaveReqId}</span>}
       </span>
     ) },
   ];

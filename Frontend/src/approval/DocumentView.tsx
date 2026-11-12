@@ -14,6 +14,7 @@ import { approvalLevelLabel, formTypeLabel } from '@/status/labels';
 import { useHotkeys } from '@/common/useHotkeys';
 import { requestHref } from '@/attendance/requests/links';
 import { APPLY_PATH, leaveRequestHref } from '@/leave/links';
+import { openAutomation } from '@/automation/automationStore';
 import { ApprovalLine } from './ApprovalLine';
 import { ReferrerEditor, ResubmitButton } from './DraftTools';
 import { documentPermissions, type DocumentPermissions } from './permissions';
@@ -218,7 +219,14 @@ export function DocumentView({ id, onProcessed }: { id: number; onProcessed?: (i
             <AiMark label="자동화로 생성됨" />
             {doc.sourceLabel && <span>{doc.sourceLabel}</span>}
             {doc.sourceId != null && <span className="nx-mono">run #{doc.sourceId}</span>}
-            {doc.sourceId != null && <Link to={`/automation/runs/${doc.sourceId}`} style={{ marginLeft: 'auto' }}>원본 실행 보기 ↗</Link>}
+            {/* 기안자(=자동화를 실행한 요청자)는 그대로, 결재자는 이 문서 번호로 읽기 전용 조회
+                (ai-service가 결재 서비스에 문서 열람 권한과 출처 실행을 확인. 예전 서버는 RUN_005 → 오류 안내) */}
+            {doc.sourceId != null && (
+              <Button type="link" size="small" style={{ marginLeft: 'auto', paddingInline: 0 }}
+                      onClick={() => openAutomation({ kind: 'run', runId: doc.sourceId!, documentId: doc.drafterId === meId ? undefined : doc.documentId })}>
+                {doc.drafterId === meId ? '원본 실행 보기 ↗' : '영수증·검토 내역 보기 ↗'}
+              </Button>
+            )}
           </div>
         )}
         {(doc.sourceType === 'LEAVE' || doc.sourceType === 'ATTENDANCE') && (

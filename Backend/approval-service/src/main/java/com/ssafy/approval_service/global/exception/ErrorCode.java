@@ -34,7 +34,7 @@ public enum ErrorCode {
     FORM_SOURCE_MISMATCH(HttpStatus.BAD_REQUEST, "APPROVAL_019", "문서 양식과 출처가 맞지 않습니다. 휴가/근태 문서는 해당 신청을 통해서만 만들 수 있습니다."),
     REQUEST_KEY_REQUIRED(HttpStatus.BAD_REQUEST, "APPROVAL_020", "다른 서비스의 신청으로 만드는 문서는 요청 키(requestKey)가 필요합니다."),
     REQUEST_KEY_CONFLICT(HttpStatus.CONFLICT, "APPROVAL_021", "같은 요청 키로 다른 신청의 문서가 이미 있습니다."),
-    APPROVER_NOT_RESOLVED(HttpStatus.CONFLICT, "APPROVAL_022", "조직도에서 결재자를 정할 수 없습니다. 부서장 지정을 확인하세요."),
+    APPROVER_NOT_RESOLVED(HttpStatus.CONFLICT, "APPROVAL_022", "결재할 부서장을 찾지 못했습니다. 관리자에게 부서장 지정을 요청해 주세요."),
     SOURCE_DOCUMENT_NOT_RESUBMITTABLE(HttpStatus.CONFLICT, "APPROVAL_023", "다른 서비스(휴가·근태·업무 자동화)에서 만든 문서는 재기안할 수 없습니다. 원본 서비스에서 새로 신청하세요."),
     REQUIRED_APPROVER_FIXED(HttpStatus.CONFLICT, "APPROVAL_024", "위임전결 규정상 결재자는 결재선에서 빼거나 순서를 바꿀 수 없습니다."),
     REQUIRED_APPROVER_NOT_SKIPPABLE(HttpStatus.CONFLICT, "APPROVAL_025", "위임전결 규정상 결재자가 남아 있어 전결할 수 없습니다."),

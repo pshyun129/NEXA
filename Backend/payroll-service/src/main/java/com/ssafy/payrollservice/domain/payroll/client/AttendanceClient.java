@@ -67,7 +67,10 @@ public class AttendanceClient {
         return res.data();
     }
 
-    /** 그 달의 공휴일 (GET /api/v1/attn/holidays). 명절수당 지급 달 판단용 */
+    /**
+     * 그 달의 공휴일 (GET /api/v1/attn/holidays). 명절수당 지급 달, 지급일 판단용.
+     * 응답에는 호출한 사람(관리자)의 대체휴일(type SUBSTITUTE)도 섞여 오므로 회사 공휴일만 쓸 때는 {@link Holiday#isCompanyWide()}로 거른다
+     */
     public List<Holiday> getHolidays(YearMonth month) {
         InternalResult<List<Holiday>> res;
         try {
@@ -87,7 +90,11 @@ public class AttendanceClient {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Holiday(LocalDate holidayDate, String name) {
+    public record Holiday(LocalDate holidayDate, String name, String type) {
+        /** 법정·회사 지정 공휴일 (개인 대체휴일 제외) */
+        public boolean isCompanyWide() {
+            return !"SUBSTITUTE".equals(type);
+        }
     }
 
     // 팀 공통 응답 형식 ApiResult{success, error, data}

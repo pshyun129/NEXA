@@ -666,7 +666,7 @@
           "rawQuery": true,
           "editorMode": "code",
           "format": "time_series",
-          "rawSql": "SELECT date_trunc('day', created_at) AS time,\n       avg(CASE WHEN label_source = 'llm_agree' THEN 1.0 ELSE 0.0 END) AS \"자동 확정률\"\nFROM run_feedback\nWHERE $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1"
+          "rawSql": "SELECT date_trunc('day', created_at) AS time,\n       avg(CASE WHEN label_source IN ('llm_agree', 'rule_agree') THEN 1.0 ELSE 0.0 END) AS \"자동 확정률\"\nFROM run_feedback\nWHERE $__timeFilter(created_at)\nGROUP BY 1\nORDER BY 1"
         }
       ],
       "fieldConfig": {

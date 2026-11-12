@@ -57,8 +57,9 @@ public class ApprovalLineGenerator {
         }
         if (!reachedRequiredLevel) {
             // 위로 끝까지 올라가도 전결 단계 이상의 부서장이 없다 (최상위 부서장 공석 등). 조직 데이터를 고쳐야 한다
-            throw new BusinessException(ErrorCode.APPROVER_NOT_RESOLVED,
-                    "전결 단계(" + requiredLevel + ") 이상의 부서장이 없습니다. 기안자 " + drafterId);
+            // 화면에는 기본 문구만 보내고 내부 값(전결 단계 코드·사번)은 로그로만 남긴다 (QA C22)
+            log.warn("결재선 생성 실패: 전결 단계 {} 이상의 부서장이 없음. drafterId={}", requiredLevel, drafterId);
+            throw new BusinessException(ErrorCode.APPROVER_NOT_RESOLVED);
         }
 
         List<ApprovalLineRequest> lines = new ArrayList<>();

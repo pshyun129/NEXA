@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Alert, Button, Form, Input } from 'antd';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '@/auth/authApi';
 import { useSession } from '@/auth/session';
 import { isApiError } from '@/api/ApiError';
-import { Icon } from '@/ui/Icon';
-import { Hexagon } from '@/ui/icons';
+import { BrandMark } from '@/ui/BrandMark';
+import { FullPageNotice } from '@/ui/FullPageNotice';
 import s from './login.module.css';
 
 export const EXPIRED_FLAG = 'nx.sessionExpired';
@@ -15,8 +15,11 @@ interface FormValues { email: string; pass: string }
 
 function useCountdown(until: number | null) {
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!until) return;
+    // now는 페이지를 연 시각에 머물러 있어, 잠긴 직후 첫 화면이 머문 시간만큼 길게 나왔다(QA CM-B4 "16:29").
+    // 그리기 전에 지금 시각으로 맞춘다
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [until]);
@@ -28,7 +31,7 @@ function useCountdown(until: number | null) {
 export function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { status, markLoggedIn } = useSession();
+  const { status, markLoggedIn, setMe, clear } = useSession();
   const [form] = Form.useForm<FormValues>();
   const [error, setError] = useState<string | null>(null);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
@@ -44,7 +47,21 @@ export function LoginPage() {
   const next = params.get('next');
   const target = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
 
+  // /login을 직접 열면 아직 신원 확인 전(unknown)이라 폼부터 보였다(QA CM-B3).
+  // 처음 열 때만 /me로 확인해 쿠키가 살아 있으면 돌아갈 곳으로 보낸다. 로그인 성공 후(markLoggedIn)는 바로 이동하므로 다시 묻지 않는다
+  const [checking] = useState(() => status === 'unknown');
+  useEffect(() => {
+    if (!checking) return;
+    let cancelled = false;
+    authApi.me()
+      .then((me) => { if (!cancelled) setMe(me); })
+      // 실패하면 폼을 보여 준다. 첫 방문이라 세션 만료 안내는 띄우지 않는다(main.tsx 만료 처리와 같음)
+      .catch(() => { if (!cancelled) clear(); });
+    return () => { cancelled = true; };
+  }, [checking, setMe, clear]);
+
   if (status === 'authenticated') return <Navigate to={target} replace />;
+  if (status === 'unknown' && checking && !busy) return <FullPageNotice />;
 
   const submit = async ({ email, pass }: FormValues) => {
     setBusy(true);
@@ -84,11 +101,17 @@ export function LoginPage() {
 
   return (
     <div className={s.page}>
-      <div className={s.box}>
-        <div className={s.brand}>
-          <Icon as={Hexagon} size={24} className={s.mark} />
-          <span>NEXA</span>
+      <aside className={s.side} aria-hidden>
+        <div className={s.sideBrand}><BrandMark size={34} /><span>nexa</span></div>
+        <div className={s.sideCopy}>
+          <span className={s.sideStar}>✧</span>
+          <strong>반복은 흐름에 맡기고,<br />중요한 일에 집중하세요.</strong>
+          <p>근태 · 휴가 · 전자결재 · 급여 · 업무 자동화</p>
         </div>
+        <div className={s.sideFoot}>© 2026 NEXA · SSAFY 15기 자율 프로젝트 D107</div>
+      </aside>
+      <div className={s.box}>
+        <div className={s.eyebrow}>NEXA ERP WORKSPACE</div>
         <h1 className={s.title}>로그인</h1>
         <p className={s.desc}>회사 이메일로 로그인합니다.</p>
 
@@ -102,8 +125,9 @@ export function LoginPage() {
         )}
 
         <Form<FormValues> form={form} layout="vertical" requiredMark onFinish={submit} disabled={busy}>
-          <Form.Item name="email" label="이메일" rules={[{ required: true, message: '이메일을 입력해 주세요.' },
-            { type: 'email', message: '이메일 형식이 아닙니다. 예: user1@local.dev' }]} validateTrigger="onBlur">
+          {/* 붙여 넣은 이메일의 앞뒤 공백 때문에 형식 오류로 막히지 않게 검사할 때 공백을 뺀다(QA CM-C3). 보낼 때는 submit이 trim한다 */}
+          <Form.Item name="email" label="이메일" rules={[{ required: true, whitespace: true, message: '이메일을 입력해 주세요.' },
+            { type: 'email', transform: (v?: string) => v?.trim(), message: '이메일 형식이 아닙니다. 예: user1@local.dev' }]} validateTrigger="onBlur">
             <Input autoComplete="username" placeholder="예: user1@local.dev" autoFocus />
           </Form.Item>
           <Form.Item name="pass" label="비밀번호" rules={[{ required: true, message: '비밀번호를 입력해 주세요.' }]}>

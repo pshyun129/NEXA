@@ -1,0 +1,12 @@
+/* 탑바 [업무 자동화] 버튼. 창 자체는 automation/hub.module.css */
+.trigger { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 11px; border: 1px solid var(--nx-border);
+           border-radius: 6px; background: #fff; color: #2b2c2f; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+           white-space: nowrap; transition: border-color var(--nx-dur-base), background var(--nx-dur-base); }
+.trigger:hover, .on { border-color: #c9cbcf; background: #fafafa; }
+/* 확인 대기 알림: 숫자 + 은은한 맥박 */
+.badge { min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: #db8d74; color: #fff;
+         font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums;
+         animation: badgePulse 1.6s ease-in-out infinite; }
+@keyframes badgePulse { 50% { box-shadow: 0 0 0 4px rgba(219,141,116,.22); } }
+@media (prefers-reduced-motion: reduce) { .badge { animation: none; } }
+@media (max-width: 1279px) { .trigger kbd, .triggerLabel { display: none; } .trigger { padding: 0 9px; } }

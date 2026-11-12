@@ -140,7 +140,7 @@ psql '<승인된 개발 DB 연결 정보>' \
 - 자동 재개/복구가 없으므로 실패한 실행을 처음부터 무조건 재실행하지 않는다.
 - 실제 결재자 계정이 없거나 정산이 늦으면 해당 연동은 BLOCKED다. 독립적인 Leave 조회는 계속한다.
 - Attendance SUBSTITUTE 응답은 기존 계약 차이로 BLOCKED를 기록한다. 해당 날짜만 피해 통과시키지 않는다.
-- 관리자 직접 취소는 현재 **503/LEAVE_020 차단만** 검증한다. 정상 취소가 구현되었다고 보고하지 않는다.
+- 관리자 직접 취소는 기본값 TEST_ADMIN_CANCEL_ENABLED=false에서 **503/LEAVE_025 차단**을 검증한다. true에서는 아래 활성 시나리오를 실행한다.
 - 내부 날짜 URL이 없으면 해당 API만 BLOCKED다. Attendance 월간 검증은 별도로 수행한다.
 - 직원 전용 사용 확인은 운영 약속이다. 여러 호스트의 동시 실행을 막는 분산 잠금이나 분산 스냅샷은 제공하지 않는다.
 
@@ -166,3 +166,26 @@ Mock은 로그인 JSON·Set-Cookie·계정별 인증·39개 경로·ID 전달·C
 
 2026-11-05 로컬 결과: **35개 통과, 실패·오류·스킵 0개**.
 Mock HTTP/단위 24개와 격리 PostgreSQL 17 SQL 회귀 11개다. 실제 EC2에는 요청하지 않았다.
+
+## Attendance 관리자 취소 활성 검증
+
+서버의 Attendance 원복 연동이 준비된 전용 개발 환경에서만 `.env`에 아래 값을 설정한다.
+
+```dotenv
+TEST_ADMIN_CANCEL_ENABLED=true
+```
+
+기존 ALLOW_WRITES=true, DEDICATED_EMPLOYEE_CONFIRMED=true, 실제 EXPECTED_EMPLOYEE_ID 확인도 유지한다.
+이 값은 Python 테스트 시나리오 선택일 뿐 서버 기능 플래그를 변경하지 않는다.
+
+기존 승인·반려·회수와 부서 조회를 마친 뒤 이번 실행에서 승인한 신청 한 건만 관리자 취소한다.
+근태 월간 조회의 반영 해제, Leave CANCELLED/COMPLETED, 원래 CONSUME별 RESTORE,
+Approval 문서 APPROVED 유지, 완료된 동일 요청 재호출 시 추가 RESTORE가 없음을 확인한다.
+진행 중/UNKNOWN 응답은 BLOCKED로 기록하고 쓰기 재시도하지 않는다.
+취소 UUID는 result의 integrations.admin_cancel 시나리오에 기록한다.
+정상 ACCOUNT 실행에서 취소까지 완료되면 기존 510분 감소 중 승인 480분이 복원되어 총 30분 감소한다.
+NONE 유형은 원장 없는 상태 취소를 검증한다.
+
+과거 APPROVED Kafka 이벤트를 실제 브로커에 다시 발행하는 기능은 추가하지 않았다.
+Attendance 취소 이력·재반영 방지는 담당자와 별도의 통제된 E2E로 확인해야 한다.
+실제 EC2 쓰기는 이 구현 작업에서 실행하지 않았다.

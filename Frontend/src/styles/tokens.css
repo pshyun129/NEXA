@@ -1,23 +1,24 @@
-/* src/styles/tokens.css — 정적 파일(style-guide 12.4). main.tsx에서 global.css보다 먼저 import한다 */
+/* src/styles/tokens.css — 정적 파일(style-guide 12.4). main.tsx에서 global.css보다 먼저 import한다
+   v2: MONO 흑백 톤. brand 계열은 검정 램프, 상태색은 파스텔 배경 + 4.5:1 글자색 */
 :root {
-  --nx-brand-50:#EEF2FD; --nx-brand-100:#DCE4FB; --nx-brand-200:#B8C8F5; --nx-brand-300:#8EA6EC;
-  --nx-brand-400:#5F80E0; --nx-brand-500:#3A5FCF; --nx-brand-600:#2A4BB5; --nx-brand-700:#213C93;
-  --nx-brand-800:#1C3174; --nx-brand-900:#16255A;
-  --nx-ai-50:#F4EEFC; --nx-ai-100:#ECE2FE; --nx-ai-200:#D9C7F8; --nx-ai-500:#8E5CCC;
-  --nx-ai-700:#6630A8; --nx-ai-800:#532583;
-  --nx-n-0:#FFFFFF; --nx-n-25:#FAFBFC; --nx-n-50:#F4F6F8; --nx-n-100:#EAEDF1; --nx-n-200:#DCE0E6;
-  --nx-n-300:#C3C9D2; --nx-n-400:#969DAA; --nx-n-450:#878F9C; --nx-n-500:#6A7180; --nx-n-600:#4A5160;
-  --nx-n-700:#343A46; --nx-n-800:#22262E; --nx-n-900:#14171C;
-  --nx-success-fg:#1A7540; --nx-success-bg:#E7F4EC; --nx-success-bd:#A9D8BB;
-  --nx-warning-fg:#A15C00; --nx-warning-bg:#FFF3DC; --nx-warning-bd:#F2CF8F;
-  --nx-danger-fg:#C2352A;  --nx-danger-bg:#FCEBE9;  --nx-danger-bd:#F1B4AE;
-  --nx-info-fg:#0A6F96;    --nx-info-bg:#E4F2F8;    --nx-info-bd:#A3D2E5;
-  --nx-neutral-fg:#4A5160; --nx-neutral-bg:#EEF0F3; --nx-neutral-bd:#D3D8DF;
-  --nx-ai-fg:#6630A8;      --nx-ai-bg:#F4EEFC;      --nx-ai-bd:#D9C7F8;
+  --nx-brand-50:#F3F3F4; --nx-brand-100:#E8E8EA; --nx-brand-200:#D2D3D6; --nx-brand-300:#A7A9AD;
+  --nx-brand-400:#6E7075; --nx-brand-500:#3A3B3E; --nx-brand-600:#232425; --nx-brand-700:#151618;
+  --nx-brand-800:#111213; --nx-brand-900:#0B0B0C;
+  --nx-ai-50:#F6F0FC; --nx-ai-100:#EFE5FA; --nx-ai-200:#E2D2F3; --nx-ai-500:#8E6CC4;
+  --nx-ai-700:#6E4C9E; --nx-ai-800:#573C7D;
+  --nx-n-0:#FFFFFF; --nx-n-25:#F8F9FB; --nx-n-50:#F3F4F6; --nx-n-100:#EEEFF1; --nx-n-200:#E3E5E8;
+  --nx-n-300:#CBCED3; --nx-n-400:#9A9DA3; --nx-n-450:#8B8E94; --nx-n-500:#6C7078; --nx-n-600:#4B4F57;
+  --nx-n-700:#33363C; --nx-n-800:#232323; --nx-n-900:#151618;
+  --nx-success-fg:#2A735F; --nx-success-bg:#EEF8F4; --nx-success-bd:#CDE8DC;
+  --nx-warning-fg:#8A6327; --nx-warning-bg:#FFF7E9; --nx-warning-bd:#EEDDBB;
+  --nx-danger-fg:#B1443A;  --nx-danger-bg:#FDF0EE;  --nx-danger-bd:#F1CBC6;
+  --nx-info-fg:#4560AD;    --nx-info-bg:#EFF3FF;    --nx-info-bd:#D7E0F8;
+  --nx-neutral-fg:#4B4F57; --nx-neutral-bg:#F3F4F6; --nx-neutral-bd:#E1E3E6;
+  --nx-ai-fg:#6E4C9E;      --nx-ai-bg:#F6F0FC;      --nx-ai-bd:#E6D9F4;
   /* semantic */
   --nx-bg-app:var(--nx-n-25); --nx-bg-card:var(--nx-n-0); --nx-bg-subtle:var(--nx-n-50);
-  --nx-bg-selected:var(--nx-brand-50); --nx-sidebar-bg:var(--nx-n-0); --nx-sidebar-bg-admin:var(--nx-brand-900);
-  --nx-border:var(--nx-n-200); --nx-border-input:var(--nx-n-450); --nx-border-strong:var(--nx-n-300);
+  --nx-bg-selected:var(--nx-brand-50); --nx-sidebar-bg:#151618; --nx-sidebar-bg-admin:#151618;
+  --nx-border:#E5E7E9; --nx-border-input:var(--nx-n-450); --nx-border-strong:var(--nx-n-300);
   --nx-divider:var(--nx-n-100);
   --nx-text-strong:var(--nx-n-800); --nx-text:var(--nx-n-700); --nx-text-label:var(--nx-n-600);
   --nx-text-sub:var(--nx-n-500); --nx-text-sub-on-tint:var(--nx-n-600); --nx-text-disabled:var(--nx-n-400);
@@ -31,15 +32,20 @@
   --nx-sp-1:4px; --nx-sp-2:8px; --nx-sp-3:12px; --nx-sp-4:16px; --nx-sp-5:20px;
   --nx-sp-6:24px; --nx-sp-8:32px; --nx-sp-10:40px; --nx-sp-12:48px;
   /* size */
-  --nx-topbar-h:56px; --nx-sidebar-w:232px; --nx-sidebar-w-collapsed:64px; --nx-row-h:40px;
+  --nx-topbar-h:64px; --nx-sidebar-w:236px; --nx-sidebar-w-collapsed:64px; --nx-row-h:40px;
   --nx-control-h:36px; --nx-badge-h:22px; --nx-counter-h:20px; --nx-hit-min:24px; --nx-actionbar-h:56px;
   /* radius / shadow */
-  --nx-r-sm:4px; --nx-r-md:6px; --nx-r-lg:8px;
-  --nx-sh-sticky:0 1px 2px rgba(20,23,28,.06); --nx-sh-pop:0 4px 12px rgba(20,23,28,.10);
-  --nx-sh-modal:0 12px 32px rgba(20,23,28,.16);
+  --nx-r-sm:4px; --nx-r-md:6px; --nx-r-lg:10px;
+  --nx-sh-sticky:0 1px 2px rgba(20,23,28,.05); --nx-sh-pop:0 8px 24px rgba(20,23,28,.09);
+  --nx-sh-card:0 1px 2px rgba(20,23,28,.03); --nx-sh-hover:0 10px 28px rgba(39,57,91,.08);
+  --nx-sh-modal:0 20px 80px rgba(21,32,44,.18);
+  /* 노드 카테고리 파스텔(Workflow Studio) */
+  --nx-cat-input:#6688D9; --nx-cat-input-bg:#EFF4FF; --nx-cat-ai:#A280D0; --nx-cat-ai-bg:#F7F0FC;
+  --nx-cat-rule:#569C97; --nx-cat-rule-bg:#EDF8F5; --nx-cat-human:#DB8D74; --nx-cat-human-bg:#FFF2ED;
+  --nx-cat-output:#D49A3D; --nx-cat-output-bg:#FFF8E8;
   /* motion */
   --nx-dur-fast:120ms; --nx-dur-base:160ms; --nx-dur-slow:200ms; --nx-dur-count:800ms; --nx-pulse:1200ms;
-  --nx-ease:cubic-bezier(.2,.8,.2,1); --nx-ease-in-out:cubic-bezier(.4,0,.2,1);
+  --nx-ease:cubic-bezier(.22,1,.36,1); --nx-ease-in-out:cubic-bezier(.4,0,.2,1);
 }
 @media (prefers-reduced-motion: reduce) {
   :root { --nx-dur-fast:0ms; --nx-dur-base:0ms; --nx-dur-slow:0ms; --nx-dur-count:0ms; }

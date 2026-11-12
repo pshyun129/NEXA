@@ -1,16 +1,20 @@
 import copy
+import time
 from datetime import timedelta
 
 from fastapi import UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from clients.approval import get_document
+from core.config import settings
 from core.exceptions import BusinessException, ErrorCode
 from runs import files
 from runs.models import FINISHED_STATUSES, Run, RunFile, RunStatus, RunStep
 from runs.schemas import RunCreateRequest
 from workflows.models import Workflow
 from workflows.validator import validate_graph
+from nodes.impl.file_upload import ACCEPT_HINT, file_requirements
 
 
 def _get(db: Session, run_id: int) -> Run:
@@ -64,6 +68,20 @@ def _check_required_inputs(workflow: Workflow, inputs: dict, file_ids: list[int]
             raise BusinessException(ErrorCode.RUN_MISSING_INPUT, f"'{field['label']}' 값이 비어 있습니다.")
 
 
+def _check_files(graph: dict, run_files: list[RunFile]) -> None:
+    """첨부가 필요한 워크플로는 허용 형식 파일이 최소 개수만큼 있어야 실행을 받는다.
+    입력 폼 설정과 상관없이 그래프 기준으로 막는다 → 첨부 없이 시작해 첫 노드에서 실패하던 실행이 생기지 않는다"""
+    for req in file_requirements(graph):
+        exts = req["exts"]
+        got = [f for f in run_files if exts is None or files.file_path(f.stored_name).suffix.lower() in exts]
+        if len(got) < req["min_count"]:
+            kind = f"{req['accept']}({ACCEPT_HINT[req['accept']]})" if exts else ""
+            raise BusinessException(
+                ErrorCode.RUN_MISSING_INPUT,
+                f"{kind} 파일을 {req['min_count']}개 이상 첨부해야 실행할 수 있습니다 (맞는 형식으로 첨부한 파일: {len(got)}개).".lstrip(),
+            )
+
+
 def create_run(db: Session, workflow_id: int, req: RunCreateRequest, user_id: str | None) -> Run:
     workflow = _get_workflow(db, workflow_id)
     if workflow.deployed_version is None:
@@ -72,6 +90,7 @@ def create_run(db: Session, workflow_id: int, req: RunCreateRequest, user_id: st
     version = next(v for v in workflow.versions if v.version == workflow.deployed_version)
     _check_required_inputs(workflow, req.inputs, req.file_ids)
     run_files = _take_files(db, req.file_ids)
+    _check_files(version.graph, run_files)
 
     run = Run(
         workflow_id=workflow.id,
@@ -97,6 +116,7 @@ def create_test_run(db: Session, workflow_id: int, req: RunCreateRequest, user_i
         raise BusinessException(ErrorCode.WF_INVALID_GRAPH, issues[0]["message"])
 
     run_files = _take_files(db, req.file_ids)
+    _check_files(workflow.draft_graph, run_files)
     run = Run(
         workflow_id=workflow.id,
         version=None,
@@ -114,20 +134,76 @@ def create_test_run(db: Session, workflow_id: int, req: RunCreateRequest, user_i
     return run
 
 
-def check_run_access(run: Run, user_id: str, is_admin: bool = False) -> Run:
-    """실행을 보거나 취소할 수 있는 사람: 요청자 본인, 또는 관리자(운영 확인용)
+PREVIEW_MAX = 50                            # [다시 검토] 한 번에 검토할 장 수
+_DOC_ACCESS: dict[tuple, float] = {}       # (사원, 문서, 실행) → 확인한 시각 (결재 서비스를 매 조회마다 부르지 않게)
+DOC_ACCESS_TTL = 300
+
+
+def can_read_via_document(run_id: int, user_id: str, document_id: int | None, token: str | None) -> bool:
+    """결재자 읽기 전용: 이 실행이 상신한 결재 문서를 결재 서비스에서 볼 수 있는 사람(기안자·결재선)이면 실행도 읽을 수 있음.
+    문서의 출처(sourceType·sourceId)가 이 실행이어야 함 → 다른 실행 번호를 넣어 보는 것을 막음"""
+    if not document_id or not token:
+        return False
+    key = (user_id, document_id, run_id)
+    now = time.monotonic()
+    if now - _DOC_ACCESS.get(key, -DOC_ACCESS_TTL) < DOC_ACCESS_TTL:
+        return True
+    try:
+        doc = get_document(document_id, token)
+    except Exception:
+        return False
+    ok = str(doc.get("sourceType")) == settings.approval_source_type and doc.get("sourceId") == run_id
+    if ok:
+        _DOC_ACCESS[key] = now
+    return ok
+
+
+def check_run_access(run: Run, user_id: str, is_admin: bool = False,
+                     document_id: int | None = None, token: str | None = None) -> Run:
+    """실행을 볼 수 있는 사람: 요청자 본인, 관리자(운영 확인용), 이 실행이 상신한 결재 문서의 결재자(읽기 전용, document_id 필요)
+    취소는 요청자·관리자만 (document_id를 넘기지 않음)
     (재개는 따로: 재개한 사람의 토큰으로 결재가 상신되므로 관리자도 불가 → routers.resume)"""
-    if run.requested_by != user_id and not is_admin:
+    if run.requested_by != user_id and not is_admin and not can_read_via_document(run.id, user_id, document_id, token):
         raise BusinessException(ErrorCode.RUN_FORBIDDEN)
     return run
 
 
-def get_run(db: Session, run_id: int, user_id: str, is_admin: bool = False) -> Run:
-    return check_run_access(_get(db, run_id), user_id, is_admin)
+def get_run(db: Session, run_id: int, user_id: str, is_admin: bool = False,
+            document_id: int | None = None, token: str | None = None) -> Run:
+    return check_run_access(_get(db, run_id), user_id, is_admin, document_id, token)
 
 
-def list_steps(db: Session, run_id: int, user_id: str, is_admin: bool = False) -> list[RunStep]:
-    return get_run(db, run_id, user_id, is_admin).steps
+def list_steps(db: Session, run_id: int, user_id: str, is_admin: bool = False,
+               document_id: int | None = None, token: str | None = None) -> list[RunStep]:
+    return get_run(db, run_id, user_id, is_admin, document_id, token).steps
+
+
+def preview_policy(db: Session, run_id: int, user_id: str, receipts: list[dict]) -> list[dict]:
+    """사람 확인 화면의 [다시 검토]: 대기 중인 장 정보에 고친 값·사실을 얹어 규정 검토만 돌려 봄 (저장·재개 없음)"""
+    run = _get(db, run_id)
+    if run.requested_by != user_id:
+        raise BusinessException(ErrorCode.RUN_FORBIDDEN)
+    if run.status != RunStatus.WAITING:
+        raise BusinessException(ErrorCode.RUN_NOT_WAITING)
+    payload = get_waiting_payload(db, run_id)
+    if payload.get("type") != "human_confirm" or not payload.get("receipts"):
+        raise BusinessException(ErrorCode.RUN_NOT_WAITING, "장별 확인 중인 실행이 아닙니다.")
+    by_index = {r.get("index"): r for r in payload["receipts"]}
+    todo = []
+    for a in receipts[:PREVIEW_MAX]:
+        base = by_index.get(a.get("index"))
+        if base is None:
+            continue
+        todo.append({**base, "fields": {**base["fields"], **(a.get("data") or {})},
+                     "facts": {**(base.get("facts") or {}), **(a.get("facts") or {})}})
+    if not todo:
+        return []
+    attendance = next((s.output for s in reversed(run.steps)
+                       if s.node_type == "attendance_lookup" and isinstance(s.output, dict) and s.output.get("work_date")), None)
+    from nodes.impl.policy_check import review_receipts, summarize   # 무거운 RAG 모듈은 필요할 때만
+    results = review_receipts("영수증", todo, {}, run.inputs or {}, attendance)
+    return [{"index": r.get("index"), "verdict": res["verdict"], "reasons": summarize(res),
+             "needed_facts": res["needed_facts"]} for r, res in zip(todo, results)]
 
 
 def list_my_runs(db: Session, user_id: str | None, status: str | None) -> list[Run]:
@@ -164,7 +240,7 @@ def get_waiting_payload(db: Session, run_id: int) -> dict:
     return ((step.output or {}).get("waiting_for") or {}) if step else {}
 
 
-# 내 확인 대기 목록
+# 내 확인 대기 목록: 내가 처리할 사람 확인만. 결재 대기는 결재자가 처리하므로 빼고 결재함이 맡는다 (QA C34)
 def list_my_pending(db: Session, user_id: str | None) -> list[Run]:
     stmt = (
         select(Run)
@@ -172,7 +248,7 @@ def list_my_pending(db: Session, user_id: str | None) -> list[Run]:
         .where(Run.status == RunStatus.WAITING)
         .order_by(Run.id.desc())
     )
-    return list(db.scalars(stmt).all())
+    return [run for run in db.scalars(stmt).all() if run.waiting_type != "approval_wait"]
 
 
 # 첨부 파일 업로드
@@ -192,20 +268,23 @@ def upload_file(db: Session, file: UploadFile, user_id: str | None) -> RunFile:
     return run_file
 
 
-def _check_file_access(db: Session, run_file: RunFile, user_id: str) -> None:
-    """파일을 볼 수 있는 사람: 올린 사람, 또는 그 파일이 쓰인 실행의 요청자 (엑셀 결과 파일은 ai-service가 올림)"""
+def _check_file_access(db: Session, run_file: RunFile, user_id: str,
+                       document_id: int | None = None, token: str | None = None) -> None:
+    """파일을 볼 수 있는 사람: 올린 사람, 그 파일이 쓰인 실행의 요청자 (엑셀 결과 파일은 ai-service가 올림),
+    그 실행이 상신한 결재 문서의 결재자 (영수증 원본·정산서를 보고 판단할 수 있게, document_id 필요)"""
     if run_file.uploaded_by == user_id:
         return
     if run_file.run_id is not None:
         run = db.get(Run, run_file.run_id)
-        if run is not None and run.requested_by == user_id:
+        if run is not None and (run.requested_by == user_id
+                                or can_read_via_document(run.id, user_id, document_id, token)):
             return
     raise BusinessException(ErrorCode.RUN_FORBIDDEN)
 
 
-def get_file(db: Session, file_id: int, user_id: str) -> RunFile:
+def get_file(db: Session, file_id: int, user_id: str, document_id: int | None = None, token: str | None = None) -> RunFile:
     run_file = _get_file(db, file_id)
-    _check_file_access(db, run_file, user_id)
+    _check_file_access(db, run_file, user_id, document_id, token)
     return run_file
 
 
@@ -235,8 +314,8 @@ def cleanup_unused_files(db: Session) -> None:
 
 
 # 실행 결과 파일 다운로드: 올린 사람 본인 또는 그 파일이 쓰인 실행의 요청자만
-def download_file(db: Session, file_id: int, user_id: str):
-    run_file = get_file(db, file_id, user_id)
+def download_file(db: Session, file_id: int, user_id: str, document_id: int | None = None, token: str | None = None):
+    run_file = get_file(db, file_id, user_id, document_id, token)
     path = files.file_path(run_file.stored_name)
     if not path.exists():
         raise BusinessException(ErrorCode.FILE_NOT_FOUND)

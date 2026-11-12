@@ -18,6 +18,7 @@ def error(status, code):
 
 class GatewayState:
     def __init__(self):
+        self.admin_cancel_enabled = False
         self.next_id = 1000
         self.calls, self.failures = [], {}
         self.drop_path = None
@@ -186,7 +187,19 @@ class GatewayState:
         if path in ("/me/requests", "/admin/requests"):
             return success(list(self.requests.values()))
         if path.endswith("/cancel"):
-            return error(503, "LEAVE_020")
+            if not self.admin_cancel_enabled:
+                return error(503, "LEAVE_025")
+            request = self.requests[int(path.split("/")[-2])]
+            if request["status"] != "CANCELLED":
+                if request["status"] != "APPROVED":
+                    return error(409, "LEAVE_021")
+                for consume in list(self.ledger):
+                    if consume.get("leaveReqId") == request["requestId"] and consume["eventType"] == "CONSUME":
+                        self.entry(request["requestId"], "RESTORE", -consume["quantityDelta"], 0)
+                        self.ledger[-1]["reversesEntryId"] = consume["entryId"]
+                request.update(status="CANCELLED", adminCancelStatus="COMPLETED", adminCancelRequestId=str(uuid.uuid4()),
+                               cancelledBy=actor, cancelReason=body["reason"])
+            return success(request)
         if path.startswith(("/me/requests/", "/admin/requests/")):
             detail = copy.deepcopy(self.requests[int(path.split("/")[-1])])
             # 실제 LeaveRequestDateResponse는 LocalDate가 아닌 OffsetDateTime이다.

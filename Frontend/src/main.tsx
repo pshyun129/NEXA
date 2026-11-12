@@ -17,11 +17,12 @@ import { EXPIRED_FLAG } from './pages/login/LoginPage';
 import { App } from './App';
 
 // reissue 실패: 세션을 비우면 SessionGate가 로그인(돌아올 URL 보존)으로 보낸다(설계 7.2)
-setSessionExpiredHandler(() => {
+setSessionExpiredHandler((reason) => {
   const { status } = useSession.getState();
   if (status === 'anonymous') return; // 한 번만
-  // 쓰던 세션이 끊긴 경우만 "세션 만료"를 띄운다. 앱 시작 시 /me 확인 실패(처음 방문)는 안내하지 않는다.
-  if (status === 'authenticated') {
+  // 쓰던 세션이 끊긴 경우만 "세션 만료"를 띄운다(설계 7.2 401 처리). 서버가 세션을 끊었으면(ended) 새로고침 직후(unknown)여도
+  // 띄우고(QA C29: 퇴직·다른 기기 후 새로고침 시 안내 없음), refresh 쿠키가 없는 첫 방문(no-session)은 화면을 쓰던 중일 때만 띄운다.
+  if (reason === 'ended' || status === 'authenticated') {
     try { sessionStorage.setItem(EXPIRED_FLAG, '1'); } catch { /* noop */ }
   }
   queryClient.clear();

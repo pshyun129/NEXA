@@ -65,6 +65,16 @@ export function RequestDetail({ id }: { id: number }) {
 
   // 결재는 끝났는데(문서가 진행중이 아님) 신청은 아직 결재 대기 → Kafka 반영을 기다린다
   const waiting = r?.status === 'PENDING' && !!doc.data && doc.data.status !== 'INPROGRESS';
+
+  // 결재 대기인 동안 결재 문서를 5초마다 다시 읽는다(숨긴 탭은 멈춤).
+  // 그래야 결재자가 승인·반려하거나 결재선이 진행된 것을 열린 Drawer가 알아챈다(QA AR-139·140·137)
+  const pollDoc = r?.status === 'PENDING' && !waiting && r.approvalDocId != null;
+  const refetchDoc = doc.refetch;
+  useEffect(() => {
+    if (!pollDoc) return undefined;
+    const t = window.setInterval(() => { if (!document.hidden) void refetchDoc(); }, 5_000);
+    return () => window.clearInterval(t);
+  }, [pollDoc, refetchDoc]);
   const wasWaiting = useRef(false);
   useEffect(() => {
     if (wasWaiting.current && !waiting && r && r.status !== 'PENDING') {

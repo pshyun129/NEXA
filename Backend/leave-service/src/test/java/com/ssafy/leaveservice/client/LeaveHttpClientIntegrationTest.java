@@ -132,6 +132,19 @@ class LeaveHttpClientIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void anonymousAttendanceTransportDoesNotRelayJwtAndDoesNotChangeOtherClients(boolean direct) {
+        instances = List.of(instance(first, "attendance"));
+        factory.createWithoutBearerRelay(direct ? url(first) : "", "attendance-service",
+                Duration.ofSeconds(1), Duration.ofSeconds(2))
+                .get().uri("/api/v1/attn/holidays").retrieve().body(String.class);
+        assertThat(authorization.get()).isNull();
+        factory.create(url(first), "attendance-service", Duration.ofSeconds(1), Duration.ofSeconds(2))
+                .get().uri("/api/v1/attn/holidays").retrieve().body(String.class);
+        assertThat(authorization.get()).isEqualTo("Bearer routing-access");
+    }
+
+    @ParameterizedTest
     @EnumSource(Target.class)
     void defaultServiceIdUsesOneAvailableInstance(Target target) {
         instances = List.of(instance(first, "only"));

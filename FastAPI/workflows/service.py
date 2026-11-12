@@ -14,6 +14,7 @@ from workflows.schemas import (
     WorkflowUpdateRequest,
 )
 from workflows.validator import validate_graph
+from nodes.impl.file_upload import file_requirements
 
 
 def _get(db: Session, workflow_id: int) -> Workflow:
@@ -127,16 +128,52 @@ def list_available(db: Session, screen: str) -> list[Workflow]:
     return list(db.scalars(stmt).all())
 
 
+def _receipt_facts_field() -> dict:
+    from ai.rag.policy import PURPOSES        # 규정 검토 모듈(dspy 포함)은 이 표가 필요할 때만 불러옴
+    return {"key": "receipts", "label": "영수증별 정보", "type": "receipt_facts", "required": False,
+            "options": PURPOSES, "prefill": None}
+
+
+def _reviews_receipts(graph: dict | None) -> bool:
+    """영수증 규정 검토가 있는 그래프 → 장마다 사용 목적·참석자 등을 적을 표가 필요"""
+    return any(n.get("type") == "policy_check" and (n.get("config") or {}).get("doc_type", "영수증") == "영수증"
+               for n in (graph or {}).get("nodes", []))
+
+
+def effective_input_form(input_form: list[dict], graph: dict | None) -> list[dict]:
+    """실제로 보여 줄 입력 폼: 그래프에 파일 업로드 노드가 있으면 첨부 칸을 반드시 넣고 필수로 만든다.
+    관리자가 [입력 폼]에 파일 칸을 빼먹으면 첨부할 곳이 없어 실행이 항상 실패했다 (QA AUTO-B1)
+    영수증 규정 검토가 있으면 첨부 칸 바로 뒤에 '영수증별 정보' 표(장마다 목적·인원·참석자·사유)를 넣는다"""
+    reqs = file_requirements(graph)
+    if not reqs:
+        return input_form
+    accepts = sorted({r["accept"] for r in reqs if r["accept"]})
+    form = copy.deepcopy(input_form)
+    file_fields = [f for f in form if f.get("type") == "file"]
+    if not file_fields:
+        form = [{"key": "files", "label": "첨부 파일", "type": "file", "required": True,
+                 "options": accepts, "prefill": None}, *form]
+    else:
+        for f in file_fields:
+            f["required"] = True
+            f["options"] = f.get("options") or accepts      # 허용 형식 (화면이 파일 고르기 창을 거른다)
+    if _reviews_receipts(graph) and not any(f.get("type") == "receipt_facts" for f in form):
+        at = max(i for i, f in enumerate(form) if f.get("type") == "file") + 1
+        form.insert(at, _receipt_facts_field())
+    return form
+
+
 # 10-2. 입력 폼 조회 (실행 직전)
 def get_input_form(db: Session, workflow_id: int, screen: str | None, record_id: str | None) -> dict:
     workflow = _get(db, workflow_id)
     if workflow.deployed_version is None:
         raise BusinessException(ErrorCode.WF_NOT_DEPLOYED)
+    version = next(v for v in workflow.versions if v.version == workflow.deployed_version)
 
     # TODO: screen + record_id로 ERP 데이터를 조회해서 prefill 항목 채우기 (clients/에서 구현)
     values: dict = {}
 
-    return {"workflow_id": workflow.id, "fields": workflow.input_form, "values": values}
+    return {"workflow_id": workflow.id, "fields": effective_input_form(workflow.input_form, version.graph), "values": values}
 
 
 # 11-1. 복제

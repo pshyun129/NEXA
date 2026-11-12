@@ -1,6 +1,7 @@
-import { Button, Popover } from 'antd';
+import { Button, Popover, Skeleton } from 'antd';
 import { Link } from 'react-router-dom';
 import { DotChip } from '@/ui/primitives';
+import { ErrorPanel } from '@/ui/ErrorPanel';
 import { formatDurationShort, formatDuration, formatTime } from '@/format';
 import { workStatusTone } from '@/status/labels';
 import { useClock } from './useClock';
@@ -65,11 +66,15 @@ export function ClockChip() {
   );
 }
 
-/** 홈 "오늘 근무" 카드 본문(설계 6.1). */
+/** 홈 "오늘 근무" 카드 본문(설계 6.1). 근태 서비스 오류면 다른 홈 카드처럼 ErrorPanel + [다시 시도](QA CM-C2) */
 export function ClockPanel() {
   const c = useClock();
   const t = c.today;
-  if (!t) return null;
+  if (!t) {
+    return c.query.isError
+      ? <ErrorPanel error={c.query.error} onRetry={() => c.query.refetch()} />
+      : <Skeleton active={false} paragraph={{ rows: 2 }} />;
+  }
   if (c.phase === 'before') {
     return (
       <div className={s.panelBefore}>

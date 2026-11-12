@@ -57,6 +57,7 @@ public class ValidationService {
     private final CrossFileTotalsChecker crossFileTotalsChecker;
     private final DeptHeadChecker deptHeadChecker;
     private final PayGradeBaseChecker payGradeBaseChecker;
+    private final DeptReferenceChecker deptReferenceChecker;
 
     @Transactional
     public void validate(MigrationFile file) {
@@ -73,6 +74,7 @@ public class ValidationService {
         issues.addAll(DutyRosterChecker.check(file, rows));
         issues.addAll(deptHeadChecker.check(file, rows));
         issues.addAll(payGradeBaseChecker.check(file, rows));
+        issues.addAll(deptReferenceChecker.check(file, rows));
         Optional<EntitySchema> schemaOpt = EntitySchemas.of(file.getEntity());
         if (schemaOpt.isEmpty()) {
             if (file.getEntity() != MigrationEntity.REFERENCE) {

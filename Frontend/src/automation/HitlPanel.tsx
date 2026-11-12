@@ -6,6 +6,7 @@ import { AiMark, Kbd, modKey } from '@/ui/primitives';
 import { Icon } from '@/ui/Icon';
 import { TriangleAlert, Check, Pencil } from '@/ui/icons';
 import { fieldLabel, NUMERIC_FIELDS } from './fieldLabels';
+import { HitlReceipts } from './HitlReceipts';
 import s from './automation.module.css';
 
 const norm = (v: unknown) => String(v ?? '').replace(/\s+/g, '');
@@ -18,7 +19,13 @@ const MISMATCH = /^GMS와 불일치:\s*(\S+)/;
  * 사람 확인(설계 6.5 HitlFieldDiff). 불일치 칸만 강조하고, 추출값을 누르면 확정값으로 복사한다.
  * resume.data에는 고친 필드만 담는다. 요청자가 아니면 읽기 전용.
  */
-export function HitlPanel({ runId, waiting, canResume, onResumed }:
+export function HitlPanel(props: { runId: number; waiting: HitlWaiting; canResume: boolean; onResumed: () => void; documentId?: number }) {
+  // 영수증 여러 장이면 장별 확인 화면 (한 장이면 예전 칸별 비교 화면)
+  if ((props.waiting.receipts?.length ?? 0) > 1) return <HitlReceipts {...props} />;
+  return <SingleHitl {...props} />;
+}
+
+function SingleHitl({ runId, waiting, canResume, onResumed }:
   { runId: number; waiting: HitlWaiting; canResume: boolean; onResumed: () => void }) {
   const resume = useResumeRun(runId);
   const notify = useNotify();
@@ -39,8 +46,15 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
   const [comment, setComment] = useState('');
   const edited = rows.filter((k) => norm(values[k]) !== norm(ai[k]));
 
+  // 숫자 칸을 비우면 화면은 비어 보이는데 서버에는 ""가 저장돼 규정 검토가 보류로 끝났다(QA AUTO-C1) → 확인 전에 막는다
+  const emptyNumbers = rows.filter((k) => NUMERIC_FIELDS.has(k) && (values[k] === '' || values[k] == null));
+
   const submit = (approved: boolean) => {
     if (!canResume || resume.isPending) return;
+    if (approved && emptyNumbers.length) {
+      notify.info(`${emptyNumbers.map((k) => fieldLabel(k)).join(', ')}을(를) 입력해 주세요`, '빈 칸으로는 계속할 수 없습니다');
+      return;
+    }
     const data: Record<string, unknown> = {};
     for (const k of edited) {
       const v = values[k];
@@ -99,8 +113,10 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
                 <td>
                   {NUMERIC_FIELDS.has(k)
                     ? <InputNumber aria-label={`${fieldLabel(k)} 확정값`} disabled={!canResume} style={{ width: 160 }}
+                                   status={emptyNumbers.includes(k) ? 'error' : undefined}
                                    value={values[k] === '' || values[k] == null ? null : Number(values[k])}
-                                   formatter={(v) => (v == null ? '' : Number(v).toLocaleString('ko-KR'))}
+                                   // 지운 칸이 "0"으로 보이지 않게 빈 값은 빈 칸으로 둔다(QA AUTO-C1)
+                                   formatter={(v) => (v == null || String(v) === '' ? '' : Number(v).toLocaleString('ko-KR'))}
                                    parser={(v) => (v ? Number(v.replace(/[^\d.-]/g, '')) : '') as unknown as number}
                                    onChange={(v) => set(k, v ?? '')} />
                     : <Input aria-label={`${fieldLabel(k)} 확정값`} disabled={!canResume} style={{ width: 200 }}
@@ -113,7 +129,7 @@ export function HitlPanel({ runId, waiting, canResume, onResumed }:
       </table>
       <div className={s.muted}>
         불일치 {mismatch.size} · 일치 {rows.length - mismatch.size}
-        {edited.length > 0 && <> · 직접 수정 {edited.length}</>}
+        {edited.length > 0 && <> (그중 직접 수정 {edited.length})</>}
         {canResume && <> · 추출값을 누르면 확정값으로 복사됩니다</>}
       </div>
 

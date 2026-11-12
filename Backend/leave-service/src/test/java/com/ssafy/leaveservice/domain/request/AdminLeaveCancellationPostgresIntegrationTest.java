@@ -1,8 +1,8 @@
 package com.ssafy.leaveservice.domain.request;
 
-import com.ssafy.leaveservice.client.approval.FakeApprovalWithdrawalClientConfiguration;
-import com.ssafy.leaveservice.client.approval.withdrawal.ApprovalWithdrawalCommand;
-import com.ssafy.leaveservice.client.approval.withdrawal.ApprovalWithdrawalResult;
+import com.ssafy.leaveservice.client.approval.FakeAttendanceRevertClientConfiguration;
+import com.ssafy.leaveservice.client.attendance.AttendanceRevertCommand;
+import com.ssafy.leaveservice.client.attendance.AttendanceRevertResult;
 import com.ssafy.leaveservice.domain.adjustment.dto.LeaveAdjustmentRequest;
 import com.ssafy.leaveservice.domain.adjustment.service.LeaveAdjustmentService;
 import com.ssafy.leaveservice.domain.request.dto.AdminCancellationAttempt;
@@ -61,11 +61,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {"leave.test.database-owner=AdminLeaveCancellationPostgresIntegrationTest",
         "leave.hr.enabled=true","leave.hr.jwt-claims.duty-id=dutyId",
-        "leave.approval.withdrawal.enabled=true", "spring.cloud.config.enabled=false", "eureka.client.enabled=false",
+        "leave.attendance.revert.enabled=true", "leave.attendance.revert.contract-verified=true", "spring.cloud.config.enabled=false", "eureka.client.enabled=false",
         "eureka.client.service-url.defaultZone=http://localhost:8761/eureka/", "spring.jpa.open-in-view=false",
         "spring.jpa.hibernate.ddl-auto=validate"})
 @ActiveProfiles("test")
-@Import({PostgresTestConfiguration.class, FakeApprovalWithdrawalClientConfiguration.class})
+@Import({PostgresTestConfiguration.class, FakeAttendanceRevertClientConfiguration.class})
 @AutoConfigureMockMvc
 class AdminLeaveCancellationPostgresIntegrationTest {
     private static final String URL = "/api/v1/leaves/admin/requests/100/cancel";
@@ -77,11 +77,16 @@ class AdminLeaveCancellationPostgresIntegrationTest {
     @Autowired AdminLeaveCancellationTransactionService transactions;
     @Autowired LeaveAdjustmentService adjustments;
     @Autowired LeaveApprovalResultService approvalResults;
+    @Autowired com.ssafy.leaveservice.domain.request.service.LeaveApprovalSettlementService settlementService;
     @Autowired PlatformTransactionManager transactionManager;
-    @Autowired FakeApprovalWithdrawalClientConfiguration.FakeApprovalWithdrawalClient client;
+    @Autowired FakeAttendanceRevertClientConfiguration.FakeAttendanceRevertClient client;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     com.ssafy.leaveservice.client.hr.HrClient hrClient;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.ssafy.leaveservice.client.approval.ApprovalClient approvalClient;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    com.ssafy.leaveservice.client.approval.withdrawal.ApprovalWithdrawalClient approvalWithdrawalClient;
 
     @BeforeEach
     void setUp() {
@@ -117,9 +122,9 @@ class AdminLeaveCancellationPostgresIntegrationTest {
                 insert into leave_request(leave_req_id,emp_id,policy_version_id,leave_type_id,status,approval_doc_id,
                     total_minutes,total_deduct_minutes,reason,submission_key,submission_payload_hash,approval_creation_status,
                     approval_request_id,approval_status_changed_at,approval_attempt_count)
-                values(100,42,1,1,'SUBMITTED',9001,960,960,'원래 신청 사유','submit-100',repeat('a',64),'LINKED',
+                values(100,42,1,1,'APPROVED',9001,960,960,'원래 신청 사유','submit-100',repeat('a',64),'LINKED',
                     '00000000-0000-0000-0000-000000000100',now(),1),
-                    (200,43,1,2,'SUBMITTED',9002,480,0,'비차감 신청','submit-200',repeat('b',64),'LINKED',
+                    (200,43,1,2,'APPROVED',9002,480,0,'비차감 신청','submit-200',repeat('b',64),'LINKED',
                     '00000000-0000-0000-0000-000000000200',now(),1)
                 """);
         jdbc.update("""
@@ -144,6 +149,12 @@ class AdminLeaveCancellationPostgresIntegrationTest {
                       (22,901,1002,100,2,'RESERVE',240,'reserve-2','2020-01-01Z'),
                       (23,901,1002,100,3,'RESERVE',480,'reserve-3','2020-01-01Z')
                 """);
+        jdbc.update("""
+                insert into leave_ledger(entry_id,account_id,grant_id,leave_req_id,allocation_id,event_type,quantity_delta,reserved_delta,idempotency_key,created_at)
+                values(31,901,1001,100,1,'CONSUME',-240,-240,'consume-1','2021-01-01Z'),
+                      (32,901,1002,100,2,'CONSUME',-240,-240,'consume-2','2021-01-01Z'),
+                      (33,901,1002,100,3,'CONSUME',-480,-480,'consume-3','2021-01-01Z')
+                """);
         jdbc.execute("select setval(pg_get_serial_sequence('leave_ledger','entry_id'),1000)");
     }
 
@@ -166,15 +177,16 @@ class AdminLeaveCancellationPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.adminCancelStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.cancelledBy").value(10)).andExpect(jsonPath("$.data.cancelReason").value(REASON));
         assertThat(client.calls).hasValue(1);
+        org.mockito.Mockito.verifyNoInteractions(approvalClient, approvalWithdrawalClient);
         assertThat(releaseCount()).isEqualTo(3);
         assertThat(reserved()).isZero();
         assertThat(jdbc.queryForList("select *,xmin::text as version from leave_ledger where entry_id<1000 order by entry_id")).isEqualTo(originalLedger);
         assertThat(rows("leave_request_allocation")).isEqualTo(allocations);
         assertThat(rows("leave_request_date")).isEqualTo(dates);
         assertThat(rows("leave_grant")).isEqualTo(grants);
-        assertThat(jdbc.queryForObject("select count(*) from leave_ledger where event_type='RELEASE' and (quantity_delta<>0 or actor_emp_id is not null)", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("select sum(reserved_delta) from leave_ledger where event_type='RELEASE'", Long.class)).isEqualTo(-960);
-        assertThat(jdbc.queryForObject("select count(*) from leave_ledger where idempotency_key like 'leave:admin-cancel:request:100:allocation:%'", Integer.class)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from leave_ledger where event_type='RESTORE' and (quantity_delta<=0 or reserved_delta<>0 or actor_emp_id<>10)", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select sum(quantity_delta) from leave_ledger where event_type='RESTORE'", Long.class)).isEqualTo(960);
+        assertThat(jdbc.queryForObject("select count(*) from leave_ledger where idempotency_key like 'leave:admin-restore:consume:%'", Integer.class)).isEqualTo(3);
         mvc.perform(get("/api/v1/leaves/admin/requests/100").with(admin(10)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CANCELLED"))
                 .andExpect(jsonPath("$.data.adminCancelStatus").doesNotExist());
@@ -192,8 +204,150 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         assertThat(rows("leave_ledger")).isEqualTo(before);
     }
 
+    @Test
+    void restoresExactlyConsumedEntriesAndIgnoresOldApprovalEventAfterCancellation() {
+        cancel();
+        List<Map<String, Object>> before = rows("leave_ledger");
+        assertThat(jdbc.queryForObject("""
+                select count(*) from leave_ledger restore join leave_ledger consume
+                  on consume.entry_id=restore.reverses_entry_id
+                where restore.event_type='RESTORE' and consume.event_type='CONSUME'
+                  and restore.quantity_delta=-consume.quantity_delta and restore.reserved_delta=0
+                  and restore.grant_id=consume.grant_id and restore.allocation_id=consume.allocation_id
+                """, Integer.class)).isEqualTo(3);
+        com.ssafy.leaveservice.domain.request.dto.LeaveApprovalDecision event =
+                new com.ssafy.leaveservice.domain.request.dto.LeaveApprovalDecision(1, "DOCUMENT_COMPLETED", "LEAVE", "LEAVE",
+                        100L, 9001L, UUID.fromString("00000000-0000-0000-0000-000000000100"), "APPROVED");
+        assertThat(settlementService.settle(event)).isEqualTo(
+                com.ssafy.leaveservice.domain.request.service.LeaveApprovalSettlementService.Outcome.ALREADY_APPLIED);
+        assertThat(rows("leave_ledger")).isEqualTo(before);
+        assertThat(request().get("status")).isEqualTo("CANCELLED");
+        assertThat(request().get("approval_doc_id")).isEqualTo(9001L);
+    }
+
+    @Test
+    void expiredOriginalGrantsAreRestoredWithoutExtendingValidityOrCurrentBalance() throws Exception {
+        jdbc.update("update leave_grant set expires_on='2001-01-01Z' where grant_id in (1001,1002)");
+        List<Map<String, Object>> original = rows("leave_grant");
+        cancel();
+        assertThat(rows("leave_grant")).isEqualTo(original);
+        assertThat(jdbc.queryForObject("select sum(quantity_delta) from leave_ledger where account_id=901", Long.class)).isEqualTo(1920L);
+        mvc.perform(get("/api/v1/leaves/admin/employees/42/balances").with(admin(10)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data[0].remainingMinutes").value(0));
+    }
+
+    @Test
+    void missingOrPreviouslyReversedConsumeIsRejectedBeforeAttendanceCall() {
+        jdbc.update("delete from leave_ledger where entry_id=31");
+        assertBusiness(() -> cancel(), ErrorCode.DATA_INTEGRITY_VIOLATION);
+        assertThat(client.calls).hasValue(0);
+        assertThat(request().get("admin_cancel_status")).isNull();
+    }
+
+    @Test
+    void existingPartialRestoreCannotBeRepeated() {
+        jdbc.update("""
+                insert into leave_ledger(account_id,grant_id,event_type,quantity_delta,reverses_entry_id,idempotency_key)
+                values(901,1001,'RESTORE',240,31,'prior-restore')
+                """);
+        assertBusiness(() -> cancel(), ErrorCode.DATA_INTEGRITY_VIOLATION);
+        assertThat(client.calls).hasValue(0);
+    }
+
+    @Test
+    void oldApprovalWithdrawalIntentCannotBeReusedAsAttendanceRevert() {
+        transactions.start(100L, REASON);
+        jdbc.update("update leave_request set admin_cancel_target='APPROVAL' where leave_req_id=100");
+        assertBusiness(() -> cancel(), ErrorCode.LEAVE_CANCELLATION_CONFLICT);
+        assertThat(client.calls).hasValue(0);
+        assertThat(client.lookups).hasValue(0);
+        assertThat(releaseCount()).isZero();
+    }
+
+    @Test
+    void requestTimeRemainsOriginalAcrossUnknownAndRecovery() {
+        client.behavior = command -> com.ssafy.leaveservice.client.attendance.AttendanceRevertResult.unknown(command);
+        cancel();
+        Object requestedAt = request().get("admin_cancel_requested_at");
+        Object operation = request().get("admin_cancel_request_id");
+        client.lookup = command -> confirmed(command);
+        cancel();
+        assertThat(request().get("admin_cancel_requested_at")).isEqualTo(requestedAt).isNotNull();
+        assertThat(request().get("admin_cancel_request_id")).isEqualTo(operation);
+        assertThat(request().get("admin_cancel_status")).isEqualTo("COMPLETED");
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"APPROVED", "REJECTED", "WITHDRAWN", "CANCELLED", "DRAFT", "SUBMITTING", "UNKNOWN", "IN_PROGRESS", "LEGACY"})
+    @ValueSource(booleans = {true, false})
+    void mockAttendanceHttpRunsAfterIntentCommitAndBeforeRestoreTransaction(boolean reverted) throws Exception {
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(
+                new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        java.util.concurrent.atomic.AtomicInteger posts = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/api/v1/attn/internal/leave-requests/100/revert", exchange -> {
+            posts.incrementAndGet();
+            String body = new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(request().get("admin_cancel_status")).isEqualTo("IN_PROGRESS");
+            assertThat(request().get("status")).isEqualTo("APPROVED");
+            assertThat(releaseCount()).isZero();
+            assertThat(body).contains(request().get("admin_cancel_request_id").toString());
+            byte[] response = ("{\"leaveRequestId\":100,\"cancelRequestId\":\""
+                    + request().get("admin_cancel_request_id") + "\",\"reverted\":" + reverted + ",\"revertedDates\":[]}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            org.springframework.http.client.JdkClientHttpRequestFactory transport =
+                    new org.springframework.http.client.JdkClientHttpRequestFactory(java.net.http.HttpClient.newHttpClient());
+            transport.setReadTimeout(java.time.Duration.ofSeconds(3));
+            com.ssafy.leaveservice.client.attendance.AttendanceRevertHttpClient http =
+                    new com.ssafy.leaveservice.client.attendance.AttendanceRevertHttpClient(
+                            org.springframework.web.client.RestClient.builder()
+                                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort()).requestFactory(transport).build(), true);
+            client.behavior = http::revert;
+            assertThat(cancel().adminCancelStatus()).isEqualTo(AdminCancellationStatus.COMPLETED);
+            assertThat(posts).hasValue(1);
+            assertThat(releaseCount()).isEqualTo(3);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void v8PreservesAndSeparatesLegacyApprovalCancellationMetadata() {
+        String schema = "legacy_cancel_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).target("7").load().migrate();
+        String legacyUrl = postgres.getJdbcUrl() + (postgres.getJdbcUrl().contains("?") ? "&" : "?")
+                + "currentSchema=" + schema;
+        JdbcTemplate legacy = new JdbcTemplate(new DriverManagerDataSource(
+                legacyUrl, postgres.getUsername(), postgres.getPassword()));
+        legacy.update("insert into leave_policy_group(policy_id,name) values(1,'정책')");
+        legacy.update("insert into leave_policy_version(policy_version_id,policy_id,version_no,base_type) values(1,1,1,'HIRE_DATE')");
+        legacy.update("insert into leave_type(leave_type_id,name,balance_mode) values(1,'비차감','NONE')");
+        UUID operation = UUID.randomUUID();
+        legacy.update("""
+                insert into leave_request(leave_req_id,emp_id,policy_version_id,leave_type_id,status,approval_doc_id,
+                  approval_creation_status,submission_key,submission_payload_hash,approval_request_id,
+                  approval_status_changed_at,approval_attempt_count,admin_cancel_status,admin_cancel_request_id,admin_cancel_requested_by,
+                  admin_cancel_reason,admin_cancel_status_changed_at)
+                values(1,42,1,1,'SUBMITTED',9001,'LINKED','legacy-request',repeat('a',64),
+                  '00000000-0000-0000-0000-000000000001',now(),1,'UNKNOWN',?,10,'기존 의도','2026-01-01Z')
+                """, operation);
+        Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+                .schemas(schema).defaultSchema(schema).load().migrate();
+        Map<String, Object> migrated = legacy.queryForMap("select * from leave_request");
+        assertThat(migrated).containsEntry("status", "SUBMITTED").containsEntry("admin_cancel_status", "UNKNOWN")
+                .containsEntry("admin_cancel_target", "APPROVAL").containsEntry("admin_cancel_request_id", operation)
+                .containsEntry("admin_cancel_reason", "기존 의도");
+        assertThat(migrated.get("admin_cancel_requested_at")).isEqualTo(migrated.get("admin_cancel_status_changed_at"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SUBMITTED", "REJECTED", "WITHDRAWN", "CANCELLED", "DRAFT", "SUBMITTING", "UNKNOWN", "IN_PROGRESS", "LEGACY"})
     void rejectsUnsupportedOriginalStatusesBeforeCallingApproval(String scenario) {
         if (List.of("DRAFT", "SUBMITTING", "UNKNOWN", "IN_PROGRESS").contains(scenario)) {
             String status = scenario.equals("DRAFT") ? "DRAFT" : "SUBMITTING";
@@ -237,7 +391,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         AdminLeaveCancellationResponse response = service.cancel(100L, input(reason));
         assertThat(response.cancelReason()).isEqualTo(reason);
         assertThat(request().get("admin_cancel_reason")).isEqualTo(reason);
-        assertThat(jdbc.queryForObject("select max(length(reason)) from leave_ledger where event_type='RELEASE'", Integer.class)).isLessThanOrEqualTo(500);
+        assertThat(jdbc.queryForObject("select max(length(reason)) from leave_ledger where event_type='RESTORE'", Integer.class)).isLessThanOrEqualTo(500);
         mvc.perform(post(URL).with(admin(10)).contentType("application/json").content(body("가".repeat(2001))))
                 .andExpect(status().isBadRequest());
     }
@@ -278,7 +432,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
             assertThat(jdbc.queryForObject("select pg_try_advisory_xact_lock(-42::bigint)", Boolean.class)).isTrue();
             assertThat(request().get("admin_cancel_status")).isEqualTo("IN_PROGRESS");
             assertThat(request().get("cancelled_at")).isNull();
-            assertThat(reserved()).isEqualTo(960);
+            assertThat(reserved()).isZero();
             assertThat(command.administratorId()).isEqualTo(10);
             assertThat(command.employeeId()).isEqualTo(42);
             assertThat(command.idempotencyKey()).isEqualTo("leave:admin-cancel:request:100");
@@ -293,17 +447,17 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         client.behavior = command -> switch (scenario) {
             case "TIMEOUT" -> throw new IllegalStateException("timeout or lost response");
             case "NULL" -> null;
-            case "WRONG_UUID" -> new ApprovalWithdrawalResult(UUID.randomUUID(), command.documentId(), ApprovalWithdrawalResult.Outcome.WITHDRAWN_CONFIRMED);
-            case "WRONG_DOCUMENT" -> new ApprovalWithdrawalResult(command.withdrawalRequestId(), 999L, ApprovalWithdrawalResult.Outcome.WITHDRAWN_CONFIRMED);
-            case "NULL_OUTCOME" -> new ApprovalWithdrawalResult(command.withdrawalRequestId(), command.documentId(), null);
-            default -> new ApprovalWithdrawalResult(command.withdrawalRequestId(), command.documentId(), ApprovalWithdrawalResult.Outcome.valueOf(scenario));
+            case "WRONG_UUID" -> new AttendanceRevertResult(command.requestId(), UUID.randomUUID(), AttendanceRevertResult.Outcome.REVERTED_CONFIRMED);
+            case "WRONG_DOCUMENT" -> new AttendanceRevertResult(999L, command.cancelRequestId(), AttendanceRevertResult.Outcome.REVERTED_CONFIRMED);
+            case "NULL_OUTCOME" -> new AttendanceRevertResult(command.requestId(), command.cancelRequestId(), null);
+            default -> new AttendanceRevertResult(command.requestId(), command.cancelRequestId(), AttendanceRevertResult.Outcome.valueOf(scenario));
         };
         mvc.perform(post(URL).with(admin(10)).contentType("application/json").content(body(REASON)))
-                .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.status").value("SUBMITTED"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.data.status").value("APPROVED"))
                 .andExpect(jsonPath("$.data.adminCancelStatus").value("UNKNOWN"))
                 .andExpect(jsonPath("$.data.cancelledAt").isEmpty());
         UUID operation = (UUID) request().get("admin_cancel_request_id");
-        assertThat(reserved()).isEqualTo(960);
+        assertThat(reserved()).isZero();
         assertThat(releaseCount()).isZero();
         assertThat(request().get("cancelled_by")).isNull();
         TestTokens.authenticate(10, "ADMIN");
@@ -317,17 +471,17 @@ class AdminLeaveCancellationPostgresIntegrationTest {
 
     @Test
     void confirmedNotWithdrawnIsFailedAndNeverAutomaticallyRetried() {
-        client.behavior = command -> new ApprovalWithdrawalResult(command.withdrawalRequestId(), command.documentId(),
-                ApprovalWithdrawalResult.Outcome.NOT_WITHDRAWN_CONFIRMED);
+        client.behavior = command -> new AttendanceRevertResult(command.requestId(), command.cancelRequestId(),
+                AttendanceRevertResult.Outcome.NOT_REVERTED_CONFIRMED);
         assertBusiness(() -> cancel(), ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
         Map<String, Object> before = request();
         assertThat(before.get("admin_cancel_status")).isEqualTo("FAILED");
-        assertThat(before.get("status")).isEqualTo("SUBMITTED");
+        assertThat(before.get("status")).isEqualTo("APPROVED");
         assertBusiness(() -> cancel(), ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
         assertThat(request()).isEqualTo(before);
         assertThat(client.calls).hasValue(1);
         assertThat(client.lookups).hasValue(0);
-        assertThat(reserved()).isEqualTo(960);
+        assertThat(reserved()).isZero();
     }
 
     @Test
@@ -347,7 +501,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
     @Test
     void serverRestartAfterStartUsesOnlyExistingUuidLookup() {
         AdminCancellationAttempt started = transactions.start(100L, REASON);
-        UUID operation = started.command().withdrawalRequestId();
+        UUID operation = started.command().cancelRequestId();
         client.lookup = id -> confirmed(started.command());
         assertThat(cancel().adminCancelStatus()).isEqualTo(AdminCancellationStatus.COMPLETED);
         assertThat(client.calls).hasValue(0);
@@ -357,9 +511,9 @@ class AdminLeaveCancellationPostgresIntegrationTest {
 
     @Test
     void unknownLookupCanLaterConfirmWithdrawalWithoutNewCall() {
-        client.behavior = command -> new ApprovalWithdrawalResult(command.withdrawalRequestId(), command.documentId(), ApprovalWithdrawalResult.Outcome.UNKNOWN);
+        client.behavior = command -> new AttendanceRevertResult(command.requestId(), command.cancelRequestId(), AttendanceRevertResult.Outcome.UNKNOWN);
         cancel();
-        ApprovalWithdrawalCommand initial = client.commands.getFirst();
+        AttendanceRevertCommand initial = client.commands.getFirst();
         client.lookup = id -> confirmed(initial);
         assertThat(cancel().adminCancelStatus()).isEqualTo(AdminCancellationStatus.COMPLETED);
         assertThat(client.calls).hasValue(1);
@@ -371,7 +525,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
     void remoteSuccessStillRevalidatesCurrentStateAndLedger(String change) {
         client.behavior = command -> {
             if (change.equals("APPROVED")) {
-                jdbc.update("update leave_request set status='APPROVED' where leave_req_id=100");
+                jdbc.update("update leave_request set status='REJECTED' where leave_req_id=100");
             } else if (change.equals("DOCUMENT")) {
                 jdbc.update("update leave_request set approval_doc_id=9999 where leave_req_id=100");
             } else {
@@ -439,7 +593,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         jdbc.execute("""
                 create or replace function cancel_release_fail() returns trigger language plpgsql as $$
                 begin
-                    if new.event_type='RELEASE' and new.allocation_id=2 then raise exception 'forced release failure'; end if;
+                    if new.event_type='RESTORE' and new.allocation_id=2 then raise exception 'forced release failure'; end if;
                     return new;
                 end $$
                 """);
@@ -447,8 +601,8 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         try {
             assertThatThrownBy(this::cancel).isInstanceOf(RuntimeException.class);
             assertThat(releaseCount()).isZero();
-            assertThat(reserved()).isEqualTo(960);
-            assertThat(request().get("status")).isEqualTo("SUBMITTED");
+            assertThat(reserved()).isZero();
+            assertThat(request().get("status")).isEqualTo("APPROVED");
             assertThat(request().get("cancelled_by")).isNull();
             assertThat(request().get("admin_cancel_status")).isEqualTo("IN_PROGRESS");
         } finally {
@@ -487,7 +641,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
                 } else {
                     assertThat(cancel().adminCancelStatus()).isEqualTo(AdminCancellationStatus.UNKNOWN);
                 }
-                assertThat(reserved()).isEqualTo(960);
+                assertThat(reserved()).isZero();
             } finally {
                 finish.countDown();
             }
@@ -544,7 +698,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
             });
             awaitLockWait();
             assertThat(service.cancel(200L, input(REASON)).status().name()).isEqualTo("CANCELLED");
-            writer.createStatement().executeUpdate("update leave_request set status='APPROVED' where leave_req_id=100");
+            writer.createStatement().executeUpdate("update leave_request set status='REJECTED' where leave_req_id=100");
             writer.commit();
             waiting.get(20, TimeUnit.SECONDS);
             assertThat(request().get("admin_cancel_status")).isNull();
@@ -589,12 +743,12 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         latest.validate();
         assertThat(legacy.queryForList("""
                 select (to_jsonb(r)-array['admin_cancel_status','admin_cancel_request_id','admin_cancel_requested_by',
-                    'admin_cancel_reason','admin_cancel_status_changed_at'])::text as row,xmin::text as version
+                    'admin_cancel_reason','admin_cancel_status_changed_at','admin_cancel_target','admin_cancel_requested_at'])::text as row,xmin::text as version
                 from leave_request r order by leave_req_id
                 """)).isEqualTo(before);
-        assertThat(legacy.queryForObject("select count(*) from information_schema.columns where table_schema=? and table_name='leave_request' and column_name like 'admin_cancel_%' and is_nullable='YES'", Integer.class, schema)).isEqualTo(5);
+        assertThat(legacy.queryForObject("select count(*) from information_schema.columns where table_schema=? and table_name='leave_request' and column_name in ('admin_cancel_status','admin_cancel_request_id','admin_cancel_requested_by','admin_cancel_reason','admin_cancel_status_changed_at') and is_nullable='YES'", Integer.class, schema)).isEqualTo(5);
         assertThatThrownBy(() -> legacy.update("update leave_request set admin_cancel_status='UNKNOWN' where leave_req_id=1")).isInstanceOf(DataAccessException.class);
-        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(7);
+        assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success", Integer.class)).isEqualTo(8);
     }
 
     @ParameterizedTest
@@ -618,7 +772,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
 
     @Test
     void v6CancellationUuidIsUniqueAcrossOriginalRequests() {
-        UUID operationId = transactions.start(100L, REASON).command().withdrawalRequestId();
+        UUID operationId = transactions.start(100L, REASON).command().cancelRequestId();
         assertThatThrownBy(() -> jdbc.update("""
                 update leave_request set admin_cancel_status='IN_PROGRESS',admin_cancel_request_id=?,
                     admin_cancel_requested_by=10,admin_cancel_reason=?,admin_cancel_status_changed_at=clock_timestamp()
@@ -635,8 +789,8 @@ class AdminLeaveCancellationPostgresIntegrationTest {
         return new AdminLeaveCancellationRequest(reason);
     }
 
-    private static ApprovalWithdrawalResult confirmed(ApprovalWithdrawalCommand command) {
-        return new ApprovalWithdrawalResult(command.withdrawalRequestId(), command.documentId(), ApprovalWithdrawalResult.Outcome.WITHDRAWN_CONFIRMED);
+    private static AttendanceRevertResult confirmed(AttendanceRevertCommand command) {
+        return new AttendanceRevertResult(command.requestId(), command.cancelRequestId(), AttendanceRevertResult.Outcome.REVERTED_CONFIRMED);
     }
 
     private static String body(String reason) {
@@ -652,7 +806,7 @@ class AdminLeaveCancellationPostgresIntegrationTest {
     }
 
     private int releaseCount() {
-        return jdbc.queryForObject("select count(*) from leave_ledger where event_type='RELEASE'", Integer.class);
+        return jdbc.queryForObject("select count(*) from leave_ledger where event_type='RESTORE'", Integer.class);
     }
 
     private List<Map<String, Object>> rows(String table) {

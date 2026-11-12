@@ -4,6 +4,7 @@ import com.ssafy.payrollservice.domain.payroll.calculator.DeductionCalculator;
 import com.ssafy.payrollservice.domain.payroll.calculator.DeductionResult;
 import com.ssafy.payrollservice.domain.payroll.calculator.EarningCalculator;
 import com.ssafy.payrollservice.domain.payroll.calculator.EarningResult;
+import com.ssafy.payrollservice.domain.payroll.calculator.PayDateCalculator;
 import com.ssafy.payrollservice.domain.payroll.client.AttendanceClient;
 import com.ssafy.payrollservice.domain.payroll.client.AttendanceSummary;
 import com.ssafy.payrollservice.domain.payroll.client.EmployeeInfo;
@@ -35,7 +36,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminPayslipServiceImpl implements AdminPayslipService {
 
-    private static final int PAY_DAY = 25;  // 지급일: 해당 월 25일
     private static final Set<String> HOLIDAY_BONUS_NAMES = Set.of("설날", "추석");  // 명절수당 기준 공휴일명
 
     private final PayslipRepository payslipRepository;
@@ -73,9 +73,12 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
 
         // 5. 지급 → 공제 계산 (승인 여부와 관계없이 실제 일한 시간 기준, 무급휴가는 지급에서 차감,
         //    분기 마지막 달은 상여금, 설날·추석이 있는 달은 명절수당)
+        List<AttendanceClient.Holiday> holidays = attendanceClient.getHolidays(month).stream()
+                .filter(AttendanceClient.Holiday::isCompanyWide)
+                .toList();
         EarningResult earning = EarningCalculator.calculate(grade.getBaseAmount(),
                 workTime.otExtendedMin(), attendance.nightTotalMin(), workTime.otHolidayMin(),
-                attendance.unpaidLeaveMin(), isQuarterEnd(month), isHolidayMonth(month));
+                attendance.unpaidLeaveMin(), isQuarterEnd(month), isHolidayMonth(holidays));
         DeductionResult deduction = DeductionCalculator.calculate(earning.total());
 
         // 6. 명세서 저장 (생성 시점의 사원 정보, 근태 집계 스냅샷)
@@ -83,7 +86,9 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
                 .empId(request.empId())
                 .payYear(payYear)
                 .payMonth(payMonth)
-                .payDate(month.atDay(PAY_DAY))
+                .payDate(PayDateCalculator.payDateOf(month, holidays.stream()
+                        .map(AttendanceClient.Holiday::holidayDate)
+                        .collect(Collectors.toSet())))
                 .empName(employee.name())
                 .deptName(employee.deptName())
                 .positionName(employee.gradeName())    // 직위 폐지로 직급명을 표시 (컬럼명은 그대로)
@@ -122,8 +127,8 @@ public class AdminPayslipServiceImpl implements AdminPayslipService {
     }
 
     /** 설날·추석 당일이 있는 달 (근태 공휴일 기준, 연휴가 두 달에 걸쳐도 당일이 있는 달만) */
-    private boolean isHolidayMonth(YearMonth month) {
-        return attendanceClient.getHolidays(month).stream()
+    private static boolean isHolidayMonth(List<AttendanceClient.Holiday> holidays) {
+        return holidays.stream()
                 .anyMatch(holiday -> HOLIDAY_BONUS_NAMES.contains(holiday.name()));
     }
 

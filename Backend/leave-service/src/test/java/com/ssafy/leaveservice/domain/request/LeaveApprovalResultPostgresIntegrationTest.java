@@ -410,7 +410,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
                     .andExpect(jsonPath("$.data.status").value(result.status().name()))
                     .andExpect(jsonPath("$.data.approvalCreationStatus").doesNotExist());
         }
-        assertThat(jdbcTemplate.queryForObject("select count(*) from flyway_schema_history where success",Integer.class)).isEqualTo(7);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from flyway_schema_history where success",Integer.class)).isEqualTo(8);
         assertThat(jdbcTemplate.queryForObject("show server_version",String.class)).startsWith("17.");
     }
 
@@ -466,6 +466,34 @@ class LeaveApprovalResultPostgresIntegrationTest {
             assertThat(requestRow(initial).get("approval_attempt_count")).isEqualTo(1);
         } finally {
             jdbcTemplate.execute("drop trigger t2_isolation on leave_request");
+        }
+    }
+
+    @Test
+    void concurrentRecoveryClaimsOnlyOneCommittedAttemptAndFencesLateFailure() throws Exception {
+        LeaveSubmissionResult initial = pending();
+        approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
+        approvalResultService.recordUnknownAfterHttp(initial.requestId(), initial.approvalRequestId(), "TIMEOUT", 1);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<LeaveApprovalCallStartResult> claim = () -> {
+                start.await();
+                return approvalResultService.startRecoveryCall(initial.requestId(), initial.approvalRequestId());
+            };
+            Future<LeaveApprovalCallStartResult> first = executor.submit(claim);
+            Future<LeaveApprovalCallStartResult> second = executor.submit(claim);
+            start.countDown();
+            assertThat(List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS)))
+                    .filteredOn(LeaveApprovalCallStartResult::callRequired).hasSize(1);
+            approvalResultService.recordUnknownAfterHttp(initial.requestId(), initial.approvalRequestId(), "LATE", 1);
+            assertThat(requestRow(initial)).containsEntry("approval_attempt_count", 2)
+                    .containsEntry("approval_creation_status", "IN_PROGRESS")
+                    .containsEntry("approval_request_id", initial.approvalRequestId());
+            assertThat(jdbcTemplate.queryForObject("select count(*) from leave_ledger where event_type='RESERVE'", Integer.class)).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject("select count(*) from leave_ledger where event_type='RELEASE'", Integer.class)).isZero();
+        } finally {
+            executor.shutdownNow();
         }
     }
 
@@ -781,14 +809,17 @@ class LeaveApprovalResultPostgresIntegrationTest {
         approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
         approvalResultService.linkCreatedDocument(initial.requestId(), initial.approvalRequestId(), 501L);
         when(employeeAccess.isAdmin(1L)).thenReturn(true);
-        AdminCancellationAttempt attempt = cancellationTransactions.start(initial.requestId(), "관리자 취소");
-        cancellationTransactions.recordUnknown(attempt.command());
+        assertBusiness(() -> cancellationTransactions.start(initial.requestId(), "관리자 취소"),
+                ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
 
         assertThat(settlementService.settle(decision(initial, status, 1, 501L, initial.approvalRequestId())))
                 .isEqualTo(LeaveApprovalSettlementService.Outcome.APPLIED);
         Map<String, List<Map<String, Object>>> after = rows();
 
-        assertBusiness(() -> cancellationTransactions.complete(attempt.command()), ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
+        if (status.equals("REJECTED")) {
+            assertBusiness(() -> cancellationTransactions.start(initial.requestId(), "관리자 취소"),
+                    ErrorCode.LEAVE_CANCELLATION_NOT_ALLOWED);
+        }
         assertThat(rows()).isEqualTo(after);
     }
 
@@ -863,6 +894,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
         if (priorState.equals("APPROVED") || priorState.equals("REJECTED")) {
             settlementService.settle(decision(initial, priorState, 1, 501L, initial.approvalRequestId()));
         } else {
+            settlementService.settle(decision(initial, "APPROVED", 1, 501L, initial.approvalRequestId()));
             when(employeeAccess.isAdmin(1L)).thenReturn(true);
             AdminCancellationAttempt attempt = cancellationTransactions.start(initial.requestId(), "관리자 취소");
             if (priorState.equals("UNKNOWN")) {
@@ -904,7 +936,7 @@ class LeaveApprovalResultPostgresIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"SUBMITTING", "SUBMITTED", "APPROVED", "REJECTED", "WITHDRAWN", "CANCELLED"})
+    @ValueSource(strings = {"SUBMITTING", "SUBMITTED", "APPROVED", "REJECTED", "WITHDRAWN"})
     void internalDatesUseStoredRowsRegardlessOfRequestState(String state) throws Exception {
         LeaveSubmissionResult initial = submissionService.submit("dates", input(1, null,
                 date(day.plusDays(2), LeaveRequestPortion.PM_HALF),
@@ -937,6 +969,25 @@ class LeaveApprovalResultPostgresIntegrationTest {
                 .andExpect(jsonPath("$.data.dates[1].portion").value("AM_HALF"))
                 .andExpect(jsonPath("$.data.dates[2].portion").value("PM_HALF"));
         assertThat(rows()).isEqualTo(before);
+    }
+
+    // 취소된 신청은 근태가 휴가로 저장하지 않도록 없는 신청과 같이 404 (늦게 처리된 승인 이벤트가 휴가를 되살리지 않게)
+    @Test
+    void internalDatesReturnNotFoundForCancelledRequest() throws Exception {
+        LeaveSubmissionResult initial = submissionService.submit("cancelled", input(1, null,
+                date(day, LeaveRequestPortion.FULL)));
+        approvalResultService.startCall(initial.requestId(), initial.approvalRequestId());
+        approvalResultService.linkCreatedDocument(initial.requestId(), initial.approvalRequestId(), 501L);
+        jdbcTemplate.update("update leave_request set status='CANCELLED' where leave_req_id=?", initial.requestId());
+
+        MockMvcBuilders.webAppContextSetup(context)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity())
+                .build().perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                        "/api/v1/leaves/internal/requests/{requestId}/dates", initial.requestId()
+                )
+        ).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false));
     }
 
     @Test

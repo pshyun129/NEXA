@@ -1,9 +1,31 @@
 #!/usr/bin/env bash
 # 하루 시작 (서빙 모드): vllm, ocr, mlflow 세션을 tmux로 띄운다. 이미 떠 있는 세션은 건너뜀.
 # GPU 서버 규칙(데몬·cron 금지, 24시간마다 재시작)에 맞춰 매일 아침 직접 실행하고, 저녁에 stop_day.sh로 내린다.
+# RESTART=1: 떠 있는 세션을 먼저 끄고(stop_day.sh) 우리 프로세스가 다 내려간 뒤 다시 켬 → 밤사이 살아 있던 세션도
+#            새 코드(git pull)·설정으로 갱신. 아침 루틴: RESTART=1 NIGHT_AT=20:00 bash scripts/start_day.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ "${RESTART:-0}" == 1 ]]; then
+  ME="${USER:-$(id -un)}"
+  # 밤 학습이 아직 돌고 있으면(전날 밤 것이 길어진 경우) 서빙을 다시 올리면 GPU 메모리가 겹침 → 멈춤
+  # 예약만 걸려 기다리는 night 세션은 그대로 둠 (학습 프로세스가 없으면 통과)
+  if pgrep -u "$ME" -f qlora_train.py >/dev/null; then
+    echo "[night] 학습 중이라 재시작하지 않습니다 (끝나면 night_job이 vLLM을 다시 올림: tail -f ~/ai/logs/night-*.log)"; exit 1
+  fi
+  bash "$SCRIPT_DIR/stop_day.sh"
+  # 우리 서빙 프로세스(vLLM·OCR·MLflow)가 GPU 메모리를 놓을 때까지 기다림 (바로 켜면 메모리 부족으로 vLLM이 못 뜰 수 있음)
+  for i in $(seq 1 30); do
+    pgrep -u "$ME" -f "vllm serve|ocr_server.py|mlflow server" >/dev/null || break
+    [[ $i == 1 ]] && echo "이전 프로세스가 내려가길 기다리는 중…"
+    sleep 3
+  done
+  if pgrep -u "$ME" -f "vllm serve|ocr_server.py|mlflow server" >/dev/null; then
+    echo "90초가 지나도 이전 프로세스가 남아 있습니다: pgrep -af -u $ME 'vllm|ocr_server|mlflow' 로 확인"; exit 1
+  fi
+  sleep 5
+fi
 
 start() {   # 사용법: start <세션 이름> <스크립트 파일>
   if tmux has-session -t "$1" 2>/dev/null; then

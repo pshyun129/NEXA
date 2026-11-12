@@ -60,6 +60,9 @@ export function useWorkflowList() {
 }
 
 /** 편집기는 서버 초안을 기준으로 하므로 캐시를 오래 두지 않는다(실행 화면의 useWorkflow와 키는 같다) */
+/** 캐시를 거치지 않고 서버의 지금 초안을 읽는다(저장 전에 다른 창의 변경을 확인할 때) */
+export const fetchBuilderWorkflow = (id: number) => api.get<BuilderWorkflow>(`${BASE}/workflows/${id}`);
+
 export function useBuilderWorkflow(id: number) {
   return useQuery({
     queryKey: builderKeys.detail(id),
@@ -125,9 +128,13 @@ export function useValidateGraph(id: number) {
 
 /** 초안 그래프로 테스트 실행(배포 버전이 아님) */
 export function useStartTestRun(id: number) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { inputs: Record<string, unknown>; fileIds: number[] }) =>
       api.post<{ runId: number; status: string }>(`${BASE}/workflows/${id}/test-runs`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['runs', 'me'] });
+    },
   });
 }
 
@@ -195,5 +202,66 @@ export function useSaveInputForm(id: number) {
     mutationFn: (fields: FormField[]) => api.put<BuilderWorkflow>(`${BASE}/workflows/${id}/input-form`, { fields }),
     onSuccess: (wf) => qc.setQueryData(builderKeys.detail(id), wf),
     onSettled: () => qc.invalidateQueries({ queryKey: ['workflows', id, 'input-form'] }),
+  });
+}
+
+/* ---------- 워크플로 만들기·고치기·지우기·복제·되돌리기 (FastAPI workflows/routers.py 1·5·6·11-1·11-3) ---------- */
+
+/** 새 워크플로(POST /workflows). 이름 1~100자. 빈 초안 그래프로 만들어진다 */
+export function useCreateWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; description: string | null }) => api.post<BuilderWorkflow>(`${BASE}/workflows`, body),
+    onSuccess: (wf) => qc.setQueryData(builderKeys.detail(wf.id), wf),
+    onSettled: () => qc.invalidateQueries({ queryKey: builderKeys.list }),
+  });
+}
+
+/** 이름·설명 수정(PATCH /workflows/{id}). 보낸 칸만 바뀐다 */
+export function useUpdateWorkflow(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name?: string; description?: string | null }) => api.patch<BuilderWorkflow>(`${BASE}/workflows/${id}`, body),
+    onSuccess: (wf) => qc.setQueryData(builderKeys.detail(id), wf),
+    onSettled: () => Promise.all([
+      qc.invalidateQueries({ queryKey: builderKeys.list }),
+      qc.invalidateQueries({ queryKey: ['workflows', 'available'] }),
+    ]),
+  });
+}
+
+/** 삭제(DELETE /workflows/{id}). 실행 기록이 있으면 서버가 409 WF_005로 거절한다 */
+export function useDeleteWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.delete<null>(`${BASE}/workflows/${id}`),
+    onSuccess: (_, id) => qc.removeQueries({ queryKey: builderKeys.detail(id), exact: true }),
+    onSettled: () => Promise.all([
+      qc.invalidateQueries({ queryKey: builderKeys.list }),
+      qc.invalidateQueries({ queryKey: ['workflows', 'available'] }),
+    ]),
+  });
+}
+
+/** 복제(POST /workflows/{id}/duplicate). 초안 그래프·입력 폼을 복사한 "(복사본)" 워크플로가 생긴다(배포 전) */
+export function useDuplicateWorkflow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<BuilderWorkflow>(`${BASE}/workflows/${id}/duplicate`),
+    onSuccess: (wf) => qc.setQueryData(builderKeys.detail(wf.id), wf),
+    onSettled: () => qc.invalidateQueries({ queryKey: builderKeys.list }),
+  });
+}
+
+/** 이전 버전으로 되돌리기(POST /workflows/{id}/versions/{v}/activate). 이후 시작하는 사원 실행부터 그 버전을 쓴다 */
+export function useActivateVersion(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (version: number) => api.post<{ version: number }>(`${BASE}/workflows/${id}/versions/${version}/activate`),
+    onSettled: () => Promise.all([
+      qc.invalidateQueries({ queryKey: builderKeys.detail(id) }),
+      qc.invalidateQueries({ queryKey: builderKeys.list }),
+      qc.invalidateQueries({ queryKey: ['workflows', 'available'] }),
+    ]),
   });
 }

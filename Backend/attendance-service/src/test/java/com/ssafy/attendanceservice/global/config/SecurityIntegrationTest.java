@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -109,6 +111,32 @@ class SecurityIntegrationTest {
                 .andExpect(status().isOk());
 
         verify(attendanceService).getDaily(any(), eq(7L), eq(LocalDate.of(2026, 10, 30)));
+    }
+
+    @Test
+    void 휴가_원복_내부_API는_토큰_없이_열림() throws Exception {
+        mvc.perform(post("/api/v1/attn/internal/leave-requests/999/revert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cancelRequestId\":\"b1d5a739-3e29-4bf8-8aae-5f372b159410\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.leaveRequestId").value(999))
+                .andExpect(jsonPath("$.data.cancelRequestId").value("b1d5a739-3e29-4bf8-8aae-5f372b159410"))
+                .andExpect(jsonPath("$.data.reverted").value(false))
+                .andExpect(jsonPath("$.data.revertedDates").isEmpty());
+    }
+
+    @Test
+    void 휴가_원복은_취소_요청_ID가_없으면_400() throws Exception {
+        mvc.perform(post("/api/v1/attn/internal/leave-requests/999/revert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 그_외_내부_경로는_닫힘() throws Exception {
+        mvc.perform(get("/api/v1/attn/internal/anything").with(admin(1)))
+                .andExpect(status().isForbidden());
     }
 
     @Test

@@ -20,6 +20,9 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(HttpSecurity http, NexaSecurityConfigurer nexa) throws Exception {
         return nexa.apply(http)
                 .authorizeHttpRequests(auth -> auth
+                        // 휴가 서비스가 부르는 내부 API (사용자 토큰 없음). 게이트웨이에서 외부 노출을 막고, 그 외 내부 경로는 닫는다
+                        .requestMatchers(HttpMethod.POST, "/api/v1/attn/internal/leave-requests/*/revert").permitAll()
+                        .requestMatchers("/api/v1/attn/internal/**").denyAll()
                         // 근태 현황·직원 타임라인 조회는 팀장급 이상이 쓰므로 로그인만 확인하고,
                         // 볼 수 있는 범위는 서비스(AttendanceViewScope)가 정한다. 근무 기록 등록·수정·삭제는 관리자만
                         .requestMatchers("/api/v1/attn/admin/daily", "/api/v1/attn/admin/period").authenticated()

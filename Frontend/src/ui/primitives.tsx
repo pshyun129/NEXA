@@ -8,7 +8,7 @@ import s from './ui.module.css';
 /* ---------- Counter (style-guide 8.4) ---------- */
 export function Counter({ value, tone = 'brand', label }: { value: number; tone?: 'brand' | 'warning'; label?: string }) {
   const active = value > 0;
-  const cls = [s.counter, active ? (tone === 'brand' ? s.counterBrand : s.counterWarning) : ''].join(' ');
+  const cls = ['nx-counter', s.counter, active ? (tone === 'brand' ? `${s.counterBrand} nx-counter-brand` : s.counterWarning) : ''].join(' ');
   return <span className={cls} aria-label={label ? `${label} ${value}건` : undefined}>{value}</span>;
 }
 
@@ -58,11 +58,27 @@ export function EmptyState({ icon = Inbox, title, description, action }:
 }
 
 /* ---------- PageHeader ---------- */
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+/** 제목은 단어마다 흐림에서 또렷해진다(React Bits BlurText). 스크린리더에는 제목 한 덩어리로 읽힌다 */
+export function BlurTitle({ text, className }: { text: string; className?: string }) {
+  const words = text.split(' ');
+  return (
+    <h1 className={className} aria-label={text}>
+      {words.map((w, i) => (
+        <span key={`${w}-${i}`} aria-hidden>
+          <span className="nx-blur-word" style={{ animationDelay: `${i * 110}ms` }}>{w}</span>{i < words.length - 1 ? ' ' : ''}
+        </span>
+      ))}
+    </h1>
+  );
+}
+
+export function PageHeader({ title, description, actions, eyebrow }:
+  { title: string; description?: ReactNode; actions?: ReactNode; eyebrow?: string }) {
   return (
     <div className={s.pageHeader}>
-      <div>
-        <h1 className={s.pageTitle}>{title}</h1>
+      <div className={s.pageHeadText}>
+        {eyebrow && <div className={s.eyebrow}>{eyebrow}</div>}
+        <BlurTitle key={title} text={title} className={s.pageTitle} />
         {description && <div className={s.pageDesc}>{description}</div>}
       </div>
       {actions && <div className={s.pageActions}>{actions}</div>}
@@ -73,7 +89,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
 /* ---------- Card (style-guide 8.5) ---------- */
 export function Card({ title, meta, children, flush }: { title?: ReactNode; meta?: ReactNode; children: ReactNode; flush?: boolean }) {
   return (
-    <section className={s.card}>
+    <section className={`${s.card} nx-rise`}>
       {(title || meta) && (
         <div className={s.cardHead}>
           {title && <h3 className={s.cardTitle}>{title}</h3>}

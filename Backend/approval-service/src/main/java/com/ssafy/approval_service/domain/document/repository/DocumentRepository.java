@@ -25,40 +25,37 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
 
     /**
      * 결재상태/문서양식/기안자 필터 조회. null인 조건은 무시.
-     * 관리자가 아니면 본인이 기안했거나 결재선(결재자/합의자/참조자/열람자)에 있는 문서만 조회한다
+     * 본인이 기안했거나 결재선(결재자/합의자/참조자/열람자)에 있는 문서만 조회한다.
+     * 관리자도 같다: 목록(결재함 "전체")에 회사 전체 문서를 보이지 않는다 (QA C17). 단건 조회 권한은 getReadableDocument 가 따로 정한다
      */
     @Query("""
             SELECT d FROM Document d
             WHERE (:status IS NULL OR d.status = :status)
               AND (:formType IS NULL OR d.formType = :formType)
               AND (:drafterId IS NULL OR d.drafterId = :drafterId)
-              AND (:admin = true
-                   OR d.drafterId = :employeeId
+              AND (d.drafterId = :employeeId
                    OR EXISTS (SELECT 1 FROM ApprovalLine l WHERE l.document = d AND l.empId = :employeeId))
             ORDER BY d.draftedAt DESC, d.docId DESC
             """)
-    List<Document> findReadableByStatusAndFormType(@Param("status") DocumentStatus status,
+    List<Document> findInvolvedByStatusAndFormType(@Param("status") DocumentStatus status,
                                                    @Param("formType") FormType formType,
                                                    @Param("drafterId") Long drafterId,
                                                    @Param("employeeId") Long employeeId,
-                                                   @Param("admin") boolean admin,
                                                    Pageable pageable);
 
-    /** findReadableByStatusAndFormType 과 같은 조건의 건수 */
+    /** findInvolvedByStatusAndFormType 과 같은 조건의 건수 */
     @Query("""
             SELECT COUNT(d) FROM Document d
             WHERE (:status IS NULL OR d.status = :status)
               AND (:formType IS NULL OR d.formType = :formType)
               AND (:drafterId IS NULL OR d.drafterId = :drafterId)
-              AND (:admin = true
-                   OR d.drafterId = :employeeId
+              AND (d.drafterId = :employeeId
                    OR EXISTS (SELECT 1 FROM ApprovalLine l WHERE l.document = d AND l.empId = :employeeId))
             """)
-    long countReadableByStatusAndFormType(@Param("status") DocumentStatus status,
+    long countInvolvedByStatusAndFormType(@Param("status") DocumentStatus status,
                                           @Param("formType") FormType formType,
                                           @Param("drafterId") Long drafterId,
-                                          @Param("employeeId") Long employeeId,
-                                          @Param("admin") boolean admin);
+                                          @Param("employeeId") Long employeeId);
 
     /**
      * 결재 대기함: 진행 중이고 지금 요청자 차례인 문서. 오래된 문서부터 (처리 순서).

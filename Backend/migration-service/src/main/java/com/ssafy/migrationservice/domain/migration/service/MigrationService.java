@@ -15,7 +15,11 @@ import com.ssafy.migrationservice.domain.migration.dto.RowUpdateRequest;
 import com.ssafy.migrationservice.domain.migration.dto.RowUpdateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.SheetInfo;
 import com.ssafy.migrationservice.domain.migration.mapping.ColumnMappingSuggester;
+import com.ssafy.migrationservice.domain.migration.validation.FieldValueChecker;
+import com.ssafy.migrationservice.domain.migration.validation.issue.IssueCode;
+import com.ssafy.migrationservice.domain.migration.validation.schema.EntitySchema;
 import com.ssafy.migrationservice.domain.migration.validation.schema.EntitySchemas;
+import com.ssafy.migrationservice.domain.migration.validation.schema.FieldSpec;
 import com.ssafy.migrationservice.domain.migration.repository.StagingChangeRepository;
 import com.ssafy.migrationservice.domain.migration.dto.IssueListResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MappingUpdateRequest;
@@ -23,6 +27,7 @@ import com.ssafy.migrationservice.domain.migration.dto.MappingUpdateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateRequest;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationCreateResponse;
 import com.ssafy.migrationservice.domain.migration.dto.MigrationDetailResponse;
+import com.ssafy.migrationservice.domain.migration.dto.MigrationListResponse;
 import com.ssafy.migrationservice.domain.migration.entity.MigrationFile;
 import com.ssafy.migrationservice.domain.migration.entity.MigrationJob;
 import com.ssafy.migrationservice.domain.migration.entity.enums.MigrationEntity;
@@ -41,13 +46,20 @@ import com.ssafy.migrationservice.domain.migration.validation.issue.Severity;
 import com.ssafy.migrationservice.global.exception.BusinessException;
 import com.ssafy.migrationservice.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -76,6 +88,17 @@ public class MigrationService {
                 .cutoverDate(r.cutoverDate())
                 .build());
         return new MigrationCreateResponse(job.getMigrationId(), job.getStatus());
+    }
+
+    /** 최근 만든 작업부터 */
+    @Transactional(readOnly = true)
+    public MigrationListResponse list(int page, int size) {
+        Page<MigrationJob> jobs = jobRepository.findAll(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "migrationId")));
+        List<MigrationListResponse.Item> items = jobs.getContent().stream()
+                .map(j -> MigrationListResponse.Item.of(j, fileRepository.countByMigrationId(j.getMigrationId()),
+                        batchRepository.countByMigrationIdAndStatus(j.getMigrationId(), BatchStatus.LOADED)))
+                .toList();
+        return new MigrationListResponse(items, page, size, jobs.getTotalElements());
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +145,12 @@ public class MigrationService {
         if (entity == MigrationEntity.HR_EMPLOYEE) {
             fileRepository.findByMigrationIdOrderByFileIdAsc(migrationId).stream()
                     .filter(f -> f.getEntity() != MigrationEntity.HR_EMPLOYEE)
+                    .forEach(validationService::validate);
+        }
+        // 조직 파일을 새로 올리면 사원의 부서 확인 결과가 바뀐다
+        if (entity == MigrationEntity.HR_ORG) {
+            fileRepository.findByMigrationIdOrderByFileIdAsc(migrationId).stream()
+                    .filter(f -> f.getEntity() == MigrationEntity.HR_EMPLOYEE)
                     .forEach(validationService::validate);
         }
 
@@ -190,7 +219,8 @@ public class MigrationService {
         for (Long fileId : fileIds) {
             validationService.validate(findFile(migrationId, fileId));
         }
-        return new FixApplyResponse(applied, issueRepository.totals(migrationId, null));
+        return new FixApplyResponse(applied, issueRepository.totals(migrationId, null),
+                r.fileId() == null ? null : issueRepository.totals(migrationId, r.fileId()));
     }
 
     /** 화면에서 행 하나를 고친다. 그 파일을 다시 검증하고 그 행에 남은 오류를 돌려준다 */
@@ -204,6 +234,7 @@ public class MigrationService {
                 throw new BusinessException(ErrorCode.INVALID_INPUT, "파일에 없는 컬럼입니다: " + column);
             }
         }
+        rejectBadFormat(file, rowNo, r.values());
         for (Map.Entry<String, String> e : r.values().entrySet()) {
             String value = e.getValue() == null || e.getValue().isBlank() ? null : e.getValue().strip();
             if (!stagingChangeRepository.updateCell(fileId, rowNo, e.getKey(), value)) {
@@ -213,6 +244,33 @@ public class MigrationService {
         validationService.validate(file);
         return new RowUpdateResponse(rowNo, issueRepository.findByRow(fileId, rowNo),
                 issueRepository.totals(migrationId, fileId));
+    }
+
+    // 행 수정에서 저장하지 않는 형식 오류 (빈 값·자동 정리로 고칠 수 있는 표기는 저장한다)
+    private static final Set<IssueCode> BAD_FORMAT = EnumSet.of(IssueCode.INVALID_DATE, IssueCode.INVALID_NUMBER,
+            IssueCode.INVALID_EMAIL, IssueCode.INVALID_ENUM, IssueCode.TOO_LONG);
+
+    /** 매핑된 칸에 형식이 틀린 값을 넣으면 저장하지 않고 400 (화면 입력칸이 그대로 남는다) */
+    private void rejectBadFormat(MigrationFile file, int rowNo, Map<String, String> values) {
+        Optional<EntitySchema> schema = EntitySchemas.of(file.getEntity());
+        if (schema.isEmpty()) {
+            return;
+        }
+        Map<String, String> fieldOf = new HashMap<>();
+        mappingService.fieldToColumn(file.getFileId()).forEach((field, column) -> fieldOf.put(column, field));
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            String field = fieldOf.get(e.getKey());
+            String value = e.getValue() == null ? null : e.getValue().strip();
+            if (field == null || value == null || value.isEmpty()) {
+                continue;
+            }
+            FieldSpec spec = schema.get().field(field).orElseThrow();
+            Optional<FieldValueChecker.Finding> finding = FieldValueChecker.check(spec, value);
+            if (finding.isPresent() && BAD_FORMAT.contains(finding.get().code())) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        rowNo + "행 '" + e.getKey() + "' 값 '" + value + "'을(를) 저장하지 않았습니다: " + finding.get().message());
+            }
+        }
     }
 
     @Transactional(readOnly = true)

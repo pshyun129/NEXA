@@ -9,10 +9,12 @@ import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * 휴가 서비스 호출 (근태 연동용 내부 API).
@@ -41,8 +43,11 @@ public class LeaveClient {
         return factory;
     }
 
-    /** 휴가 신청의 사원·유형·날짜. 실패하면 BusinessException(LEAVE_CALL_FAILED): 리스너가 재시도 후 DLT로 넘긴다 */
-    public LeaveRequestDates getRequestDates(Long leaveReqId) {
+    /**
+     * 휴가 신청의 사원·유형·날짜. 취소됐거나 없는 신청(404)이면 빈 값 (근태에 휴가로 저장하지 않는다).
+     * 그 외 실패는 BusinessException(LEAVE_CALL_FAILED): 리스너가 재시도 후 DLT로 넘긴다
+     */
+    public Optional<LeaveRequestDates> getRequestDates(Long leaveReqId) {
         InternalResult<LeaveRequestDates> res;
         try {
             res = restClient.get()
@@ -50,6 +55,8 @@ public class LeaveClient {
                     .retrieve()
                     .body(new ParameterizedTypeReference<InternalResult<LeaveRequestDates>>() {
                     });
+        } catch (HttpClientErrorException.NotFound e) {
+            return Optional.empty();
         } catch (RestClientException e) {
             throw new BusinessException(ErrorCode.LEAVE_CALL_FAILED, "휴가 서비스 호출 실패: " + e.getMessage());
         }
@@ -58,6 +65,6 @@ public class LeaveClient {
                 || res.data().employeeId() == null || res.data().dates() == null) {
             throw new BusinessException(ErrorCode.LEAVE_CALL_FAILED, "휴가 서비스 응답이 비어 있거나 실패입니다");
         }
-        return res.data();
+        return Optional.of(res.data());
     }
 }

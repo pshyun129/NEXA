@@ -8,6 +8,7 @@ import { docColumns } from '@/approval/columns';
 import { PageHeader, Card, Counter, EmptyState } from '@/ui/primitives';
 import { Icon } from '@/ui/Icon';
 import { Sparkles } from '@/ui/icons';
+import { openAutomation } from '@/automation/automationStore';
 import { LeaveHomeCard } from '@/leave/Balances';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { ClockPanel } from '@/attendance/Clock';
@@ -29,13 +30,13 @@ function TodoRow() {
   return (
     <div className={s.todos}>
       <Link to="/approvals" className={s.todo}>
-        <span>내 차례 결재</span>
-        {docs.isSuccess ? <Counter value={docs.data.length} tone="brand" label="내 차례 결재" /> : <span className={s.todoMuted}>—</span>}
+        <span>결재 대기</span>
+        {docs.isSuccess ? <Counter value={docs.data.length} tone="brand" label="결재 대기" /> : <span className={s.todoMuted}>—</span>}
       </Link>
-      <Link to="/automation" className={s.todo}>
+      <button type="button" className={s.todo} onClick={() => openAutomation({ kind: 'home', tab: 'waiting' })}>
         <span>자동화 확인 대기</span>
         {runs.isSuccess ? <Counter value={runs.data.length} tone="warning" label="자동화 확인 대기" /> : <span className={s.todoMuted}>—</span>}
-      </Link>
+      </button>
       <Link to="/attendance/weekly" className={s.todo}>
         <span>근태이상 이번 주</span>
         {anomalies !== undefined ? <Counter value={anomalies} tone="warning" label="근태이상" /> : <span className={s.todoMuted}>—</span>}
@@ -69,14 +70,14 @@ function WeekCard() {
   );
 }
 
-/** 결재 대기(내 차례) 상위 5건. 결재함 결재 대기 탭과 같은 쿼리(box=PENDING, 오래된 순). */
+/** 결재 대기(내가 결재할 차례) 상위 5건. 결재함 결재 대기 탭과 같은 쿼리(box=PENDING, 오래된 순). */
 function PendingCard() {
   const q = usePendingDocuments();
   const navigate = useNavigate();
   const total = q.data?.length;
   return (
     <Card
-      title={<>결재 대기 (내 차례){total ? <> <Counter value={total} label="결재 대기" /></> : null}</>}
+      title={<>결재 대기{total ? <> <Counter value={total} label="결재 대기" /></> : null}</>}
       meta={<Link to="/approvals">결재함에서 처리 →</Link>}
       flush
     >
@@ -141,7 +142,7 @@ function AiWaitingCard() {
           <li key={r.id}>
             <span className="nx-mono">run #{r.id}</span>
             <span className={s.todoMuted}>워크플로 #{r.workflowId} · {formatRelative(serverUtc(r.createdAt))}</span>
-            <Link to={`/automation/runs/${r.id}`}><Button size="small">확인하기 →</Button></Link>
+            <Button size="small" onClick={() => openAutomation({ kind: 'run', runId: r.id })}>확인하기 →</Button>
           </li>
         ))}
       </ul>

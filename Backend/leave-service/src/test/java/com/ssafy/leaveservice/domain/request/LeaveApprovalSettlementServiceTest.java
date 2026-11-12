@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 class LeaveApprovalSettlementServiceTest {
     private final LeaveRequestRepository requests = mock(LeaveRequestRepository.class);
     private final LeaveApprovalSettlementService service =
-            new LeaveApprovalSettlementService(requests, null, null, null, null, null, null);
+            new LeaveApprovalSettlementService(requests, null, null, null, null, null, null, null);
 
     @ParameterizedTest
     @ValueSource(strings = {"INPROGRESS", "UNKNOWN", "WITHDRAWN"})

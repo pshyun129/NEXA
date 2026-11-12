@@ -85,8 +85,8 @@ public class DocumentServiceImplV1 implements DocumentService {
         return new DocumentCountResponse(count(listFilter(approvalStatus, formType, box, requester)));
     }
 
-    /** 목록 조건. box 가 없으면 조회할 수 있는 문서 전체 */
-    private record ListFilter(DocumentStatus status, FormType type, DocumentBox box, Long employeeId, boolean admin) {
+    /** 목록 조건. box 가 없으면 요청자가 기안했거나 결재선에 있는 문서 전체 (관리자도 같음) */
+    private record ListFilter(DocumentStatus status, FormType type, DocumentBox box, Long employeeId) {
     }
 
     private ListFilter listFilter(String approvalStatus, String formType, String box, AuthUser requester) {
@@ -94,18 +94,18 @@ public class DocumentServiceImplV1 implements DocumentService {
                 parseEnum(DocumentStatus.class, approvalStatus, "approvalStatus"),
                 parseEnum(FormType.class, formType, "formType"),
                 parseEnum(DocumentBox.class, box, "box"),
-                requester.employeeId(), requester.isAdmin());
+                requester.employeeId());
     }
 
     /** 문서함별 목록. 정렬은 쿼리마다 고정 (DocumentBox 주석 참고) */
     private List<Document> find(ListFilter f, Pageable pageable) {
         if (f.box() == null) {
-            return documentRepository.findReadableByStatusAndFormType(
-                    f.status(), f.type(), null, f.employeeId(), f.admin(), pageable);
+            return documentRepository.findInvolvedByStatusAndFormType(
+                    f.status(), f.type(), null, f.employeeId(), pageable);
         }
         return switch (f.box()) {
-            case DRAFTED -> documentRepository.findReadableByStatusAndFormType(
-                    f.status(), f.type(), f.employeeId(), f.employeeId(), f.admin(), pageable);
+            case DRAFTED -> documentRepository.findInvolvedByStatusAndFormType(
+                    f.status(), f.type(), f.employeeId(), f.employeeId(), pageable);
             case PENDING -> documentRepository.findPendingFor(f.status(), f.type(), f.employeeId(), pageable);
             case REFERENCE -> documentRepository.findByMyLine(
                     f.status(), f.type(), f.employeeId(), REFERENCE_ROLES, ANY_ACTION, pageable);
@@ -117,12 +117,12 @@ public class DocumentServiceImplV1 implements DocumentService {
     /** find 와 같은 조건의 건수 */
     private long count(ListFilter f) {
         if (f.box() == null) {
-            return documentRepository.countReadableByStatusAndFormType(
-                    f.status(), f.type(), null, f.employeeId(), f.admin());
+            return documentRepository.countInvolvedByStatusAndFormType(
+                    f.status(), f.type(), null, f.employeeId());
         }
         return switch (f.box()) {
-            case DRAFTED -> documentRepository.countReadableByStatusAndFormType(
-                    f.status(), f.type(), f.employeeId(), f.employeeId(), f.admin());
+            case DRAFTED -> documentRepository.countInvolvedByStatusAndFormType(
+                    f.status(), f.type(), f.employeeId(), f.employeeId());
             case PENDING -> documentRepository.countPendingFor(f.status(), f.type(), f.employeeId());
             case REFERENCE -> documentRepository.countByMyLine(
                     f.status(), f.type(), f.employeeId(), REFERENCE_ROLES, ANY_ACTION);

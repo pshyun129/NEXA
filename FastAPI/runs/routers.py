@@ -9,6 +9,7 @@ from core.exceptions import BusinessException, ErrorCode
 from engine.runner import execute_run, resume_run
 from runs import service
 from runs.schemas import (
+    PolicyPreviewRequest,
     ResumeRequest, 
     RunCreated, 
     RunCreateRequest, 
@@ -64,8 +65,10 @@ def get_file(file_id: int, db: Session = Depends(get_db), user_id: str = Depends
 
 
 @router.get("/runs/files/{file_id}/download")
-def download_file(file_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_user_id)):
-    run_file, path = service.download_file(db, file_id, user_id)
+def download_file(file_id: int, document_id: int | None = None, db: Session = Depends(get_db),
+                  user: AuthUser = Depends(get_current_user)):
+    # document_id: 결재자가 결재 문서에서 열 때 (그 문서의 출처 실행 파일만 읽기 허용)
+    run_file, path = service.download_file(db, file_id, str(user.employee_id), document_id, user.token)
     # 한글 파일 이름도 브라우저에서 그대로 저장됨 (Content-Disposition filename*=UTF-8)
     return FileResponse(path, filename=run_file.original_name,
                         media_type=run_file.content_type or "application/octet-stream")
@@ -97,16 +100,26 @@ def list_my_pending(
 
 
 # 실행 조회·취소: 요청자 본인 또는 관리자만 (2026-11-06 실서버 E2E에서 다른 사원도 조회되는 것 발견)
+# 조회는 이 실행이 상신한 결재 문서의 결재자도 가능 (?documentId=, 읽기 전용 — 결재 서비스로 권한 확인)
 @router.get("/runs/{run_id}", response_model=ApiResult[RunDetail])
-def get_run(run_id: int, db: Session = Depends(get_db), user: AuthUser = Depends(get_current_user)):
-    run = service.get_run(db, run_id, str(user.employee_id), user.is_admin)
+def get_run(run_id: int, document_id: int | None = None, db: Session = Depends(get_db),
+            user: AuthUser = Depends(get_current_user)):
+    run = service.get_run(db, run_id, str(user.employee_id), user.is_admin, document_id, user.token)
     return ok(RunDetail.model_validate(run))
 
 
 @router.get("/runs/{run_id}/steps", response_model=ApiResult[list[RunStepResponse]])
-def list_steps(run_id: int, db: Session = Depends(get_db), user: AuthUser = Depends(get_current_user)):
-    steps = service.list_steps(db, run_id, str(user.employee_id), user.is_admin)
+def list_steps(run_id: int, document_id: int | None = None, db: Session = Depends(get_db),
+               user: AuthUser = Depends(get_current_user)):
+    steps = service.list_steps(db, run_id, str(user.employee_id), user.is_admin, document_id, user.token)
     return ok([RunStepResponse.model_validate(s) for s in steps])
+
+
+@router.post("/runs/{run_id}/policy-preview", response_model=ApiResult[list[dict]])
+def policy_preview(run_id: int, req: PolicyPreviewRequest, db: Session = Depends(get_db),
+                   user: AuthUser = Depends(get_current_user)):
+    """사람 확인 화면의 [다시 검토]: 고친 값으로 규정 검토 결과만 미리 받음 (요청자만, 실행은 계속 대기)"""
+    return ok(service.preview_policy(db, run_id, str(user.employee_id), req.receipts))
 
 
 @router.post("/runs/{run_id}/cancel", response_model=ApiResult[RunDetail])

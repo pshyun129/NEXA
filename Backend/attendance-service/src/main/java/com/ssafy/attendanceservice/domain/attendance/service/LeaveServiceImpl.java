@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Slf4j
@@ -46,9 +47,10 @@ public class LeaveServiceImpl implements LeaveService {
 
     @Override
     @Transactional
-    public void cancelLeave(Long leaveReqId) {
+    public List<LocalDate> cancelLeave(Long leaveReqId) {
         List<EmployeeLeave> leaves = employeeLeaveRepository.findByLeaveReqId(leaveReqId);
         employeeLeaveRepository.deleteAll(leaves);
         leaves.forEach(canceled -> processor.resyncDay(canceled.getEmpId(), canceled.getLeaveDate()));
+        return leaves.stream().map(EmployeeLeave::getLeaveDate).sorted().toList();
     }
 }

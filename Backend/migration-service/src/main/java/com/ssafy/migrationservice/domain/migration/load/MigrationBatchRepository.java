@@ -19,4 +19,6 @@ public interface MigrationBatchRepository extends JpaRepository<MigrationBatch, 
     boolean existsByFileIdAndEntityAndStatus(Long fileId, MigrationEntity entity, BatchStatus status);
 
     boolean existsByMigrationIdAndStatus(Long migrationId, BatchStatus status);
+
+    long countByMigrationIdAndStatus(Long migrationId, BatchStatus status);
 }

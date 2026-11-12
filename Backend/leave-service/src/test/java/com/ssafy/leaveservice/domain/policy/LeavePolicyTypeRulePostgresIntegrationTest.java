@@ -177,7 +177,7 @@ class LeavePolicyTypeRulePostgresIntegrationTest {
     @Test
     void mapsEveryColumnAfterFlywayAndHibernateValidation() {
         flyway.validate();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("7");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("8");
         LeavePolicyTypeRule rule = ruleRepository.findById(90L).orElseThrow();
 
         assertThat(rule.getRuleId()).isEqualTo(90L);

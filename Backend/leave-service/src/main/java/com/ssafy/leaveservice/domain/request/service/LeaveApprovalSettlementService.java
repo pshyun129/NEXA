@@ -42,6 +42,7 @@ public class LeaveApprovalSettlementService {
     private final AdminCancellationReservationValidator reservationValidator;
     private final LeaveAccountRepository accountRepository;
     private final LeaveLedgerRepository ledgerRepository;
+    private final AdminCancellationConsumptionValidator consumptionValidator;
 
     // 신뢰할 수 있는 내부 호출 전용. 휴가 문서의 반려 후 재기안 금지가 전제다.
     public Outcome settle(LeaveApprovalDecision decision) {
@@ -71,6 +72,14 @@ public class LeaveApprovalSettlementService {
             return Outcome.CONFLICT;
         }
         if (request.getStatus() == finalStatus) {
+            return Outcome.ALREADY_APPLIED;
+        }
+        if (finalStatus == LeaveRequestStatus.APPROVED && request.getStatus() == LeaveRequestStatus.CANCELLED
+                && request.getAdminCancelStatus() == AdminCancellationStatus.COMPLETED
+                && "ATTENDANCE".equals(request.getAdminCancelTarget())) {
+            // 과거 승인 재전달은 취소·RESTORE를 되돌리지 않는다. 완료 이력도 확인한다.
+            recoveryRepository.lockReservationRows(requestId, employeeId);
+            consumptionValidator.findRestorableConsumes(request, locks.currentTime(), true);
             return Outcome.ALREADY_APPLIED;
         }
         if (request.getStatus() != LeaveRequestStatus.SUBMITTED) {

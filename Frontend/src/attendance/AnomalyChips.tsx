@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom';
 import { Button } from 'antd';
-import { useDaily, type AnomalyType, type WorkTime } from '@/api/attendance';
+import { useDaily, type AnomalyType, type DayWorkTime } from '@/api/attendance';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { formatDateShort, formatDuration, formatDurationShort, nowKst } from '@/format';
 import { anomalyHref, overtimeHref } from './requests/links';
 import s from './attendance.module.css';
 
-interface Day { workDate: string; clockOut: string | null; workTime: WorkTime; anomalies: AnomalyType[] }
+interface Day { workDate: string; clockOut: string | null; workTime: DayWorkTime; anomalies: AnomalyType[] }
 
 const CTA: Partial<Record<AnomalyType, string>> = {
   LATE: '수정 신청', EARLY_LEAVE: '수정 신청', MISSING_CLOCK: '수정 신청', UNAPPROVED_OT: '초과근무 신청',

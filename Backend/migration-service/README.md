@@ -58,7 +58,8 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
   - `G3 2호봉`·`G3-2`는 이름 G3 + 호봉 2. 호봉 열이 따로 있으면 합친다 (`2급` + 27 → `2급 27호봉`)
   - 직급 열이 없고 직위가 있으면 직위를 직급으로 쓴다 (`GRADE_FROM_POSITION`, 필수 열 누락으로 막지 않음)
   - 호봉을 모르면 그 직급의 알려진 호봉(대상 + 같은 파일)이 없을 때 1호봉, 하나면 그 호봉 (`GRADE_STEP_DEFAULTED`).
-    여럿이면 하나로 못 고르므로 적재를 막는다 (`LOAD_009`, `GET /{id}/references`에서 `AMBIGUOUS`)
+    여럿이면 하나로 못 고르므로 적재를 막는다 (`LOAD_009`, `GET /{id}/references`에서 `AMBIGUOUS`, 미리보기 `ambiguousReferences` > 0 이면 `loadable=false`).
+    기준정보 확인은 적재할 사원 파일만 본다 (같은 작업에 사원 파일을 다시 올렸으면 가장 최근 파일)
 - 되돌리기는 사원 → 조직 → 기준정보 순. 사원 파일 하나에서 묶음이 둘(기준정보·사원) 나오고 대사도 묶음마다 한 줄
 
 지난 급여(`PAY_RESULT_HISTORY`, 급여대장 한 행 = 한 사람의 한 달)는 사원 다음에 payroll로 넣는다.
@@ -74,17 +75,18 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | POST | `/` | 작업 생성 |
+| GET | `/?page=&size=` | 작업 목록 (최근 만든 것부터, 파일 수·적재된 묶음 수) |
 | GET | `/{id}` | 작업 상세 (파일, 적재 묶음) |
 | POST | `/{id}/files?entity=&sheet=` | 업로드 → 읽기·매핑 추천·검증. `sheet` 없으면 entity 필드와 가장 잘 맞는 시트 |
 | GET | `/{id}/files/{fileId}` | 파일 진단, 매핑, 오류 건수 |
 | GET | `/{id}/files/{fileId}/formulas` | 엑셀 수식에서 뽑은 열별 규칙, 규칙에서 벗어난 행, 같은 양식 다른 시트와 비교 |
 | GET | `/{id}/files/{fileId}/rules/summary?refresh=` | 수식 규칙을 사람 말로 정리 (LLM, 열 이름·대표 수식·예외 개수만 보냄, 셀 값 없음). 저장해 두고 `refresh=true`일 때만 다시 만듦 |
 | PUT | `/{id}/files/{fileId}/mappings` | 매핑 확정 → 재검증 |
-| PATCH | `/{id}/files/{fileId}/rows/{rowNo}` | 행 직접 수정 → 재검증 |
+| PATCH | `/{id}/files/{fileId}/rows/{rowNo}` | 행 직접 수정 → 재검증. 날짜·숫자·이메일·허용값·길이 형식이 틀린 값은 저장하지 않고 400 |
 | GET | `/{id}/issues` | 오류: 심각도별 건수, 원인별 묶음, 행 단위 목록 |
-| POST | `/{id}/fixes` | 자동 정리 일괄 적용 |
+| POST | `/{id}/fixes` | 자동 정리 일괄 적용. `issueTotals`(작업 전체) + `fileTotals`(fileId를 줬을 때 그 파일) |
 | GET | `/{id}/references` | 사원 파일에서 뽑은 기준정보와 대상 비교: `NEW`(새로 만듦) / `EXISTS`(있는 값 씀) / `AMBIGUOUS`(적재 막힘) |
-| POST | `/{id}/loads?dryRun=` | 적재 / 미리보기 (차단·자동정리 0건일 때만). 미리보기에 기준정보 묶음도 나옴 |
+| POST | `/{id}/loads?dryRun=` | 적재 / 미리보기 (차단·자동정리·고를 수 없는 기준정보 0건일 때만). 미리보기에 기준정보 묶음도 나옴. fileIds가 없으면 조직·사원은 가장 최근 파일만, 지난 급여는 적재 안 된 파일 모두 |
 | DELETE | `/{id}/batches/{batchId}` | 묶음 되돌리기 |
 | GET | `/{id}/reconciliation` | 대사 |
 
@@ -130,7 +132,7 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 - 직원명부 날짜 대조 (경고): 다른 파일의 입사일 ≠ 명부 입사일 `ROSTER_HIRE_DATE_MISMATCH`, 4대보험 취득일 ≠ 입사일 `INSURANCE_ACQ_DATE_MISMATCH`(보험별 열은 한 건으로),
   상실일 ≠ 퇴사일 다음 날·퇴사자인데 상실일 없음 `INSURANCE_LOSS_DATE_MISMATCH`. 명부에 사번이 중복이거나 퇴사일 < 입사일(명부 오류)이면 그 날짜는 쓰지 않고,
   명부에 퇴사일 열이 없으면 상실일은 보지 않음
-- 코드값 오타: 직위·직급 등에서 드문 값이 흔한 값과 한글 자모 하나만 다르면 `CODE_TYPO_SUSPECTED` + 제안값
+- 코드값 오타: 직위·직급 등에서 드문 값이 흔한 값과 한글 자모 하나만 다르면 `CODE_TYPO_SUSPECTED` + 제안값 (숫자만 다른 값 — G1 1호봉 ↔ G5 1호봉, 영업1팀 ↔ 영업2팀 — 은 다른 코드로 본다)
 - 부양가족 (경고): 기본공제 표시된 자녀 나이 > 20·부모 나이 < 60 `DEPENDENT_AGE_RULE`, 원천징수비율이 80·100·120%가 아님 `WITHHOLDING_RATIO_INVALID`,
   공제가족수가 같은 작업의 가장 늦은 달 급여 시트(이름에 연월이 있는 파일)의 공제가족수와 다름 `FAMILY_COUNT_MISMATCH`.
   가족수 대조는 이름에 연월이 없는 파일(부양가족 집계) 쪽에만 내고, 급여 시트를 나중에 올리면 그 파일을 다시 검증
@@ -146,6 +148,8 @@ payroll-service(`/internal/v1/pay/migration`)의 실제 이관 API와는 시연 
 - 조직 부서유형·부서장 (user-service 부서 유형·부서장 지정 규칙과 같게): 최상위만 회사, 하위가 상위보다 높은 단계 `DEPT_TYPE_ORDER`.
   부서장 사번을 같은 작업의 직원명부와 대조해 명부에 없음·재직 아님·그 부서나 하위 부서 소속 아님을 경고. 부서장이 비어 있으면 결재선 자동 결정이 안 되므로
   user-service V4와 같은 규칙(부서 유형에 맞는 직책 대표이사·본부장·팀장인 그 부서 재직자가 한 명)으로 사번을 제안하고, 못 정하면 공석 경고. 직원명부를 나중에 올리면 조직 파일을 다시 검증
+- 사원 부서 (적재 불가): 부서 값이 같은 작업의 가장 최근 조직 파일 부서코드·부서명에 없으면 `DEPT_NOT_IN_ORG`. 조직 파일이 없으면 파일 단위 경고 `ORG_FILE_MISSING`,
+  조직 파일을 나중에 올리면 사원 파일을 다시 검증. 회사 전체를 옮기는 이관이라 대상에만 있는 부서도 조직 파일에 넣어야 한다
 - `REFERENCE` entity: 적재하지 않는 참고 자료(근태기록·발령대장 등)를 올려 위 검사·규칙 추출만 한다
 
 ## 이슈 코드
@@ -193,6 +197,8 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다 (허용 값�
 | `DATE_ORDER` | 적재 불가 / 확인 필요 | 퇴사일 < 입사일(적재 불가), 인정입사일 > 입사일(확인 필요) |
 | `SELF_PARENT` | 적재 불가 | 부서의 상위부서가 자기 자신 |
 | `PARENT_NOT_IN_FILE` | 확인 필요 | 상위부서 코드가 조직 파일에 없음 |
+| `DEPT_NOT_IN_ORG` | 적재 불가 | 사원의 부서가 조직 파일(부서코드·부서명)에 없음 |
+| `ORG_FILE_MISSING` | 확인 필요 | 조직 파일이 없거나 부서코드·부서명이 연결되지 않아 사원 부서를 확인하지 못함 (파일 단위) |
 | **직원명부 대조** | | |
 | `EMP_NOT_IN_ROSTER` | 확인 필요 · 적재 불가 | 사번이 직원명부에 없음 (적재하는 파일이면 적재 불가) |
 | `EMP_NAME_MISMATCH` | 확인 필요 | 사번은 있는데 이름이 다름 |
@@ -203,7 +209,7 @@ AI(LLM)가 관여하는 코드는 `ENUM_VALUE_SUGGESTED` 하나다 (허용 값�
 | `INSURANCE_LOSS_DATE_MISMATCH` | 확인 필요 | 4대보험 상실일 ≠ 퇴사일 다음 날, 또는 퇴사자인데 상실일 없음 |
 | `PAID_OUTSIDE_EMPLOYMENT` | 확인 필요 | 재직 기간 밖 달에 급여가 있음 |
 | `GRADE_FROM_POSITION` | 확인 필요 | 직급 열이 없어 직위를 직급으로 씀 (파일 단위) |
-| `GRADE_STEP_DEFAULTED` | 확인 필요 | 호봉이 없는 직급이 있음. NEXA에 없으면 1호봉, 하나뿐이면 그 호봉으로 넣음 (파일 단위) |
+| `GRADE_STEP_DEFAULTED` | 확인 필요 | 호봉이 없는 직급이 있음. NEXA에 없으면 1호봉, 하나뿐이면 그 호봉으로 넣음. 여럿이면 기준정보 확인에서 막힘 (파일 단위) |
 | `PAY_GRADE_BASE_VARIES` | 확인 필요 | 같은 직급인데 기본급이 그 직급의 최빈값과 다름 (직급별 기본급은 최빈값으로 만들어짐) |
 | `FAMILY_COUNT_MISMATCH` | 확인 필요 | 부양가족 수가 급여의 공제가족수와 다름 |
 | `SALARY_PAYROLL_MISMATCH` | 확인 필요 | 연봉이력의 월 기본급 ≠ 급여 기본급 |

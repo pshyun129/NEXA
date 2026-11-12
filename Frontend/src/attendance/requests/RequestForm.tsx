@@ -14,7 +14,7 @@ import { Lock, X } from '@/ui/icons';
 import { formatDate, formatTime, nowKst } from '@/format';
 import { requestTypeLabel, workStatusLabel, workStatusSourceLabel } from '@/status/labels';
 import { PreviewResult, RequestError } from './PreviewResult';
-import { TimeField, emptyTime, timeFromIso, timeToIso, type TimeVal } from './TimeField';
+import { TimeField, dateParam, emptyTime, timeFromIso, timeToIso, type TimeVal } from './TimeField';
 import { REQUESTS_PATH, requestHref } from './links';
 import s from './requests.module.css';
 
@@ -186,17 +186,21 @@ export function RequestForm() {
   const initType = (TYPES as string[]).includes(params.get('type') ?? '') ? (params.get('type') as AttendanceRequestType) : 'TIME_FIX';
 
   const [type, setType] = useState<AttendanceRequestType>(initType);
-  const [date, setDate] = useState<string | null>(params.get('date') ?? (initType === 'HOLIDAY_SUBST' ? null : today()));
-  const [subst, setSubst] = useState<string | null>(params.get('subst'));
+  const [date, setDate] = useState<string | null>(dateParam(params.get('date')) ?? (initType === 'HOLIDAY_SUBST' ? null : today()));
+  const [subst, setSubst] = useState<string | null>(dateParam(params.get('subst')));
   const [fix, setFix] = useState<FixRow[]>([]);
   const [ot, setOt] = useState<OtRow[]>(() => {
-    const d = params.get('date');
-    const st = params.get('start');
-    const en = params.get('end');
-    return [{ key: nextKey(), start: d ? timeFromIso(d, st) : emptyTime, end: d ? timeFromIso(d, en) : emptyTime }];
+    const d = dateParam(params.get('date'));
+    const starts = params.getAll('start');
+    const ends = params.getAll('end');
+    // 미승인 구간이 여러 개면 구간마다 한 행(start·end는 같은 순서로 짝지음)
+    if (d && starts.length > 0) {
+      return starts.map((st, i) => ({ key: nextKey(), start: timeFromIso(d, st), end: timeFromIso(d, ends[i]) }));
+    }
+    return [{ key: nextKey(), start: emptyTime, end: emptyTime }];
   });
   const [reason, setReason] = useState('');
-  const fillClock = params.get('fill') === 'clock' && date === params.get('date');
+  const fillClock = params.get('fill') === 'clock' && date === dateParam(params.get('date'));
 
   const preview = usePreviewRequest();
   const submit = useSubmitRequest();

@@ -79,7 +79,7 @@ function ValueCell({ r, migrationId, fileId, editing, onEdit, onClose }: {
       if (same.length) { setLeft(same.map((i) => i.message).join(' / ')); return; }
       onClose();
       notify.success(`${r.rowNo}행 ${r.sourceColumn}을(를) 고쳤습니다`,
-        `남은 이슈 적재 불가 ${res.issueTotals.BLOCK} · 확인 필요 ${res.issueTotals.WARN} · 자동 정리 ${res.issueTotals.FIX}`);
+        `이 파일 남은 이슈 적재 불가 ${res.issueTotals.BLOCK} · 확인 필요 ${res.issueTotals.WARN} · 자동 정리 ${res.issueTotals.FIX}`);
     },
     onError: (e) => notify.error(e, '행을 고치지 못했습니다'),
   });
@@ -108,8 +108,12 @@ export function IssuesPanel({ migrationId, fileId, rows }: { migrationId: number
 
   const apply = (scope: { fileId: number; code?: string; field?: string | null }, label: string) =>
     fix.mutate(scope, {
-      onSuccess: (res) => notify.success(`${label}: ${formatNumber(res.applied)}칸을 고쳤습니다`,
-        `남은 이슈 적재 불가 ${res.issueTotals.BLOCK} · 확인 필요 ${res.issueTotals.WARN} · 자동 정리 ${res.issueTotals.FIX}`),
+      // 화면 상단 합계처럼 이 파일 기준으로 보여 준다
+      onSuccess: (res) => {
+        const t = res.fileTotals ?? res.issueTotals;
+        notify.success(`${label}: ${formatNumber(res.applied)}칸을 고쳤습니다`,
+          `이 파일 남은 이슈 적재 불가 ${t.BLOCK} · 확인 필요 ${t.WARN} · 자동 정리 ${t.FIX}`);
+      },
       onError: (e) => notify.error(e, '자동 정리를 적용하지 못했습니다'),
     });
 

@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
-import { ApiError } from './ApiError';
+import { ApiError, isApiError } from './ApiError';
 import type { ApiEnvelope } from './types';
 
 // 같은 origin(/api → Vite proxy / nginx). Authorization 헤더는 붙이지 않는다(gateway가 쿠키로 처리).
@@ -9,10 +9,12 @@ type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 const AUTH_PATH = '/api/v1/auth/';
 let reissuePromise: Promise<void> | null = null;
-let onSessionExpired: (() => void) | null = null;
+/** ended: 쓰던 세션이 서버에서 끊김(다른 기기 로그인·퇴직 등) / no-session: refresh 쿠키 자체가 없음 */
+export type SessionEndReason = 'ended' | 'no-session';
+let onSessionExpired: ((reason: SessionEndReason) => void) | null = null;
 
-/** reissue 실패 시 호출된다(세션 정리 + 로그인 이동). 앱 시작 시 한 번 등록한다. */
-export function setSessionExpiredHandler(fn: () => void) {
+/** reissue가 401로 실패하면 호출된다(세션 정리 + 로그인 이동). 앱 시작 시 한 번 등록한다. */
+export function setSessionExpiredHandler(fn: (reason: SessionEndReason) => void) {
   onSessionExpired = fn;
 }
 
@@ -60,8 +62,13 @@ http.interceptors.response.use(
       config._retry = true;
       try {
         await reissueOnce();
-      } catch {
-        onSessionExpired?.();
+      } catch (e) {
+        // reissue 요청도 이 인터셉터를 지나므로 ApiError로 온다(/auth/는 reissue 대상 아님).
+        // 401만 세션이 끝난 것이다. 5xx·네트워크는 user-service 장애라 로그아웃하지 않고
+        // 원 요청의 오류로 돌려 화면이 ErrorPanel·[다시 시도]를 보이게 한다(QA CM-B1/OG-18)
+        if (!isApiError(e) || e.status !== 401) throw e;
+        // AUTH_007: refresh 쿠키 없음(첫 방문·로그아웃). 그 밖(AUTH_008 다른 기기·회전, AUTH_006 퇴직)은 쓰던 세션이 끊긴 것
+        onSessionExpired?.(e.code === 'AUTH_007' ? 'no-session' : 'ended');
         throw new ApiError(401, 'SESSION_EXPIRED', '세션이 만료되었습니다(다른 기기 로그인 포함). 다시 로그인해 주세요.', null);
       }
       return http(config);

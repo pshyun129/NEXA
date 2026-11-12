@@ -2,6 +2,9 @@ package com.ssafy.attendanceservice.domain.attendance.service;
 
 import com.ssafy.attendanceservice.domain.attendance.dto.ApprovedLeave;
 
+import java.time.LocalDate;
+import java.util.List;
+
 public interface LeaveService {
 
     /**
@@ -11,6 +14,9 @@ public interface LeaveService {
      */
     void applyApprovedLeave(ApprovedLeave leave);
 
-    /** 휴가 취소. 저장한 휴가를 지우고, 근태 기록이 있는 날은 다시 판정한다. 없는 휴가면 무시 */
-    void cancelLeave(Long leaveReqId);
+    /**
+     * 휴가 취소(결재 회수, 승인 후 관리자 취소). 저장한 휴가를 지우고, 근태 기록이 있는 날은 다시 판정한다.
+     * 지운 날짜를 돌려준다. 없는 휴가(이미 취소했거나 저장한 적 없음)면 빈 목록 (여러 번 불러도 결과가 같다)
+     */
+    List<LocalDate> cancelLeave(Long leaveReqId);
 }

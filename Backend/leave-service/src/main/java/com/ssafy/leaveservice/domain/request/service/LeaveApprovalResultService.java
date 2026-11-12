@@ -59,7 +59,25 @@ public class LeaveApprovalResultService {
 
         // 최초 호출 직전 마커와 시도 횟수를 별도 트랜잭션으로 확정
         request.startApprovalCall(submissionLockRepository.currentTime());
-        return new LeaveApprovalCallStartResult(LeaveSubmissionResult.from(request), true);
+        return new LeaveApprovalCallStartResult(LeaveSubmissionResult.from(request), true, request.getApprovalAttemptCount());
+    }
+
+    public LeaveApprovalCallStartResult startRecoveryCall(Long requestId, UUID approvalRequestId) {
+        // 직원 잠금 후 최신 상태로 한 요청만 생성 재개 권한을 얻는다.
+        LeaveRequest request = lockOwnedRequest(requestId, approvalRequestId);
+        OffsetDateTime now = submissionLockRepository.currentTime();
+        boolean unknown = request.getApprovalCreationStatus() == ApprovalCreationStatus.UNKNOWN;
+        boolean abandonedCall = request.getApprovalCreationStatus() == ApprovalCreationStatus.IN_PROGRESS
+                && request.getApprovalStatusChangedAt() != null
+                && !request.getApprovalStatusChangedAt().plusSeconds(30).isAfter(now);
+        if (request.getStatus() != LeaveRequestStatus.SUBMITTING || (!unknown && !abandonedCall)) {
+            return new LeaveApprovalCallStartResult(LeaveSubmissionResult.from(request), false);
+        }
+
+        // 30초는 호출권의 재획득 기준일 뿐, 미생성 확정이나 예약 해제 기준이 아니다.
+        // 이전 원격 호출이 살아 있어도 Approval의 동일 UUID 잠금·UNIQUE가 중복 문서를 막는다.
+        request.resumeApprovalCall(now);
+        return new LeaveApprovalCallStartResult(LeaveSubmissionResult.from(request), true, request.getApprovalAttemptCount());
     }
 
     public LeaveSubmissionResult linkCreatedDocument(Long requestId, UUID approvalRequestId, Long documentId) {
@@ -88,6 +106,20 @@ public class LeaveApprovalResultService {
     }
 
     public LeaveSubmissionResult recordUnknownAfterHttp(Long requestId, UUID approvalRequestId, String reason) {
+        return recordUnknown(requestId, approvalRequestId, reason, true);
+    }
+
+    public LeaveSubmissionResult recordUnknownAfterHttp(
+            Long requestId,
+            UUID approvalRequestId,
+            String reason,
+            Integer attemptCount
+    ) {
+        // 이전 시도의 늦은 실패가 최신 IN_PROGRESS 또는 LINKED 상태를 되돌리지 않는다.
+        LeaveRequest request = lockOwnedRequest(requestId, approvalRequestId);
+        if (attemptCount != null && !Objects.equals(request.getApprovalAttemptCount(), attemptCount)) {
+            return LeaveSubmissionResult.from(request);
+        }
         return recordUnknown(requestId, approvalRequestId, reason, true);
     }
 

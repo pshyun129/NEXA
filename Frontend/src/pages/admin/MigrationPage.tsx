@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Alert, Button, DatePicker, Input, InputNumber, Skeleton, Tabs, Upload } from 'antd';
+import { Alert, Button, DatePicker, Input, InputNumber, Skeleton, Table, Tabs, Upload } from 'antd';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  useCreateMigration, useMigration, useMigrationFile, useUploadMigrationFile,
-  type MigrationDetail, type MigrationEntity, type MigrationFileSummary,
+  useCreateMigration, useMigration, useMigrationFile, useMigrationList, useUploadMigrationFile,
+  type MigrationDetail, type MigrationEntity, type MigrationFileSummary, type MigrationListItem,
 } from '@/api/migration';
 import { Card, EmptyState, PageHeader } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
@@ -18,7 +18,40 @@ import { Reconciliation } from '@/migration/Reconciliation';
 import { ENTITY_LABEL, ENTITY_ORDER } from '@/migration/schemas';
 import s from '@/migration/migration.module.css';
 
-/* ---------- 시작: 새 작업 + ID로 열기 (작업 목록 API 없음, gaps B9) ---------- */
+const JOB_PAGE_SIZE = 10;
+
+/** 최근 작업 목록(GET /admin/migrations). 줄을 누르면 그 작업을 연다 */
+function RecentJobs() {
+  const navigate = useNavigate();
+  const [page, setPage] = useState(0);
+  const q = useMigrationList(page, JOB_PAGE_SIZE);
+  if (q.isError) return <ErrorPanel error={q.error} onRetry={() => q.refetch()} />;
+  const cols = [
+    { title: 'ID', dataIndex: 'migrationId', width: 70, render: (v: number) => <span className="nx-mono">#{v}</span> },
+    { title: '이름', dataIndex: 'name' },
+    { title: '상태', dataIndex: 'status', width: 100, render: (v: MigrationListItem['status']) => <StatusBadge domain="MigrationStatus" value={v} /> },
+    { title: '기준일', dataIndex: 'cutoverDate', width: 110, render: (v: string | null) => (v ? formatDate(v) : '—') },
+    { title: '파일', dataIndex: 'fileCount', width: 70, render: (v: number) => <span className="nx-num">{formatNumber(v)}</span> },
+    { title: '적재 묶음', dataIndex: 'loadedBatches', width: 90, render: (v: number) => <span className="nx-num">{formatNumber(v)}</span> },
+    { title: '만든 시각', dataIndex: 'createdAt', width: 150, render: (v: string) => formatDateTime(serverUtc(v), true) },
+  ];
+  return (
+    <Table<MigrationListItem>
+      size="small"
+      rowKey="migrationId"
+      loading={q.isFetching}
+      columns={cols}
+      dataSource={q.data?.content ?? []}
+      locale={{ emptyText: <EmptyState title="아직 만든 이관 작업이 없습니다" /> }}
+      onRow={(r) => ({ onClick: () => navigate(`/admin/migration/${r.migrationId}`), style: { cursor: 'pointer' } })}
+      pagination={(q.data?.totalElements ?? 0) > JOB_PAGE_SIZE
+        ? { current: page + 1, pageSize: JOB_PAGE_SIZE, total: q.data?.totalElements, showSizeChanger: false, size: 'small', onChange: (p) => setPage(p - 1) }
+        : false}
+    />
+  );
+}
+
+/* ---------- 시작: 새 작업 + 최근 작업 목록 (+ ID로 열기) ---------- */
 function Start() {
   const navigate = useNavigate();
   const notify = useNotify();
@@ -29,7 +62,7 @@ function Start() {
   const submit = () => {
     if (!name.trim()) return;
     create.mutate({ name: name.trim(), cutoverDate: cutover ?? undefined }, {
-      onSuccess: (r) => { notify.success(`이관 작업 #${r.migrationId}을 만들었습니다`, '작업 ID를 메모해 두면 나중에 다시 열 수 있습니다'); navigate(`/admin/migration/${r.migrationId}`); },
+      onSuccess: (r) => { notify.success(`이관 작업 #${r.migrationId}을 만들었습니다`, '나중에는 이 화면의 최근 작업에서 다시 열 수 있습니다'); navigate(`/admin/migration/${r.migrationId}`); },
       onError: (e) => notify.error(e, '작업을 만들지 못했습니다'),
     });
   };
@@ -50,14 +83,15 @@ function Start() {
           </div>
         </div>
       </Card>
-      <Card title="작업 ID로 열기">
+      <Card title="최근 작업">
         <div className={s.form}>
+          <RecentJobs />
           <div className={s.row}>
+            <span className={s.muted}>ID로 열기</span>
             <InputNumber min={1} placeholder="작업 ID" value={openId} onChange={(v) => setOpenId(v)} aria-label="작업 ID"
                          onPressEnter={() => openId && navigate(`/admin/migration/${openId}`)} />
             <Button disabled={!openId} onClick={() => navigate(`/admin/migration/${openId}`)}>열기</Button>
           </div>
-          <span className={s.muted}>작업 목록 API가 아직 없어 ID로 엽니다.</span>
         </div>
       </Card>
     </div>

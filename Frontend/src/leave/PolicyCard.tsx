@@ -3,7 +3,7 @@ import { isApiError } from '@/api/ApiError';
 import { useMyLeavePolicy } from '@/api/leave';
 import { Card } from '@/ui/primitives';
 import { ErrorPanel } from '@/ui/ErrorPanel';
-import { formatDate, formatDuration, formatLeaveDays, serverUtc } from '@/format';
+import { formatDate, formatDuration, formatLeaveAmount, serverUtc } from '@/format';
 import s from './leave.module.css';
 
 /** MM-DD → 1월 1일 */
@@ -29,7 +29,7 @@ export function PolicyCard() {
             <dt>계산 단위</dt><dd>{formatDuration(q.data.unitMinutes)}</dd>
             <dt>이월</dt>
             <dd>{!q.data.carryOverAllowed ? '이월하지 않음'
-              : q.data.carryOverLimitMinutes != null ? `최대 ${formatLeaveDays(q.data.carryOverLimitMinutes)}` : '제한 없음'}</dd>
+              : q.data.carryOverLimitMinutes != null ? `최대 ${formatLeaveAmount(q.data.carryOverLimitMinutes)}` : '제한 없음'}</dd>
             <dt>소멸</dt><dd>{EXPIRY[q.data.expiryRule] ?? q.data.expiryRule}</dd>
             <dt>적용 기간</dt>
             <dd className="nx-num">

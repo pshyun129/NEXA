@@ -49,11 +49,16 @@ final class CodeValueChecker {
         String jv = jamo(value);
         counts.forEach((other, m) -> {
             if (!other.equals(value) && m >= COMMON_MIN && m >= n * COMMON_RATIO && hasHangul(other)
-                    && editDistance(jv, jamo(other)) == 1) {
+                    && !sameExceptDigits(value, other) && editDistance(jv, jamo(other)) == 1) {
                 hits.add(new Suspect(value, other, m));
             }
         });
         return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();   // 후보가 여럿이면 판단하지 않음
+    }
+
+    /** 숫자만 다르면 다른 코드다 (G1 1호봉 ↔ G5 1호봉, 영업1팀 ↔ 영업2팀) */
+    private static boolean sameExceptDigits(String a, String b) {
+        return a.replaceAll("[0-9]", "#").equals(b.replaceAll("[0-9]", "#"));
     }
 
     private static boolean hasHangul(String s) {

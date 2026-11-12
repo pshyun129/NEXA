@@ -72,6 +72,12 @@ ITEMS = {
     "conv": [("삼각김밥", 1500), ("바나나우유", 1700), ("컵커피", 2500), ("도시락", 4900), ("생수 500ml", 950), ("과자", 1800)],
     "food": [("김치찌개", 9000), ("제육볶음", 10000), ("칼국수", 9500), ("순대국", 10000), ("공기밥", 1000), ("만두", 6000)],
 }
+# 품목 종류 정답 (영수증 여러 장 평가용: 인원 추정·주류 판정). 난수를 쓰지 않으므로 같은 seed면 이미지가 그대로
+ITEM_KIND = {"아메리카노(ICE)": "1인 음료", "카페라떼": "1인 음료", "바닐라라떼": "1인 음료", "콜드브루": "1인 음료",
+             "바닐라 스콘": "디저트·사이드", "치즈케이크": "디저트·사이드",
+             "김치찌개": "1인 식사", "제육볶음": "1인 식사", "칼국수": "1인 식사", "순대국": "1인 식사",
+             "공기밥": "디저트·사이드", "만두": "공용 요리", "도시락": "1인 식사", "삼각김밥": "1인 식사",
+             "바나나우유": "1인 음료", "컵커피": "1인 음료", "생수 500ml": "1인 음료"}
 DATE_FORMATS = ["%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%y-%m-%d", "%Y년 %m월 %d일"]
 TOTAL_LABELS = ["합계", "총액", "결제금액", "받을금액", "총 결제금액", "합계금액"]
 # hard 전용 재료
@@ -225,7 +231,10 @@ def make_receipt(rng: random.Random, hard: bool = False) -> tuple[list, dict, di
 
     label = {"store": store, "total": paid, "date": day.isoformat()}
     meta = {"kind": kind, "date_fmt": date_fmt, "money": money, "header": header_style,
-            "discount": int(discount), "traps": traps}
+            "discount": int(discount), "traps": traps,
+            # 영수증 여러 장 평가용 정답 (난수 추가 없음 → 같은 seed면 이전 데이터셋과 이미지·라벨 동일)
+            "pay": pay, "pay_time": hhmm, "supply": supply, "vat": vat,
+            "items": [{"name": n, "quantity": q, "amount": a, "kind": ITEM_KIND.get(n, "상품·소모품")} for n, q, a in items]}
     return rows, label, meta
 
 

@@ -4,7 +4,7 @@ import { Button, Skeleton, Table } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Link } from 'react-router-dom';
 import {
-  leaveDay, leaveKeys, useLeaveRequest, useLeaveRequestDetails, useMyLeaveRequests,
+  isLeavePending, leaveDay, leaveKeys, useLeaveRequest, useLeaveRequestDetails, useMyLeaveRequests, useLeaveTypes,
   type LeaveRequestDetail, type LeaveRequestSummary,
 } from '@/api/leave';
 import { useDocument, useDocumentAction } from '@/api/approval';
@@ -16,7 +16,7 @@ import { ConfirmAction } from '@/ui/ConfirmAction';
 import { ErrorPanel } from '@/ui/ErrorPanel';
 import { EmptyState } from '@/ui/primitives';
 import { useNotify } from '@/ui/useNotify';
-import { formatDate, formatDateShort, formatDateTime, formatLeaveDays, serverUtc } from '@/format';
+import { formatDate, formatDateShort, formatDateTime, formatLeaveAmount, serverUtc } from '@/format';
 import { leavePortionLabel } from '@/status/labels';
 import { APPLY_PATH } from './links';
 import s from './leave.module.css';
@@ -32,8 +32,11 @@ function datesText(d: LeaveRequestDetail | undefined) {
 }
 
 /** 내 휴가 신청 목록. 목록에 날짜가 없어 보이는 페이지의 상세만 읽는다(설계 9장 #11) */
-export function LeaveRequestList({ onOpen }: { onOpen: (id: number) => void }) {
+export function LeaveRequestList({ onOpen, noPolicy, canApply }: {
+  onOpen: (id: number) => void; noPolicy: boolean; canApply: boolean;
+}) {
   const q = useMyLeaveRequests();
+  const types = useLeaveTypes();
   const [page, setPage] = useState(1);
   const rows = q.data ?? [];
   const visible = rows.slice((page - 1) * PAGE, page * PAGE);
@@ -44,7 +47,7 @@ export function LeaveRequestList({ onOpen }: { onOpen: (id: number) => void }) {
     { title: '유형', dataIndex: 'leaveTypeName', width: 110 },
     { title: '날짜', key: 'dates', render: (_, r) => <span className={`${s.dates} nx-num`}>{datesText(detailOf.get(r.requestId)) ?? '…'}</span> },
     { title: '차감', dataIndex: 'totalDeductMinutes', width: 90, align: 'right',
-      render: (v: number) => <span className="nx-num">{formatLeaveDays(v)}</span> },
+      render: (v: number) => <span className="nx-num">{formatLeaveAmount(v)}</span> },
     { title: '상태', dataIndex: 'status', width: 130, render: (v: string) => <StatusBadge domain="LeaveRequestStatus" value={v} /> },
     { title: '신청', key: 'at', width: 130,
       render: (_, r) => <span className="nx-num">{formatDateTime(serverUtc(r.submittedAt ?? r.createdAt), true)}</span> },
@@ -61,8 +64,12 @@ export function LeaveRequestList({ onOpen }: { onOpen: (id: number) => void }) {
       pagination={rows.length > PAGE ? { current: page, pageSize: PAGE, onChange: setPage, showSizeChanger: false, size: 'small' } : false}
       locale={{
         emptyText: (
-          <EmptyState title="휴가 신청이 없습니다" description="달력에서 날짜를 골라 신청할 수 있습니다"
-                      action={<Link to={APPLY_PATH}><Button>휴가 신청</Button></Link>} />
+          types.isError && !noPolicy ? <ErrorPanel error={types.error} onRetry={() => types.refetch()} /> :
+          <EmptyState title="휴가 신청이 없습니다"
+                      description={noPolicy ? '휴가 정책이 배정되지 않았습니다. 인사 담당자에게 문의해 주세요'
+                        : types.isPending ? '신청 가능한 휴가 유형을 확인하고 있습니다'
+                        : canApply ? '달력에서 날짜를 골라 신청할 수 있습니다' : '지금 신청할 수 있는 휴가 유형이 없습니다'}
+                      action={canApply ? <Link to={APPLY_PATH}><Button>휴가 신청</Button></Link> : undefined} />
         ),
       }}
       onRow={(r) => ({
@@ -82,7 +89,7 @@ export function LeaveRequestList({ onOpen }: { onOpen: (id: number) => void }) {
 function ApprovalPart({ req, onSynced, checkedAt }: { req: LeaveRequestDetail; onSynced: () => void; checkedAt: number }) {
   const meId = useMyId();
   const notify = useNotify();
-  const doc = useDocument(req.approvalDocId);
+  const doc = useDocument(req.approvalDocId, isLeavePending(req.status));
   const action = useDocumentAction(req.approvalDocId ?? 0);
   if (req.approvalDocId == null) return null;
   const d = doc.data;
@@ -93,7 +100,7 @@ function ApprovalPart({ req, onSynced, checkedAt }: { req: LeaveRequestDetail; o
     <div className={s.foot}>
       {d && <span className="nx-mono">{d.docNo}</span>}
       {d && <StatusBadge domain="DocumentStatus" value={d.status} />}
-      <AsyncSync waiting={waiting} onCheck={onSynced} checkedAt={checkedAt} delayedHref={href} />
+      <AsyncSync waiting={waiting} onCheck={onSynced} checkedAt={checkedAt} delayedHref={href} autoCheck={false} />
       <span className={s.spacer} />
       <Link to={href}><Button>결재 문서 보기</Button></Link>
       {p?.canCancel && req.status === 'SUBMITTED' && (
@@ -107,7 +114,7 @@ function ApprovalPart({ req, onSynced, checkedAt }: { req: LeaveRequestDetail; o
           )}
           trigger={(open) => <Button onClick={open} disabled={action.isPending}>회수</Button>}
         >
-          아직 아무도 결재하지 않았습니다. 회수하면 결재 문서가 내려가고 예약된 {formatLeaveDays(req.totalDeductMinutes)}이 돌아옵니다.
+          아직 아무도 결재하지 않았습니다. 회수하면 결재 문서가 내려가고 예약된 {formatLeaveAmount(req.totalDeductMinutes)}이 돌아옵니다.
         </ConfirmAction>
       )}
     </div>
@@ -130,9 +137,10 @@ export function LeaveRequestView({ id }: { id: number }) {
         <strong>{r.leaveTypeName}</strong>
         <StatusBadge domain="LeaveRequestStatus" value={r.status} />
         <span className={`${s.muted} nx-num`}>#{r.requestId}</span>
+        <Button size="small" loading={q.isFetching} onClick={() => { q.refetch(); sync(); }}>새로 확인</Button>
       </div>
       <dl className={s.kv}>
-        <dt>차감</dt><dd className="nx-num">{formatLeaveDays(r.totalDeductMinutes)}</dd>
+        <dt>차감</dt><dd className="nx-num">{formatLeaveAmount(r.totalDeductMinutes)}</dd>
         <dt>신청</dt><dd className="nx-num">{formatDateTime(serverUtc(r.submittedAt ?? r.createdAt))}</dd>
         <dt>사유</dt><dd>{r.reason || <span className={s.muted}>없음</span>}</dd>
         {r.cancelledAt && <><dt>취소</dt><dd className="nx-num">{formatDateTime(serverUtc(r.cancelledAt))} {r.cancelReason}</dd></>}
@@ -144,7 +152,7 @@ export function LeaveRequestView({ id }: { id: number }) {
             <tr key={d.requestDateId}>
               <td className="nx-num">{formatDate(leaveDay(d.leaveDate))}</td>
               <td>{leavePortionLabel(d.portion)}</td>
-              <td className="nx-num" style={{ textAlign: 'right' }}>{formatLeaveDays(d.deductMinutes)}</td>
+              <td className="nx-num" style={{ textAlign: 'right' }}>{formatLeaveAmount(d.deductMinutes)}</td>
             </tr>
           ))}
         </tbody>

@@ -71,6 +71,53 @@ class LeaveSubmissionOrchestrationServiceTest {
     }
 
     @Test
+    void lookup404ResumesOnlyAfterClaimAndUsesStoredBody() {
+        when(t2.startCall(7L, traceId)).thenReturn(new LeaveApprovalCallStartResult(unknown, false));
+        when(client.supportsRecovery()).thenReturn(true);
+        when(client.supportsIdempotentResume()).thenReturn(true);
+        when(client.recover(unknown)).thenReturn(new ApprovalCreationResult(traceId,
+                ApprovalCreationResult.Outcome.LOOKUP_NOT_FOUND, null));
+        when(t2.startRecoveryCall(7L, traceId)).thenReturn(new LeaveApprovalCallStartResult(unknown, true, 2));
+        when(client.resume(any())).thenReturn(new ApprovalCreationResult(traceId,
+                ApprovalCreationResult.Outcome.SUBMITTED_CONFIRMED, 901L));
+
+        service.submit("key", input);
+
+        verify(client).resume(argThat(command -> command.approvalRequestId().equals(traceId)
+                && command.requestId().equals(7L) && command.reason().equals("reason")));
+        verify(client, never()).create(any());
+        verify(t2).linkCreatedDocument(7L, traceId, 901L);
+        verify(t2, never()).confirmNotCreated(any(), any(), any());
+    }
+
+    @Test
+    void concurrentRecoveryWithoutClaimNeverSendsPost() {
+        when(t2.startCall(7L, traceId)).thenReturn(new LeaveApprovalCallStartResult(unknown, false));
+        when(client.supportsRecovery()).thenReturn(true);
+        when(client.supportsIdempotentResume()).thenReturn(true);
+        when(client.recover(unknown)).thenReturn(new ApprovalCreationResult(traceId,
+                ApprovalCreationResult.Outcome.LOOKUP_NOT_FOUND, null));
+        when(t2.startRecoveryCall(7L, traceId)).thenReturn(new LeaveApprovalCallStartResult(unknown, false));
+
+        assertThat(service.submit("key", input)).isSameAs(unknown);
+        verify(client, never()).resume(any());
+        verifyNoInteractions(queries);
+    }
+
+    @Test
+    void lookupTimeoutOrPermissionFailureDoesNotResumeOrRelease() {
+        when(t2.startCall(7L, traceId)).thenReturn(new LeaveApprovalCallStartResult(unknown, false));
+        when(client.supportsRecovery()).thenReturn(true);
+        when(client.recover(unknown)).thenReturn(new ApprovalCreationResult(traceId,
+                ApprovalCreationResult.Outcome.UNKNOWN, null));
+
+        assertThat(service.submit("key", input)).isSameAs(unknown);
+        verify(t2, never()).startRecoveryCall(any(), any());
+        verify(t2, never()).confirmNotCreated(any(), any(), any());
+        verify(client, never()).resume(any());
+    }
+
+    @Test
     void enabledButUnavailableClientStillPreventsT1() {
         when(client.isAvailable()).thenReturn(false);
         assertCode(()->service.submit("key",input),ErrorCode.APPROVAL_INTEGRATION_UNAVAILABLE);

@@ -11,11 +11,17 @@ spring:
       username: config-client
       password: ${CONFIG_SERVER_PASSWORD}
 
+    gateway:
+      server:
+        webflux:
+          metrics:
+            enabled: true
+
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       show-details: never

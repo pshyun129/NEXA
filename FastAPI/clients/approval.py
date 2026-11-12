@@ -33,6 +33,11 @@ def create_document(
     return call(SERVICE, settings.approval_service_url, "POST", DOCUMENTS, token=token, json=body)
 
 
+def get_document(document_id: int, token: str | None) -> dict:
+    """문서 상세. 결재 서비스가 볼 권한(기안자·결재선)을 검사함 → 권한이 없으면 오류"""
+    return call(SERVICE, settings.approval_service_url, "GET", f"{DOCUMENTS}/{document_id}", token=token)
+
+
 def get_by_request_key(request_key: UUID, token: str | None) -> dict:
     """요청 키로 문서 조회. status: INPROGRESS / APPROVED / REJECTED / CANCEL"""
     return call(SERVICE, settings.approval_service_url, "GET", f"{DOCUMENTS}/by-request/{request_key}", token=token)

@@ -71,6 +71,13 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.11.1
+    restart: unless-stopped
+    command:
+      - --collector.disable-defaults
+      - --collector.cpu
+
 volumes:
   prometheus-data:
   grafana-data:

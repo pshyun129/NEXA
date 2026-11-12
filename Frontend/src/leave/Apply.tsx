@@ -13,7 +13,7 @@ import { Icon } from '@/ui/Icon';
 import { ChevronLeft, ChevronRight, X } from '@/ui/icons';
 import { StatusBadge } from '@/ui/StatusBadge';
 import { useNotify } from '@/ui/useNotify';
-import { formatDate, formatLeaveDays, kst, nowKst } from '@/format';
+import { formatDate, formatLeaveAmount, kst, nowKst } from '@/format';
 import { leavePortionLabel } from '@/status/labels';
 import { NoPolicyNotice } from './Balances';
 import { LEAVE_PATH, leaveRequestHref } from './links';
@@ -157,29 +157,33 @@ export function LeaveApply() {
   // 화면에 들어올 때 한 번 만들고, 같은 신청을 다시 보낼 때 그대로 쓴다(설계 7장 멱등)
   const [key, setKey] = useState(() => crypto.randomUUID());
   const submit = useSubmitLeave();
+  const pending = submit.data?.status === 'SUBMITTING';
+  const locked = pending || submit.isPending;
 
   const type = types.data?.find((t) => t.leaveTypeId === typeId) ?? types.data?.[0] ?? null;
   const portions = PORTIONS[type?.allowedUnits ?? 'MIXED'];
 
   const dates = useMemo(() => [...selected.entries()].sort(([a], [b]) => a.localeCompare(b))
     .map(([leaveDate, portion]) => ({ leaveDate, portion })), [selected]);
-  const input: LeaveInput | null = type && dates.length > 0 ? { leaveTypeId: type.leaveTypeId, reason: null, dates } : null;
+  // 입력이 실제로 바뀔 때만 debounce와 Query가 새 입력을 받는다.
+  const leaveTypeId = type?.leaveTypeId;
+  const input = useMemo<LeaveInput | null>(() => leaveTypeId != null && dates.length > 0
+    ? { leaveTypeId, reason: null, dates } : null, [leaveTypeId, dates]);
   const debounced = useDebounced(input, DEBOUNCE_MS);
-  const preview = useLeavePreview(debounced);
-  const settled = JSON.stringify(debounced) === JSON.stringify(input);
-  const pv = settled && !preview.isFetching ? preview.data : undefined;
+  const preview = useLeavePreview(debounced, !locked && debounced === input);
+  const settled = debounced === input;
+  const pv = input && settled && !locked && !preview.isFetching && !preview.isPlaceholderData ? preview.data : undefined;
 
   const errors = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of pv?.reasons ?? []) if (r.date) m.set(r.date, r.message);
     return m;
   }, [pv]);
-  const deductOf = new Map((pv?.dates ?? []).map((d) => [d.leaveDate, d.balanceDeductionMinutes]));
-  const general = (pv?.reasons ?? []).filter((r) => !r.date);
-
-  // 제출 결과가 처리 확인 중이면 입력을 잠근다(같은 키로 다른 내용을 보내면 서버가 거부한다)
-  const pending = submit.data?.status === 'SUBMITTING';
-  const locked = pending || submit.isPending;
+  const deductOf = useMemo(() => new Map((pv?.dates ?? []).map((d) => [d.leaveDate, d.balanceDeductionMinutes])), [pv]);
+  // 발생분 유효기간에 따른 날짜별 부족 사유는 유지하고 상단에도 한 번 안내한다.
+  const general = useMemo(() => [...new Map((pv?.reasons ?? [])
+    .filter((r) => !r.date || r.code === 'INSUFFICIENT_BALANCE')
+    .map((r) => [r.code, r])).values()], [pv]);
 
   const toggle = (d: string) => {
     if (locked) return;
@@ -252,7 +256,8 @@ export function LeaveApply() {
         <div className={s.stack}>
           {dates.length === 0 && <div className={s.muted}>왼쪽 달력에서 날짜를 고르면 날짜별 차감과 신청 후 잔여를 바로 보여 줍니다.</div>}
 
-          {preview.isError && settled && (
+          {dates.length >= MAX_DATES && <Alert type="info" showIcon message="한 번에 최대 366개 날짜를 선택할 수 있습니다. 더 신청하려면 나누어 신청해 주세요." />}
+          {preview.isError && settled && input && !locked && (
             <Alert type="error" showIcon message={isApiError(preview.error) ? preview.error.message : '확인하지 못했습니다'}
                    action={<Button size="small" onClick={() => preview.refetch()}>다시 확인</Button>} />
           )}
@@ -276,7 +281,8 @@ export function LeaveApply() {
                     aria-label={`${formatDate(leaveDate)} 단위`}
                   />
                   <span className={`${s.rowDeduct} nx-num`}>
-                    {deductOf.has(leaveDate) ? `-${formatLeaveDays(deductOf.get(leaveDate))}` : ''}
+                    {deductOf.has(leaveDate) ? deductOf.get(leaveDate) === 0
+                      ? '차감 없음' : formatLeaveAmount(-deductOf.get(leaveDate)!) : ''}
                   </span>
                   <Button size="small" type="text" icon={<Icon as={X} />} aria-label={`${formatDate(leaveDate)} 빼기`}
                           disabled={locked} onClick={() => toggle(leaveDate)} />
@@ -286,10 +292,10 @@ export function LeaveApply() {
             </div>
           )}
 
-          {pv && (
+          {pv?.requestable && (
             <div className={s.total}>
-              차감 합계 <b className="nx-num">{formatLeaveDays(pv.balanceDeductionMinutes)}</b>
-              {remainAfter != null && <>→ 신청 후 잔여 <b className="nx-num">{formatLeaveDays(remainAfter)}</b></>}
+              차감 합계 <b className="nx-num">{formatLeaveAmount(pv.balanceDeductionMinutes)}</b>
+              {remainAfter != null && <>→ 신청 후 잔여 <b className="nx-num">{formatLeaveAmount(remainAfter)}</b></>}
               {!pv.balanceRequired && <span className={s.muted}>(잔액을 차감하지 않는 휴가)</span>}
             </div>
           )}

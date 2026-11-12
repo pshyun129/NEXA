@@ -81,6 +81,22 @@ export function useCreateMigration() {
   });
 }
 
+/** 작업 목록 한 줄. fileCount: 올린 파일 수, loadedBatches: 적재된 묶음 수 */
+export interface MigrationListItem {
+  migrationId: number; name: string; status: MigrationStatus; cutoverDate: string | null; createdAt: string;
+  fileCount: number; loadedBatches: number;
+}
+export interface MigrationList { content: MigrationListItem[]; page: number; size: number; totalElements: number }
+
+/** 최근 만든 작업부터 */
+export function useMigrationList(page: number, size: number) {
+  return useQuery({
+    queryKey: ['migrations', 'list', page, size] as const,
+    queryFn: () => api.get<MigrationList>(BASE, { params: { page, size } }),
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useMigration(id: number) {
   return useQuery({ queryKey: migKeys.detail(id), queryFn: () => api.get<MigrationDetail>(`${BASE}/${id}`), placeholderData: undefined });
 }
@@ -132,12 +148,13 @@ export function useSaveMapping(id: number, fileId: number) {
   });
 }
 
-/** 자동 정리 적용. 빈 본문이면 작업 전체, fileId·code·field로 범위를 좁힌다. applied는 바뀐 셀 수 */
+/** 자동 정리 적용. 빈 본문이면 작업 전체, fileId·code·field로 범위를 좁힌다. applied는 바뀐 셀 수.
+ * issueTotals는 작업 전체, fileTotals는 fileId를 줬을 때 그 파일의 남은 건수 */
 export function useApplyFixes(id: number) {
   const refresh = useRefresh(id);
   return useMutation({
     mutationFn: (scope: { fileId?: number; code?: string; field?: string | null }) =>
-      api.post<{ applied: number; issueTotals: IssueTotals }>(`${BASE}/${id}/fixes`, scope, LONG),
+      api.post<{ applied: number; issueTotals: IssueTotals; fileTotals: IssueTotals | null }>(`${BASE}/${id}/fixes`, scope, LONG),
     onSettled: refresh,
   });
 }
@@ -158,9 +175,10 @@ export function useUpdateRow(id: number, fileId: number) {
 
 /* ---------- ④ 미리보기 · ⑤ 적재 · ⑥ 대사 ---------- */
 
-/** 미리보기(dry run). loadable = 적재 불가(BLOCK) 0건 + 자동 정리(FIX) 0건. sample은 정리된 값 예시 몇 행(필드명 키) */
+/** 미리보기(dry run). loadable = 적재 불가(BLOCK) 0건 + 자동 정리(FIX) 0건 + 고를 수 없는 기준정보 0건.
+ * ambiguousReferences는 대상 서비스가 꺼져 있으면 0(적재 때 다시 확인). sample은 정리된 값 예시 몇 행(필드명 키) */
 export interface LoadPreview {
-  loadable: boolean; blockIssues: number; fixIssues: number;
+  loadable: boolean; blockIssues: number; fixIssues: number; ambiguousReferences: number;
   files: { fileId: number; entity: string; rows: number; sample: Record<string, unknown>[] }[];
 }
 /** 적재 결과. 대상 서비스가 실패해도 HTTP 200 + batches[].status=FAILED로 온다(gaps B9, 계약) */

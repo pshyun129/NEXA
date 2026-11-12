@@ -3,6 +3,9 @@
 예) 데이터 {{n3.fields}}, 열 "store:상호, total:금액, date:거래일" → 경비 내역.xlsx
     다운로드: GET /api/v1/ai/runs/files/{file_id}/download (실행 요청자만)
 파일은 업로드 파일과 같은 저장소(UPLOAD_DIR)에 두고 RunFile로 기록 → run_id가 있어서 24시간 정리 대상이 아님
+
+양식 '경비 정산서': 영수증 여러 장(receipts) → 정산서·계정과목별 합계·규정 확인 내역·품목 시트 (ai/receipts/settlement.py)
+  결재 전에 두면 '검토 결과', 결재 대기 뒤에 두면 '정산 내역'(승인된 문서의 장만 정산 포함)
 """
 import re
 import uuid
@@ -11,6 +14,8 @@ from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from ai.receipts.settlement import build_settlement
+
 from core.database import SessionLocal
 from nodes.base import BaseNode, NodeContext, NodeResult, latest_output
 from runs import files
@@ -18,6 +23,7 @@ from runs.models import RunFile
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 GENERATED_BY = "ai-service"        # uploaded_by에 기록 → 사람이 올린 파일과 구분
+TEMPLATES = ["자동 (여러 장이면 경비 정산서)", "표 (열 지정)", "경비 정산서"]
 
 
 def _rows(data) -> list[dict]:
@@ -84,6 +90,7 @@ class ExcelWriteNode(BaseNode):
          "required": False},
         {"key": "file_name", "label": "파일 이름 (예: 경비내역_{{n3.fields.date}})", "type": "text", "required": False},
         {"key": "sheet", "label": "시트 이름", "type": "text", "required": False},
+        {"key": "template", "label": "양식", "type": "select", "options": TEMPLATES, "required": False},
     ]
     branches = []
     output_vars = [
@@ -91,14 +98,53 @@ class ExcelWriteNode(BaseNode):
         {"key": "file_name", "label": "파일 이름", "type": "text"},
         {"key": "download_url", "label": "다운로드 주소", "type": "text"},
         {"key": "row_count", "label": "행 수", "type": "number"},
+        {"key": "total", "label": "정산 합계 (정산서)", "type": "number"},
     ]
 
+    @staticmethod
+    def _upstream_receipts(ctx: NodeContext) -> list[dict] | None:
+        """앞 단계의 가장 최근 장별 결과 (결재 대기 뒤면 승인 여부까지 붙은 것)"""
+        return (latest_output(ctx.outputs, "receipts") or {}).get("receipts")
+
+    def _receipts(self, ctx: NodeContext) -> list[dict] | None:
+        """정산서로 만들 장 목록: 데이터에 receipts가 있으면 그것, 없으면 가장 최근 장별 결과.
+        한 장 시절 워크플로처럼 데이터가 첫 장 값({{n5.fields}})에 묶여 있어도 앞에 여러 장 결과가 있으면 장 전체로
+        (2026-11-11 10장 E2E에서 엑셀에 첫 장만 1줄 적힌 문제)"""
+        template = ctx.config.get("template") or TEMPLATES[0]
+        if template == TEMPLATES[1]:
+            return None
+        data = ctx.config.get("data")
+        upstream = self._upstream_receipts(ctx) or []
+        if isinstance(data, dict) and isinstance(data.get("receipts"), list):
+            rs = data["receipts"]
+        elif isinstance(data, list) and data and all(isinstance(x, dict) and "fields" in x for x in data):
+            rs = data
+        elif data is None or template == TEMPLATES[2] or (isinstance(data, dict) and len(upstream) > 1):
+            rs = upstream
+        if template == TEMPLATES[2] and not rs:
+            raise ValueError("정산서로 만들 영수증 목록(receipts)이 없습니다")
+        return rs if rs and (template == TEMPLATES[2] or len(rs) > 1) else None
+
     def run(self, ctx: NodeContext) -> NodeResult:
-        data = ctx.config.get("data") or (latest_output(ctx.outputs, "fields") or {}).get("fields")
-        rows = _rows(data)
-        columns = _columns(ctx.config.get("columns"), rows)
-        name = _safe_name(ctx.config.get("file_name") or f"결과_{datetime.now():%Y%m%d_%H%M}")
-        wb = build_workbook(rows, columns, ctx.config.get("sheet") or "결과")
+        receipts = self._receipts(ctx)
+        summary = {}
+        if receipts:
+            emp = latest_output(ctx.outputs, "employee") or {}
+            wb, summary = build_settlement(receipts, emp.get("employee"), emp.get("dept_name"), ctx.run_id)
+            who = (emp.get("employee") or {}).get("name") or ""
+            default = f"경비{'정산서' if summary['kind'] == '정산 내역' else '검토결과'}_{who}_{datetime.now():%Y%m%d_%H%M}"
+            name = _safe_name(ctx.config.get("file_name") or default)
+            rows = receipts
+        else:
+            data = ctx.config.get("data") or (latest_output(ctx.outputs, "fields") or {}).get("fields")
+            upstream = self._upstream_receipts(ctx) or []
+            if isinstance(data, dict) and len(upstream) > 1:
+                # '표 (열 지정)'인데 데이터가 첫 장 값이면: 장마다 한 줄 (정산에서 뺀 장 제외)
+                data = [r["fields"] for r in upstream if r.get("include", True)]
+            rows = _rows(data)
+            columns = _columns(ctx.config.get("columns"), rows)
+            name = _safe_name(ctx.config.get("file_name") or f"결과_{datetime.now():%Y%m%d_%H%M}")
+            wb = build_workbook(rows, columns, ctx.config.get("sheet") or "결과")
 
         files.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         stored = f"{uuid.uuid4().hex}.xlsx"
@@ -113,4 +159,4 @@ class ExcelWriteNode(BaseNode):
             db.refresh(rf)
             file_id = rf.id
         return NodeResult(output={"file_id": file_id, "file_name": name, "row_count": len(rows),
-                                  "download_url": f"/api/v1/ai/runs/files/{file_id}/download"})
+                                  "download_url": f"/api/v1/ai/runs/files/{file_id}/download", **summary})

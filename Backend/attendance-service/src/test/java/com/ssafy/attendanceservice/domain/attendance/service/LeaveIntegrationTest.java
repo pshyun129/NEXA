@@ -131,10 +131,19 @@ class LeaveIntegrationTest {
         leave(1L, WEDNESDAY, LeavePortion.AM_HALF, true);
         work(WEDNESDAY, 14, 18);
 
-        leaveService.cancelLeave(1L);
+        assertThat(leaveService.cancelLeave(1L)).containsExactly(WEDNESDAY);
 
         assertThat(employeeLeaveRepository.findByLeaveReqId(1L)).isEmpty();
         assertThat(anomalies(WEDNESDAY)).contains(AnomalyType.LATE, AnomalyType.UNDER_STD_HOURS);
+    }
+
+    @Test
+    void 이미_취소한_휴가를_다시_취소하면_지운_날짜_없음() {
+        leave(1L, WEDNESDAY, LeavePortion.FULL, true);
+        leaveService.cancelLeave(1L);
+
+        assertThat(leaveService.cancelLeave(1L)).isEmpty();
+        assertThat(leaveService.cancelLeave(999L)).isEmpty();
     }
 
     @Test

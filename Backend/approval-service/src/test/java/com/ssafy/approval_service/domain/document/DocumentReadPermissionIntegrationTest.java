@@ -220,11 +220,16 @@ class DocumentReadPermissionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void 관리자_목록은_전체() throws Exception {
-        Fixture a = createFixture();
-        Fixture b = createFixture();
+    void 관리자도_목록에는_본인이_기안했거나_결재선에_있는_문서만() throws Exception {
+        long adminId = newEmployee();
+        long drafted = createDocument(adminId, line(newEmployee(), 1, "APPROVER"));
+        long assigned = createDocument(newEmployee(), line(adminId, 1, "APPROVER"));
+        Fixture other = createFixture();
 
-        assertThat(listedIds(admin(newEmployee()), "")).contains(a.documentId(), b.documentId());
+        assertThat(listedIds(admin(adminId), ""))
+                .contains(drafted, assigned).doesNotContain(other.documentId());
+        // 목록에서 빠져도 단건 조회 권한은 그대로 (getReadableDocument)
+        expectReadable(other.documentId(), admin(adminId));
     }
 
     @Test

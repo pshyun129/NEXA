@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { InputRef } from 'antd';
 import { Alert, Button, Drawer, Input, InputNumber, Segmented, Skeleton } from 'antd';
 import {
   useApprovalLinePreview, useCreateDocument,
@@ -66,11 +67,22 @@ export function ComposeDrawer({ open, onClose, onCreated }: { open: boolean; onC
   const previewAttrs: ApprovalAttributes = formType === 'GENERAL' ? (previewAmount != null ? { amount: previewAmount } : {}) : { overseas };
   const canSubmit = title.trim().length > 0 && !create.isPending;
 
-  const reset = () => { setTitle(''); setAmount(null); setOverseas(false); setFormType('GENERAL'); };
-  const submit = () => canSubmit && create.mutate({ title: title.trim(), formType, attributes }, {
-    onSuccess: (r) => { notify.success(`${r.docNo} 문서를 상신했습니다`); reset(); onCreated(r.documentId); },
-    onError: (e) => notify.error(e, '상신하지 못했습니다'),
-  });
+  const titleRef = useRef<InputRef>(null);
+  // canSubmit은 렌더 시점 값이라 Ctrl+Enter 연타를 못 막는다. 제출 중 여부는 ref로 바로 막는다(QA APR-B1)
+  const submitting = useRef(false);
+  // 상신 한 건당 키 하나. 실패 후 다시 보내도 같은 키라 서버가 중복 생성하지 않는다. 성공하면 새 키
+  const requestKey = useRef(crypto.randomUUID());
+
+  const reset = () => { setTitle(''); setAmount(null); setOverseas(false); setFormType('GENERAL'); requestKey.current = crypto.randomUUID(); };
+  const submit = () => {
+    if (!canSubmit || submitting.current) return;
+    submitting.current = true;
+    create.mutate({ title: title.trim(), formType, attributes, requestKey: requestKey.current }, {
+      onSuccess: (r) => { notify.success(`${r.docNo} 문서를 상신했습니다`); reset(); onCreated(r.documentId); },
+      onError: (e) => notify.error(e, '상신하지 못했습니다'),
+      onSettled: () => { submitting.current = false; },
+    });
+  };
 
   return (
     <Drawer
@@ -79,6 +91,8 @@ export function ComposeDrawer({ open, onClose, onCreated }: { open: boolean; onC
       width={520}
       title="기안하기"
       destroyOnHidden={false}
+      // destroyOnHidden=false라 autoFocus는 첫 마운트 때만 동작한다. 열릴 때마다 제목에 포커스(QA APR-B2)
+      afterOpenChange={(o) => { if (o) titleRef.current?.focus(); }}
       footer={
         <div className={s.composeFoot}>
           <Button onClick={onClose}>취소</Button>
@@ -99,7 +113,7 @@ export function ComposeDrawer({ open, onClose, onCreated }: { open: boolean; onC
         </label>
         <label className={s.field}>
           <span>제목</span>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} showCount autoFocus
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} showCount ref={titleRef}
                  placeholder={formType === 'GENERAL' ? '예: 팀 워크숍 비용 지출' : '예: 부산 고객사 방문'} aria-label="제목" />
         </label>
         {formType === 'GENERAL' ? (

@@ -1,8 +1,16 @@
-.page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--nx-bg-app); }
-.box { width: 100%; max-width: 400px; background: var(--nx-bg-card); border: 1px solid var(--nx-border);
-       border-radius: var(--nx-r-lg); padding: 32px; box-sizing: border-box; }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; color: var(--nx-n-800); margin-bottom: 24px; }
-.mark { color: var(--nx-brand-600); }
-.title { margin: 0; font-size: var(--nx-fs-h1); line-height: 30px; font-weight: 700; color: var(--nx-n-800); }
-.desc { margin: 4px 0 24px; font-size: 13px; color: var(--nx-n-500); }
+/* 로그인 v2: 왼쪽 검정 패널(로고·소개) + 오른쪽 폼 */
+.page { min-height: 100vh; display: flex; background: var(--nx-bg-app); }
+.side { flex: 0 0 44%; max-width: 620px; box-sizing: border-box; background: #151618; color: #8f9197; padding: 44px 48px;
+        display: flex; flex-direction: column; justify-content: space-between; }
+.sideBrand { display: flex; align-items: center; gap: 12px; color: #fff; font-size: 38px; font-weight: 700; letter-spacing: -2.6px; line-height: 1; }
+.sideCopy strong { display: block; font-size: 26px; line-height: 1.6; font-weight: 500; letter-spacing: -1px; color: #e3e4e7; }
+.sideCopy p { margin: 14px 0 0; font-size: 13px; color: #7d8086; }
+.sideStar { display: block; font-size: 30px; color: #bbbfc7; margin-bottom: 16px; }
+.sideFoot { font-size: 11px; color: #5f6267; letter-spacing: .02em; }
+.box { flex: 1; align-self: center; width: 100%; max-width: 400px; margin: 0 auto; padding: 32px 24px; box-sizing: border-box;
+       animation: nx-rise .6s var(--nx-ease) both; }
+.eyebrow { font-size: 10px; letter-spacing: 2.2px; color: #888b92; font-weight: 600; margin-bottom: 10px; }
+.title { margin: 0; font-size: 29px; line-height: 38px; font-weight: 600; letter-spacing: -1.4px; color: var(--nx-n-800); }
+.desc { margin: 6px 0 28px; font-size: 13px; color: var(--nx-n-500); }
 .alert { margin-bottom: 16px; }
+@media (max-width: 900px) { .side { display: none; } }

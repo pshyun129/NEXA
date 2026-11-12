@@ -1,4 +1,6 @@
-import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { usePollWindow } from '@/common/usePollWindow';
 import { api } from './client';
 import { kst } from '@/format';
 
@@ -160,22 +162,57 @@ export function useLeaveTypes() {
   });
 }
 
-/** 처리 확인 중(SUBMITTING) 신청이 있을 때만 5초마다 다시 읽는다. 결재 대기(SUBMITTED)는 사람을 기다리므로 폴링하지 않는다 */
+export const isLeavePending = (status: LeaveRequestStatus) => status === 'SUBMITTING' || status === 'SUBMITTED';
+
+/** 사람이 다른 창에서 결재할 수 있으므로 제출된 신청도 조회한다. 기존 2분 폴링 한도를 따른다. */
 export function useMyLeaveRequests() {
-  return useQuery({
+  const qc = useQueryClient();
+  const cached = qc.getQueryData<LeaveRequestSummary[]>(leaveKeys.requests);
+  const poll = usePollWindow(cached?.some((r) => isLeavePending(r.status)) ?? false);
+  const previous = useRef(new Map<number, LeaveRequestStatus>());
+  const query = useQuery({
     queryKey: leaveKeys.requests,
     queryFn: () => api.get<LeaveRequestSummary[]>(`${ME}/requests`),
-    refetchInterval: (q) => (q.state.data?.some((r) => r.status === 'SUBMITTING') && !document.hidden ? 5_000 : false),
+    refetchInterval: (q) => (poll.active && q.state.data?.some((r) => isLeavePending(r.status)) && !document.hidden ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
+  useEffect(() => {
+    for (const request of query.data ?? []) {
+      const before = previous.current.get(request.requestId);
+      if (before && before !== request.status) {
+        qc.invalidateQueries({ queryKey: leaveKeys.request(request.requestId) });
+        for (const key of [leaveKeys.summary, leaveKeys.ledger, leaveKeys.grants]) qc.invalidateQueries({ queryKey: key });
+      }
+    }
+    previous.current = new Map((query.data ?? []).map((r) => [r.requestId, r.status]));
+  }, [query.data, qc]);
+  return query;
 }
 
 export function useLeaveRequest(id: number | null) {
-  return useQuery({
+  const qc = useQueryClient();
+  const cached = qc.getQueryData<LeaveRequestDetail>(leaveKeys.request(id ?? 0));
+  const poll = usePollWindow(cached != null && isLeavePending(cached.status));
+  const previous = useRef<{ id: number; status: LeaveRequestStatus } | null>(null);
+  const query = useQuery({
     queryKey: leaveKeys.request(id ?? 0),
     queryFn: () => api.get<LeaveRequestDetail>(`${ME}/requests/${id}`),
     enabled: id != null,
     placeholderData: undefined,
+    refetchInterval: (q) => (poll.active && q.state.data && isLeavePending(q.state.data.status) && !document.hidden ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
+  useEffect(() => {
+    const request = query.data;
+    if (!request) return;
+    if (previous.current?.id === request.requestId && previous.current.status !== request.status) {
+      for (const key of [leaveKeys.requests, leaveKeys.summary, leaveKeys.ledger, leaveKeys.grants]) {
+        qc.invalidateQueries({ queryKey: key });
+      }
+    }
+    previous.current = { id: request.requestId, status: request.status };
+  }, [query.data, qc]);
+  return query;
 }
 
 /** 목록 응답에 날짜가 없어 상세를 따로 읽는다(설계 9장 #11). 보이는 행만 넘긴다 */
@@ -190,12 +227,12 @@ export function useLeaveRequestDetails(ids: number[]) {
 }
 
 /** 저장하지 않는 미리보기. 입력이 같으면 캐시를 쓰고, [다시 확인]은 refetch */
-export function useLeavePreview(input: LeaveInput | null) {
+export function useLeavePreview(input: LeaveInput | null, enabled = true) {
   return useQuery({
     queryKey: leaveKeys.preview(input),
     queryFn: () => api.post<LeavePreview>(`${ME}/requests/preview`, input),
-    enabled: input != null && input.dates.length > 0,
-    placeholderData: keepPreviousData,
+    enabled: enabled && input != null && input.dates.length > 0,
+    placeholderData: undefined,
     retry: false,
     staleTime: 0,
     gcTime: 60_000,

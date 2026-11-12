@@ -29,7 +29,9 @@ public record WeeklyAttendanceResponse(
     public static WeeklyAttendanceResponse of(LocalDate startDate, LocalDate endDate, WorkGroup workGroup,
                                               List<AttendanceDaySummaryResponse> days, LocalDate today) {
         int totalMin = days.stream().mapToInt(d -> d.workTime().totalMin()).sum();
-        int stdMin = workGroup.getWeeklyStdHours() * 60;
+        int workDays = (int) days.stream().filter(d -> !d.isHoliday()).count();
+        // 근무일 수 × 일 소정(월간과 같은 기준). 공휴일·휴일대체로 근무일이 줄면 줄고, 늘어도 주 소정 근로시간은 넘지 않는다
+        int stdMin = Math.min(workGroup.getWeeklyStdHours() * 60, workDays * workGroup.getDailyStdMinutes());
 
         Summary summary = new Summary(
                 totalMin,
@@ -38,7 +40,7 @@ public record WeeklyAttendanceResponse(
                 stdMin,
                 workGroup.getWeeklyMaxHours() * 60,
                 Math.max(0, stdMin - totalMin),
-                (int) days.stream().filter(d -> !d.isHoliday()).count(),
+                workDays,
                 (int) days.stream().filter(d -> !d.isHoliday() && !d.workDate().isBefore(today)).count()
         );
         return new WeeklyAttendanceResponse(startDate, endDate, workGroup.getName(), summary, days);

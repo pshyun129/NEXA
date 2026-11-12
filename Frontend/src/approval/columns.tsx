@@ -27,25 +27,61 @@ function Progress({ r }: { r: DocumentSummary }) {
   );
 }
 
+/** 문서 칸 아래 줄: 번호 · 양식 (· 기안자 · 기안일) · ✦자동화 */
+function SubLine({ r, drafter, date }: { r: DocumentSummary; drafter?: boolean; date?: boolean }) {
+  return (
+    <span className={`${s.cellSub} ${s.subLine}`}>
+      <span className="nx-num">{shortNo(r.docNo)}</span> · {formTypeLabel(r.formType)}
+      {drafter && <> · <EmpName id={r.drafterId} /></>}
+      {date && <> · <span className="nx-num">{formatDateShort(r.draftedAt)}</span></>}
+      {r.sourceType === 'AUTOMATION' && (
+        // 워크플로 이름(sourceLabel)은 좁은 목록 칸 대신 툴팁으로. 없으면 표식만
+        <Tooltip title={r.sourceLabel ?? undefined}>
+          <span className={s.autoTag} aria-label={r.sourceLabel ? `자동화: ${r.sourceLabel}` : undefined}>
+            <Icon as={Sparkles} size={12} />자동화
+          </span>
+        </Tooltip>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 결재함 2분할 왼쪽처럼 좁은 목록용: 문서 칸 하나에 제목 + (번호·양식·기안자·기안일), 오른쪽 칸 하나에 상태/진행.
+ * 칸 너비 합이 목록 폭을 넘지 않아 상세 패널 밑으로 표가 삐져나가지 않는다(table-layout: fixed와 함께 쓴다).
+ */
+export function compactDocColumns(opt: { drafter?: boolean; status?: boolean }): ColumnsType<DocumentSummary> {
+  return [
+    {
+      title: '문서', key: 'doc',
+      render: (_, r) => (
+        <div className={s.cellDoc}>
+          <span className={s.cellTitle} title={r.title}>{r.title}</span>
+          <SubLine r={r} drafter={opt.drafter} date />
+        </div>
+      ),
+    },
+    {
+      title: opt.status ? '상태' : '진행', key: 'state', width: 112, align: 'right',
+      render: (_, r) => (
+        <div className={s.cellState}>
+          {opt.status && <StatusBadge domain="DocumentStatus" value={r.status} />}
+          {(!opt.status || r.status === 'INPROGRESS') && <Progress r={r} />}
+        </div>
+      ),
+    },
+  ];
+}
+
 /** 문서 목록 칸(결재함·홈 결재 대기 공용). 번호는 docNo 끝 4자리, ✦자동화는 출처가 AUTOMATION일 때(설계 6.1), 툴팁은 sourceLabel(워크플로 이름). */
 export function docColumns(opt: { drafter?: boolean; status?: boolean; progress?: boolean }): ColumnsType<DocumentSummary> {
   return [
     {
       title: '문서', key: 'doc',
       render: (_, r) => (
-        <div style={{ minWidth: 0 }}>
-          <span className={s.cellTitle}>{r.title}</span>
-          <span className={s.cellSub}>
-            <span className="nx-num">{shortNo(r.docNo)}</span> · {formTypeLabel(r.formType)}
-            {r.sourceType === 'AUTOMATION' && (
-              // 워크플로 이름(sourceLabel)은 좁은 목록 칸 대신 툴팁으로. 없으면 표식만
-              <Tooltip title={r.sourceLabel ?? undefined}>
-                <span className={s.autoTag} aria-label={r.sourceLabel ? `자동화: ${r.sourceLabel}` : undefined}>
-                  <Icon as={Sparkles} size={12} />자동화
-                </span>
-              </Tooltip>
-            )}
-          </span>
+        <div className={s.cellDoc}>
+          <span className={s.cellTitle} title={r.title}>{r.title}</span>
+          <SubLine r={r} />
         </div>
       ),
     },

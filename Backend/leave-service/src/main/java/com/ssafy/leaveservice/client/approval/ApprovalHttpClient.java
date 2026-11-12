@@ -37,6 +37,28 @@ public final class ApprovalHttpClient implements ApprovalClient {
     }
 
     @Override
+    public boolean supportsIdempotentResume() {
+        // 이 구현체는 계약 확인 플래그가 켜진 경우에만 등록된다.
+        return true;
+    }
+
+    @Override
+    public ApprovalCreationResult resume(ApprovalCreateCommand command) {
+        ApprovalCreationResult created = create(command);
+        if (created.outcome() != ApprovalCreationResult.Outcome.SUBMITTED_CONFIRMED) {
+            return created;
+        }
+
+        // 생성 재호출의 간략 응답만 믿지 않고 UUID·기안자·출처·문서 ID를 다시 검증한다.
+        LeaveSubmissionResult expected = new LeaveSubmissionResult(command.requestId(), command.employeeId(),
+                command.approvalRequestId(),
+                com.ssafy.leaveservice.domain.request.entity.LeaveRequestStatus.SUBMITTING,
+                com.ssafy.leaveservice.domain.request.entity.ApprovalCreationStatus.IN_PROGRESS,
+                created.documentId());
+        return recover(expected);
+    }
+
+    @Override
     public ApprovalCreationResult create(ApprovalCreateCommand command) {
         requireEmployee(command.employeeId());
         UUID key = command.approvalRequestId();
@@ -88,6 +110,10 @@ public final class ApprovalHttpClient implements ApprovalClient {
             }
             return new ApprovalCreationResult(key, ApprovalCreationResult.Outcome.SUBMITTED_CONFIRMED, document.documentId());
         } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                return new ApprovalCreationResult(key, ApprovalCreationResult.Outcome.LOOKUP_NOT_FOUND,
+                        null, "APPROVAL_LOOKUP_NOT_FOUND");
+            }
             return fromHttpFailure(key, exception);
         } catch (RestClientException exception) {
             return unknown(key, "APPROVAL_LOOKUP_TRANSPORT_OR_RESPONSE_ERROR");

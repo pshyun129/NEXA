@@ -76,6 +76,8 @@ export const statusMap = {
     QUEUED: { label: '대기', tone: 'neutral', icon: I.Clock },
     RUNNING: { label: '실행 중', tone: 'ai', icon: I.Loader, spin: true },
     WAITING: { label: '확인 대기', tone: 'warning', filled: true, icon: I.UserCheck },
+    // 결재자를 기다리는 실행(waitingType = approval_wait). 요청자가 할 일이 없으므로 확인 대기와 구분한다(QA C20)
+    WAITING_APPROVAL: { label: '결재 대기', tone: 'info', icon: I.Hourglass },
     SUCCEEDED: { label: '완료', tone: 'success' },
     FAILED: { label: '실패', tone: 'danger' },
     CANCELED: { label: '취소', tone: 'neutral' },

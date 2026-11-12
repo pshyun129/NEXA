@@ -46,7 +46,8 @@ final class GradeStepChecker {
             issues.add(new ValidationIssue(file.getFileId(), null, "grade",
                     fieldToColumn.getOrDefault("grade", fieldToColumn.get("position")), Severity.WARN, IssueCode.GRADE_STEP_DEFAULTED,
                     "호봉이 없는 직급이 " + noStep.size() + "개 있습니다 (" + examples + "). NEXA 직급은 호봉이 있어야 해서, "
-                            + "NEXA에 없는 직급은 1호봉으로 넣습니다 (이미 하나 있으면 그 호봉). 호봉 열이 있으면 매핑해 주세요",
+                            + "NEXA에 없는 직급은 1호봉으로, 하나뿐이면 그 호봉으로 넣습니다. 호봉이 여럿인 직급은 고를 수 없어 호봉까지 적어야 합니다 "
+                            + "(적재 전 기준정보 확인에서 알려 줍니다). 호봉 열이 있으면 매핑해 주세요",
                     null, null));
         }
         return issues;

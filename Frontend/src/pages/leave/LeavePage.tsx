@@ -6,6 +6,7 @@ import { LeaveApply } from '@/leave/Apply';
 import { LeaveRequestList, LeaveRequestView } from '@/leave/Requests';
 import { LeaveLedger } from '@/leave/Ledger';
 import { PolicyCard } from '@/leave/PolicyCard';
+import { useLeaveTypes } from '@/api/leave';
 import { APPLY_PATH, LEAVE_PATH, leaveRequestHref } from '@/leave/links';
 
 /**
@@ -17,6 +18,8 @@ export function LeavePage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const noPolicy = useNoPolicy();
+  const types = useLeaveTypes();
+  const canApply = !noPolicy && types.isSuccess && types.data.length > 0;
   const tab = params.get('tab') === 'ledger' ? 'ledger' : '';
   const qs = params.toString() ? `?${params.toString()}` : '';
 
@@ -38,7 +41,7 @@ export function LeavePage() {
     <>
       <PageHeader
         title="휴가"
-        actions={!noPolicy && <Link to={APPLY_PATH}><Button type="primary">휴가 신청</Button></Link>}
+        actions={canApply && <Link to={APPLY_PATH}><Button type="primary">휴가 신청</Button></Link>}
       />
       <Tabs
         activeKey={tab}
@@ -51,7 +54,7 @@ export function LeavePage() {
             <Card title="휴가 잔여"><BalanceList /></Card>
             <PolicyCard />
           </div>
-          <Card title="내 휴가 신청" flush><LeaveRequestList onOpen={open} /></Card>
+          <Card title="내 휴가 신청" flush><LeaveRequestList onOpen={open} noPolicy={noPolicy} canApply={canApply} /></Card>
         </div>
       ) : (
         <LeaveLedger onOpenRequest={open} />

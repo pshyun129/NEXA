@@ -36,4 +36,12 @@ public interface PayslipItemRepository extends JpaRepository<PayslipItem, Long> 
             """)
     long sumAmount(@Param("empId") Long empId, @Param("itemCode") String itemCode,
                    @Param("fromYearMonth") int fromYearMonth, @Param("toYearMonth") int toYearMonth);
+
+    // 여러 명세서에서 지정한 항목들의 합계 (퇴직금 3개월 임금에서 상여·연차수당을 뺄 때 사용)
+    @Query("""
+            select coalesce(sum(psi.amount), 0) from PayslipItem psi
+            where psi.payslip.payslipId in :payslipIds
+              and psi.payItem.itemCode in :itemCodes
+            """)
+    long sumAmountOfPayslips(@Param("payslipIds") List<Long> payslipIds, @Param("itemCodes") List<String> itemCodes);
 }

@@ -105,7 +105,8 @@ public class MappingService {
         Set<String> seen = new HashSet<>();
         for (String target : next.values()) {
             if (target != null && !seen.add(target)) {
-                throw new BusinessException(ErrorCode.INVALID_INPUT, "한 필드에 여러 컬럼을 연결할 수 없습니다: " + target);
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "한 필드에 여러 컬럼을 연결할 수 없습니다: "
+                        + schema.field(target).map(FieldSpec::label).orElse(target));
             }
         }
 
