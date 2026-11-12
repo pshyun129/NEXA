@@ -20,6 +20,7 @@ from workflows.routers import router as workflows_router
 from ai.routers import router as ai_router
 from ai.rag.policy import warm_up as warm_up_rag   # 모델 + 고정 질문 검색 결과 미리 계산
 from runs import golden_sync
+from ai import champions
 from runs.duplicates import backfill_keys
 from runs.service import fail_interrupted_runs
 
@@ -58,6 +59,7 @@ async def lifespan(app: FastAPI):
     # 규정 RAG 모델 미리 불러오기: 수 초~수십 초 걸려서 백그라운드로 (헬스체크·다른 요청을 막지 않게)
     threading.Thread(target=warm_up_rag, name="rag-warmup", daemon=True).start()
     golden_sync.start()                # 골든셋 → MLflow 자동 전송 (MLFLOW_TRACKING_URI·GOLDEN_SYNC_HOURS 있을 때만)
+    champions.start()                  # 밤 작업이 승격한 모델을 재시작 없이 반영 + 자동 롤백 (MLflow champion)
     if settings.eureka_server_url:
         options = {}
         if settings.instance_host:
@@ -72,6 +74,7 @@ async def lifespan(app: FastAPI):
     # 서버 끌 때: 구독을 먼저 멈춰야 재개 처리 중에 DB 연결이 끊기지 않음
     approval_consumer.stop()
     golden_sync.stop()
+    champions.stop()
     close_checkpointer()
     if settings.eureka_server_url:
         await eureka_client.stop_async()

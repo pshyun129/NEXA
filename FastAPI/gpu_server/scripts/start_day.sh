@@ -39,38 +39,35 @@ start() {   # 사용법: start <세션 이름> <스크립트 파일>
 # Tailscale(ts): 없으면 같이 켬 (로그인 상태는 state 파일에 남아 있어 재로그인 불필요, 끌 때는 stop_day.sh도 안 끔)
 bash "$SCRIPT_DIR/start_ts.sh"
 
+# MLflow 먼저: vLLM이 뜰 때 serve.sh가 MLflow에서 champion 어댑터를 확인함 (못 받으면 기본 모델만으로 뜸)
+start mlflow serve_mlflow.sh
+for _ in $(seq 1 20); do
+  curl -sf "http://127.0.0.1:${MLFLOW_PORT:-18200}/health" >/dev/null 2>&1 && break
+  sleep 3
+done
 start vllm serve.sh
 start ocr serve_ocr.sh
-start mlflow serve_mlflow.sh
 
 echo "세션 확인: tmux ls"
 echo "로그 확인: tail -f ~/ai/logs/*-$(date +%F).log"
 
-# 밤 학습 예약 (선택): NIGHT_AT=20:00 bash start_day.sh → 오늘 한국 시간 20:00에 night_job 1회
+# 밤 MLOps 예약 (선택): NIGHT_AT=20:00 bash start_day.sh → 오늘 한국 시간 20:00에 night_job 1회
+#   데이터 준비 → DSPy 최적화·게이트 → QLoRA 학습 데이터 → (새 데이터면) QLoRA 학습 → 어댑터 게이트, 결과는 MLflow 실험 nightly
 # cron 아님: 오늘 하루만 예약 (서버가 매일 재시작되므로 매일 아침 이 스크립트로 다시 예약)
-# 데이터: NIGHT_DATA가 없으면 ~/ai/sft에서 가장 최근에 올린 jsonl / 이미 학습한 데이터면 night_job이 그냥 끝냄
+# NIGHT_DATA를 주면 그 데이터로 QLoRA 학습만 (예전 방식)
 if [[ -n "${NIGHT_AT:-}" ]]; then
-  NIGHT_DATA="${NIGHT_DATA:-$(ls -t "$HOME"/ai/sft/*.jsonl 2>/dev/null | head -1 || true)}"
-  if [[ -z "$NIGHT_DATA" || ! -f "$NIGHT_DATA" ]]; then
-    echo "⚠ [night] 밤 학습 예약 안 됨: 학습 데이터가 없습니다 (${NIGHT_DATA:-~/ai/sft/*.jsonl})"
+  # 예약 실패를 삼키지 않고 결과를 항상 보여 줌 (2026-11-09~12 예약이 조용히 거절된 문제)
+  set +e
+  START_AT="$NIGHT_AT" bash "$SCRIPT_DIR/start_night.sh" "${NIGHT_NAME:-receipt-qlora-$(date +%Y%m%d)}" ${NIGHT_DATA:+"$NIGHT_DATA"}
+  RC=$?
+  set -e
+  if [[ $RC == 0 ]]; then
+    echo "[night] 밤 MLOps 예약됨: $NIGHT_AT${NIGHT_DATA:+ (학습만: $(basename "$NIGHT_DATA"))}"
+  elif [[ $RC == 2 ]]; then
+    echo "[night] 기존 예약·학습을 그대로 둠 (tail -n 3 ~/ai/logs/night-$(date +%F).log)"
   else
-    SHA=$(sha256sum "$NIGHT_DATA" | cut -c1-12)
-    # 예약 실패를 삼키지 않고 결과를 항상 보여 줌 (2026-11-09~12 예약이 조용히 거절된 문제)
-    set +e
-    START_AT="$NIGHT_AT" bash "$SCRIPT_DIR/start_night.sh" "${NIGHT_NAME:-receipt-qlora-$(date +%Y%m%d)}" "$NIGHT_DATA"
-    RC=$?
-    set -e
-    if [[ $RC == 0 ]]; then
-      echo "[night] 밤 학습 예약됨: $NIGHT_AT / $(basename "$NIGHT_DATA") (sha $SHA)"
-      if grep -qlx "$SHA" "$HOME"/ai/adapters/*/data.sha 2>/dev/null; then
-        echo "        이 데이터는 이미 학습했음 → $NIGHT_AT에 확인만 하고 건너뜀 (다시 학습: FORCE=1)"
-      fi
-    elif [[ $RC == 2 ]]; then
-      echo "[night] 기존 예약·학습을 그대로 둠 (tail -n 3 ~/ai/logs/night-$(date +%F).log)"
-    else
-      echo "⚠ [night] 밤 학습 예약 안 됨 (위 메시지 확인). 직접 걸기: START_AT=$NIGHT_AT bash scripts/start_night.sh <이름> $NIGHT_DATA"
-    fi
+    echo "⚠ [night] 밤 MLOps 예약 안 됨 (위 메시지 확인). 직접 걸기: START_AT=$NIGHT_AT bash scripts/start_night.sh"
   fi
 else
-  echo "[night] 밤 학습 예약 없음 (예약하려면 앞에 NIGHT_AT=20:00 을 붙여 실행)"
+  echo "[night] 밤 MLOps 예약 없음 (예약하려면 앞에 NIGHT_AT=20:00 을 붙여 실행)"
 fi

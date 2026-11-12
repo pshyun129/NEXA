@@ -275,6 +275,14 @@ def _load_judge() -> tuple[PolicyJudge, str]:
 
 
 _judge, JUDGE_VERSION = _load_judge()
+BUNDLED_JUDGE = (_judge, JUDGE_VERSION)      # Git 파일 기준 (MLflow champion이 없거나 못 받을 때 돌아갈 곳)
+
+
+def swap_judge(judge: "PolicyJudge | None", label: str | None):
+    """판정 프로그램 교체 (ai/champions.py가 MLflow champion으로, 재시작 없이). None이면 Git 파일 기준으로.
+    판정 캐시 키에 버전이 들어가 있어서, 바뀐 뒤에는 이전 버전의 판정을 다시 쓰지 않음"""
+    global _judge, JUDGE_VERSION
+    _judge, JUDGE_VERSION = BUNDLED_JUDGE if judge is None else (judge, label)
 
 
 # ---------------------------------------------------------------- 코드 검증

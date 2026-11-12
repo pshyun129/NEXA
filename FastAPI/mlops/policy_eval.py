@@ -68,10 +68,11 @@ def eval_retrieval(items: list[dict], k: int) -> tuple[dict, list[dict], list[di
 
 
 # ---------------------------------------------------------------- 판정
-def eval_case(case: dict, today) -> dict:
+def eval_case(case: dict, today, judge=None) -> dict:
+    """judge: 평가할 판정 프로그램 (생략하면 서버가 쓰는 champion). 넘기면 판정 캐시 없이 매번 LLM 판정 (비교가 공정하게)"""
     t0 = time.perf_counter()
     try:
-        r = policy.check_receipt(case["fields"], case.get("extra") or {}, today=today)
+        r = policy.check_receipt(case["fields"], case.get("extra") or {}, today=today, judge=judge)
         error = None
     except Exception as e:                       # 한 케이스 실패가 전체 평가를 멈추지 않게
         r, error = {"verdict": "오류", "findings": [], "needed_facts": []}, f"{e.__class__.__name__}: {e}"
@@ -181,7 +182,7 @@ def main():
     # 평가는 로컬 LLM만 (GMS로 넘어가면 점수가 섞임) — 판정 모듈의 LLM 호출을 로컬 전용으로 바꿔 끼움
     lm = require_local_lm()
 
-    def local_only(module, **inputs):
+    def local_only(module, _model=None, **inputs):
         with dspy.context(lm=lm):
             return module(**inputs)
 

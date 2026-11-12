@@ -39,11 +39,12 @@ def _as_list(v) -> list:
 
 
 class CasePolicy(dspy.Module):
-    """케이스 하나(영수증 추출 결과 + 사용자가 준 정보) → 종합 판정. 최적화 대상은 안의 judge뿐"""
+    """케이스 하나(영수증 추출 결과 + 사용자가 준 정보) → 종합 판정. 최적화 대상은 안의 judge뿐
+    judge: 출발점 판정 프로그램 (밤 작업은 지금 서빙 중인 champion, 없으면 기본)"""
 
-    def __init__(self, today):
+    def __init__(self, today, judge=None):
         super().__init__()
-        self.judge = policy.PolicyJudge()
+        self.judge = judge.deepcopy() if judge is not None else policy.PolicyJudge()
         self.today = today
 
     def forward(self, fields: dict, extra: dict):
@@ -80,6 +81,40 @@ def cache_retrieval() -> dict:
     return cache
 
 
+def local_only_judging(task_lm):
+    """판정은 로컬 LLM만 (GMS로 넘어가면 점수가 섞임). check_receipt 안의 스레드에서도 같은 LM을 쓰게 직접 지정"""
+    def local_only(module, _model=None, **inputs):
+        with dspy.context(lm=task_lm):
+            return module(**inputs)
+
+    policy.run_with_fallback = local_only
+
+
+def compile_judge(dev_cases: list[dict], today, auto: str = "light", threads: int = 3, seed: int = 42, start_judge=None):
+    """MIPROv2(지시문만)로 판정 프로그램 후보를 골라 돌려줌 (수동 실행·밤 작업 공용) → (판정 모듈, 분, 검색 캐시)"""
+    require_local_lm()                                     # 로컬 LLM 설정 확인
+    task_lm = local_lm(0.0)                                # 판정: 항상 같은 답
+    prompt_lm = local_lm(0.7, max_tokens=4096)             # 지시문 후보 작성: 다양하게
+    dspy.configure(lm=task_lm)
+    local_only_judging(task_lm)
+    cache = cache_retrieval()
+    optimizer = MIPROv2(
+        metric=metric,
+        prompt_model=prompt_lm,
+        task_model=task_lm,
+        auto=auto,
+        max_bootstrapped_demos=0,                          # 지시문만 최적화 (예시 0개)
+        max_labeled_demos=0,
+        num_threads=threads,
+        seed=seed,
+    )
+    start = time.time()
+    # dev가 수십 건뿐이라 미니배치(기본 35건) 없이 시도마다 dev 전체로 채점, 학습셋도 dev (test는 승격 판정용으로 아낌)
+    dev = to_examples(dev_cases)
+    optimized = optimizer.compile(CasePolicy(today, start_judge), trainset=dev, valset=dev, minibatch=False)
+    return optimized.judge, (time.time() - start) / 60, cache
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default=str(EVAL_SET))
@@ -94,42 +129,16 @@ def main():
     dev = to_examples(dev_cases)
     eval_hash = hashlib.sha256(raw).hexdigest()[:12]
 
-    require_local_lm()                                     # 로컬 LLM 설정 확인
-    task_lm = local_lm(0.0)                                # 판정: 항상 같은 답
-    prompt_lm = local_lm(0.7, max_tokens=4096)             # 지시문 후보 작성: 다양하게
-    dspy.configure(lm=task_lm)
-
-    # 판정은 로컬 LLM만 (GMS로 넘어가면 점수가 섞임). check_receipt 안의 스레드에서도 같은 LM을 쓰게 직접 지정
-    def local_only(module, **inputs):
-        with dspy.context(lm=task_lm):
-            return module(**inputs)
-
-    policy.run_with_fallback = local_only
-    cache = cache_retrieval()
-
-    optimizer = MIPROv2(
-        metric=metric,
-        prompt_model=prompt_lm,
-        task_model=task_lm,
-        auto=args.auto,
-        max_bootstrapped_demos=0,                          # 지시문만 최적화 (예시 0개)
-        max_labeled_demos=0,
-        num_threads=args.threads,
-        seed=args.seed,
-    )
     print(f"MIPROv2({args.auto}) 시작: 평가셋 {Path(args.set).name} ({eval_hash}) dev {len(dev)}건 "
           f"(준수가 정답 {sum(_as_list(c['expect']) == ['준수'] for c in dev_cases)}건)")
-    start = time.time()
-    # dev가 27건뿐이라 미니배치(기본 35건) 없이 시도마다 dev 전체로 채점, 학습셋도 dev (test는 승격 판정용으로 아낌)
-    optimized = optimizer.compile(CasePolicy(data["today"]), trainset=dev, valset=dev, minibatch=False)
-    minutes = (time.time() - start) / 60
+    optimized, minutes, cache = compile_judge(dev_cases, data["today"], auto=args.auto, threads=args.threads, seed=args.seed)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"policy-miprov2-{time.strftime('%Y%m%d-%H%M')}"
     path = OUT_DIR / f"{name}.json"
-    optimized.judge.save(str(path))                        # PolicyJudge만 저장 → policy_eval --program 으로 바로 불러짐
+    optimized.save(str(path))                              # PolicyJudge만 저장 → policy_eval --program 으로 바로 불러짐
 
-    instructions = optimized.judge.judge.signature.instructions
+    instructions = optimized.judge.signature.instructions
     changed = instructions.strip() != policy.JudgeClause.instructions.strip()
     print(f"\n최적화 완료 ({minutes:.1f}분, 검색 캐시 {len(cache)}건) → {path}")
     print(f"[지시문 {'바뀜' if changed else '그대로 (기본 프로그램이 선택됨)'}]")

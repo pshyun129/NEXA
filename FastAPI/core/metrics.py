@@ -51,3 +51,6 @@ JUDGE_CACHE = Counter("ai_policy_judge_cache_total", "규정 판정 캐시 (같�
 RETRIEVAL_CACHE = Counter("ai_policy_retrieval_cache_total", "규정 검색 캐시", ["result"])
 
 GOLDEN_SYNC = Counter("ai_golden_sync_total", "골든셋 MLflow 전송 결과", ["outcome"])  # pushed/unchanged/empty/error
+
+# 밤 작업이 승격한 모델의 서빙 반영 (ai/champions.py). outcome = swapped / unchanged / reverted / rolled_back / error
+CHAMPION_SYNC = Counter("ai_champion_sync_total", "MLflow champion 서빙 반영 결과", ["model", "outcome"])
