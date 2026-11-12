@@ -72,17 +72,57 @@ def _load_extractor() -> tuple[ReceiptExtractor, str]:
     return extractor, meta.get("label", "receipt@champion")
 
 
-# 서버 시작 때 한 번만 불러와서 재사용 (승격 반영 = 배포 후 재시작)
-_extractor, RECEIPT_VERSION = _load_extractor()
+class _Active:
+    """지금 서빙에 쓰는 추출 프로그램 + 모델(LoRA 어댑터).
+    시작할 때는 Git에 포함된 파일(ai/programs), 이후에는 ai/champions.py가 MLflow champion으로 바꿔 끼움 (재시작 없이)
+    교체는 객체 하나를 통째로 바꾸는 방식 → 추출 도중 바뀌어도 한 장 안에서는 같은 버전으로 끝남"""
+
+    def __init__(self, extractor: ReceiptExtractor, label: str, adapter: str | None = None):
+        self.extractor, self.label, self.adapter = extractor, label, adapter
+
+    @property
+    def version(self) -> str:
+        # 어댑터를 쓰면 버전에 붙여 기록: receipt@v3+receipt-qlora-20261112 → 롤백 판단·피드백을 조합별로 셈
+        return f"{self.label}+{self.adapter}" if self.adapter else self.label
+
+
+BUNDLED = _Active(*_load_extractor())     # Git 파일 기준 (MLflow champion이 없거나 못 받을 때 돌아갈 곳)
+_active = BUNDLED
+
+
+def receipt_version() -> str:
+    """지금 추출에 쓰는 버전 이름 (노드 출력 model_version, run_feedback에 기록)"""
+    return _active.version
+
+
+def current_extractor() -> ReceiptExtractor:
+    """지금 서빙 중인 프로그램 (학습 데이터를 서빙과 같은 프롬프트로 만들 때 사용)"""
+    return _active.extractor
+
+
+def swap_program(extractor: ReceiptExtractor | None, label: str | None):
+    """프로그램 교체. None이면 Git 파일 기준으로 되돌림 (어댑터 설정은 유지)"""
+    global _active
+    if extractor is None:
+        _active = _Active(BUNDLED.extractor, BUNDLED.label, _active.adapter)
+    else:
+        _active = _Active(extractor, label, _active.adapter)
+
+
+def set_adapter(name: str | None):
+    """추출에 쓸 vLLM 모델 이름(LoRA 어댑터). None이면 기본 모델"""
+    global _active
+    _active = _Active(_active.extractor, _active.label, name)
 
 
 def extract_receipt(text: str) -> Receipt:
-    """영수증 텍스트 → Receipt. 로컬 LLM 실패 시 GMS로 대체."""
-    result = run_with_fallback(_extractor, text=text)
+    """영수증 텍스트 → Receipt. 로컬 LLM 실패 시 GMS로 대체 (어댑터가 실패하면 기본 모델 먼저)."""
+    a = _active
+    result = run_with_fallback(a.extractor, _model=a.adapter, text=text)
     return result.receipt
 
 
 def extract_receipt_with_gms(text: str) -> Receipt:
     """검증용: GMS로 독립 추출 (로컬 결과와 비교하기 위함, 대체 실행 없음)."""
     with dspy.context(lm=get_gms_lm()):
-        return _extractor(text=text).receipt
+        return _active.extractor(text=text).receipt

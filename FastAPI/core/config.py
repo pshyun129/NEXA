@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     mlflow_tracking_uri: str = ""
 
     golden_sync_hours: float = 24       # 골든셋 → MLflow 자동 전송 주기 (0 = 끔, 개발 PC는 .env에 0)
+    # 밤 작업이 승격한 모델(MLflow champion)을 재시작 없이 반영하는 확인 주기 (0 = 끔 → Git 파일 기준만)
+    champion_sync_minutes: float = 30
+    # 자동 롤백 (골든셋 전송이 켜진 운영 DB에서만): 승격 버전의 사람 수정률이 이전 버전보다 이만큼 넘게 높으면 되돌림
+    rollback_min_samples: int = 20          # 양쪽 버전 모두 사람 확인이 이 장수 이상일 때만 비교
+    rollback_max_edit_increase: float = 0.10
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

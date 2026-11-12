@@ -23,11 +23,11 @@ logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 OUT_DIR = Path("mlops/data/programs")       # mlops/data 아래라 git에 안 올라감 (원본은 MLflow artifact)
 
 
-def local_lm(temperature: float, max_tokens: int = 1024) -> dspy.LM:
-    """최적화 전용 로컬 LM.
+def local_lm(temperature: float, max_tokens: int = 1024, model: str | None = None) -> dspy.LM:
+    """최적화 전용 로컬 LM. model = vLLM의 다른 모델 이름(서빙 중인 LoRA 어댑터), 생략하면 기본 모델
     운영용(get_local_lm)과 다른 점: 재시도 2회 → 수백 번 호출하다 한 번 끊겨도 전체가 죽지 않게"""
     return dspy.LM(
-        model=f"openai/{settings.local_llm_model}",
+        model=f"openai/{model or settings.local_llm_model}",
         api_base=settings.local_llm_base_url,
         api_key=settings.local_llm_api_key,
         temperature=temperature,
@@ -85,6 +85,28 @@ def mine_hard(program, data: Path, threads: int, seed: int) -> tuple[list[dict],
     return hard + easy, stats
 
 
+def compile_program(student, train_records: list[dict], dev_records: list[dict], auto: str = "light", demos: int = 3,
+                    threads: int = 4, seed: int = 42, model: str | None = None):
+    """MIPROv2로 지시문·예시 후보를 만들고 dev 점수로 골라 도전자 프로그램을 돌려줌 (수동 실행·밤 작업 공용)
+    student: 출발점 프로그램 (밤 작업은 지금 서빙 중인 champion), model: 추출에 쓸 vLLM 모델 이름(어댑터)"""
+    task_lm = local_lm(0.0, model=model)                   # 실제 추출: 항상 같은 답
+    prompt_lm = local_lm(0.7, max_tokens=4096)             # 지시문 후보 작성: 다양하게 쓰도록 온도 올림 (기본 모델)
+    dspy.configure(lm=task_lm)
+    optimizer = MIPROv2(
+        metric=dspy_metric,
+        prompt_model=prompt_lm,
+        task_model=task_lm,
+        auto=auto,
+        max_bootstrapped_demos=demos,                      # 모델이 직접 맞힌 답 중에서 고른 예시
+        max_labeled_demos=demos,                           # 정답 라벨을 그대로 쓴 예시 (오타 교정을 보여줄 수 있음)
+        num_threads=threads,
+        seed=seed,
+    )
+    start = time.time()
+    optimized = optimizer.compile(student.deepcopy(), trainset=to_examples(train_records), valset=to_examples(dev_records))
+    return optimized, (time.time() - start) / 60
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data", type=Path, default=DATA_DIR)
@@ -108,24 +130,9 @@ def main():
     dev_records = load_records("dev", args.data)
     dev = to_examples(dev_records)
 
-    task_lm = local_lm(0.0)                                # 실제 추출: 항상 같은 답
-    prompt_lm = local_lm(0.7, max_tokens=4096)             # 지시문 후보 작성: 다양하게 쓰도록 온도 올림
-    dspy.configure(lm=task_lm)
-
-    optimizer = MIPROv2(
-        metric=dspy_metric,
-        prompt_model=prompt_lm,
-        task_model=task_lm,
-        auto=args.auto,
-        max_bootstrapped_demos=args.demos,                 # 모델이 직접 맞힌 답 중에서 고른 예시
-        max_labeled_demos=args.demos,                      # 정답 라벨을 그대로 쓴 예시 (오타 교정을 보여줄 수 있음)
-        num_threads=args.threads,
-        seed=args.seed,
-    )
     print(f"MIPROv2({args.auto}) 시작: train {len(train)}장으로 후보 생성, dev {len(dev)}장으로 채점")
-    start = time.time()
-    optimized = optimizer.compile(load_program(), trainset=train, valset=dev)
-    minutes = (time.time() - start) / 60
+    optimized, minutes = compile_program(load_program(), train_records, dev_records, auto=args.auto,
+                                         demos=args.demos, threads=args.threads, seed=args.seed)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"miprov2{'-hard' if args.hard else ''}-{time.strftime('%Y%m%d-%H%M')}"

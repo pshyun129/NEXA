@@ -10,7 +10,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
-from ai.modules.receipt import CORE_FIELDS, RECEIPT_VERSION, extract_receipt
+from ai.modules.receipt import CORE_FIELDS, extract_receipt, receipt_version
 from ai.receipts.headcount import estimate_headcount
 from ai.receipts.parse import EVIDENCE_KIND, parse_details
 from core.config import settings
@@ -20,11 +20,12 @@ from runs.duplicates import find_prior_claims, save_keys
 
 log = logging.getLogger(__name__)
 
-# 문서 종류 -> (추출 함수, 모델 버전)
+# 문서 종류 -> (추출 함수, 모델 버전을 돌려주는 함수)
 # 새 문서 종류는 DSPy 모듈을 만들고 여기에 한 줄 추가
-# 모델 버전 = 서버가 불러온 챔피언 버전 (ai/programs/*.meta.json, 없으면 base)
+# 모델 버전 = 지금 서빙 중인 챔피언 (MLflow champion → 없으면 ai/programs/*.meta.json → 없으면 base).
+# 실행 중에도 champion이 바뀔 수 있어서 상수가 아니라 함수로 그때그때 읽음
 EXTRACTORS = {
-    "영수증": (extract_receipt, RECEIPT_VERSION),
+    "영수증": (extract_receipt, receipt_version),
 }
 MAX_WORKERS = 8          # 동시에 추출할 장 수 (vLLM 동시 처리 한도 max-num-seqs 8과 맞춤)
 MAX_PAGES = 300          # 한 실행에서 처리할 최대 장 수
@@ -103,7 +104,8 @@ class StructuredExtractNode(BaseNode):
         doc_type = ctx.config["doc_type"]
         if doc_type not in EXTRACTORS:
             raise ValueError(f"지원하지 않는 문서 종류입니다: {doc_type}")
-        _, model_version = EXTRACTORS[doc_type]
+        _, version_of = EXTRACTORS[doc_type]
+        model_version = version_of()
 
         # 여러 장: OCR의 장별 결과(pages)로 장마다 추출. 분류 노드가 다른 종류로 본 장은 제외
         ocr = latest_output(ctx.outputs, "pages")

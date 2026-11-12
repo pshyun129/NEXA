@@ -1,2 +1,3 @@
-scripts/
+# 로컬 전용 스크립트 (FastAPI/scripts/만. 앞의 / 가 없으면 gpu_server/scripts/의 새 파일까지 무시됨)
+/scripts/
 e2e_*.xlsx
